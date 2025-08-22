@@ -4,10 +4,7 @@
   "description": "AI-powered school management system with report generation",
   "main": "railway-backend/server.js",
   "scripts": {
-    "start": "cd railway-backend && npm start",
-    "build": "cd railway-backend && npm ci --only=production",
-    "dev": "cd railway-backend && npm run dev",
-    "test": "cd railway-backend && npm test"
+    "start": "cd railway-backend && npm start"
   },
   "engines": {
     "node": ">=18.0.0",
