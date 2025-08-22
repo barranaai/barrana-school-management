@@ -1,14 +1,18 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile.railway"
+    "builder": "NIXPACKS",
+    "buildCommand": "cd railway-backend && npm ci --only=production",
+    "watchPatterns": [
+      "railway-backend/**/*"
+    ]
   },
   "deploy": {
     "numReplicas": 1,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
     "healthcheckPath": "/api/health",
-    "healthcheckTimeout": 300
+    "healthcheckTimeout": 300,
+    "startCommand": "cd railway-backend && npm start"
   }
 }
