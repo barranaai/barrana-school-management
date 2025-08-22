@@ -35,14 +35,30 @@ const upload = multer({
   }
 });
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI (gracefully handle missing API key)
+let openai = null;
+try {
+  if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim() !== '') {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  } else {
+    console.log('OpenAI API key not provided - AI features disabled');
+  }
+} catch (error) {
+  console.log('OpenAI initialization failed - AI features disabled:', error.message);
+}
 
 // AI Report Generation
 router.post('/generate-report', async (req, res) => {
   try {
+    if (!openai) {
+      return res.status(503).json({
+        success: false,
+        message: 'AI service is not available. Please configure OpenAI API key.'
+      });
+    }
+    
     console.log('🤖 AI Report Generation Request:', req.body);
     
     const { transcription, studentName, grade, template, templateId, timestamp } = req.body;
@@ -104,6 +120,13 @@ router.post('/generate-report', async (req, res) => {
 // Audio Upload Endpoint
 router.post('/upload-audio', upload.single('audio'), async (req, res) => {
   try {
+    if (!openai) {
+      return res.status(503).json({
+        success: false,
+        message: 'AI service is not available. Please configure OpenAI API key.'
+      });
+    }
+    
     console.log('🎤 Audio Upload Request');
     
     if (!req.file) {
@@ -171,6 +194,13 @@ router.post('/upload-audio', upload.single('audio'), async (req, res) => {
 // Voice Processing with actual transcription
 router.post('/process-voice', upload.single('audio'), async (req, res) => {
   try {
+    if (!openai) {
+      return res.status(503).json({
+        success: false,
+        message: 'AI service is not available. Please configure OpenAI API key.'
+      });
+    }
+    
     console.log('🎤 Voice Processing Request');
     
     if (!req.file) {
