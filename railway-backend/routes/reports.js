@@ -17,14 +17,9 @@ const { sendReportEmail } = require('../services/emailService');
 
 // Check if ffmpeg is available (it won't be in Railway)
 let ffmpeg = null;
-let ffmpegPath = null;
 
 try {
   ffmpeg = require('fluent-ffmpeg');
-  ffmpegPath = require('ffmpeg-static');
-  if (ffmpeg && ffmpegPath) {
-    ffmpeg.setFfmpegPath(ffmpegPath);
-  }
 } catch (error) {
   console.log('FFmpeg not available in reports route - audio/video processing disabled');
 }
@@ -119,11 +114,11 @@ const tempUploadWithErrorHandling = (req, res, next) => {
   });
 };
 
-// Set ffmpeg path for production
-if (process.env.NODE_ENV === 'production') {
-  const ffmpegPath = require('ffmpeg-static');
-  ffmpeg.setFfmpegPath(ffmpegPath);
-}
+// FFmpeg configuration - disabled for Railway compatibility
+// if (process.env.NODE_ENV === 'production') {
+//   const ffmpegPath = require('ffmpeg-static');
+//   ffmpeg.setFfmpegPath(ffmpegPath);
+// }
 
 // Optimization functions
 const optimizeImage = async (inputPath, outputPath, options = {}) => {

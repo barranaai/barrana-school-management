@@ -8,21 +8,16 @@ const fs = require('fs').promises;
 
 // Check if ffmpeg is available (it won't be in Railway)
 let ffmpeg = null;
-let ffmpegPath = null;
 
 try {
   ffmpeg = require('fluent-ffmpeg');
-  ffmpegPath = require('ffmpeg-static');
-  if (ffmpeg && ffmpegPath) {
-    ffmpeg.setFfmpegPath(ffmpegPath);
-  }
 } catch (error) {
   console.log('FFmpeg not available - audio/video optimization disabled');
 }
 
 class OptimizationService {
   constructor() {
-    this.ffmpegAvailable = !!(ffmpeg && ffmpegPath);
+    this.ffmpegAvailable = !!ffmpeg;
   }
 
   // Image optimization using Sharp (always available)
