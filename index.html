@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>School Management System - URL Directory</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #1976d2;
+            --secondary-color: #dc004e;
+            --success-color: #2e7d32;
+            --warning-color: #ed6c02;
+            --error-color: #d32f2f;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px 0;
+        }
+        
+        .url-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            border-left: 5px solid var(--primary-color);
+        }
+        
+        .url-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+        
+        .url-card.admin { border-left-color: var(--error-color); }
+        .url-card.teacher { border-left-color: var(--primary-color); }
+        .url-card.parent { border-left-color: var(--success-color); }
+        .url-card.demo { border-left-color: var(--warning-color); }
+        
+        .url-badge {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            padding: 8px 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            color: #495057;
+            word-break: break-all;
+        }
+        
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 5px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .feature-list li i {
+            width: 20px;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="text-center mb-5">
+            <h1 class="text-white mb-3">
+                <i class="fas fa-school me-3"></i>
+                School Management System
+            </h1>
+            <p class="text-white-50 lead">AI-Powered Report Assistant - Complete URL Directory</p>
+        </div>
+
+        <div class="row">
+            <!-- Admin Dashboard -->
+            <div class="col-lg-6 mb-4">
+                <div class="url-card admin">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-danger text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                            <i class="fas fa-user-shield"></i>
+                        </div>
+                        <div>
+                            <h4 class="mb-1">Admin Dashboard</h4>
+                            <p class="text-muted mb-0">School Owner's Command Center</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Direct Access:</strong>
+                        <div class="url-badge mt-1">http://localhost:3000/admin.html</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Via Demo:</strong>
+                        <div class="url-badge mt-1">http://localhost:3000/demo.html?role=admin</div>
+                    </div>
+                    
+                    <ul class="feature-list mb-3">
+                        <li><i class="fas fa-chart-line"></i> Advanced Analytics & AI Insights</li>
+                        <li><i class="fas fa-envelope"></i> Communication Center</li>
+                        <li><i class="fas fa-cog"></i> System Settings & API Management</li>
+                        <li><i class="fas fa-users"></i> Student & Teacher Management</li>
+                    </ul>
+                    
+                    <div class="d-grid gap-2">
+                        <a href="admin.html" class="btn btn-danger">
+                            <i class="fas fa-external-link-alt me-2"></i>Open Admin Dashboard
+                        </a>
+                        <a href="demo.html?role=admin" class="btn btn-outline-danger">
+                            <i class="fas fa-sign-in-alt me-2"></i>Via Login Demo
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Teachers UI -->
+            <div class="col-lg-6 mb-4">
+                <div class="url-card teacher">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                            <i class="fas fa-chalkboard-teacher"></i>
+                        </div>
+                        <div>
+                            <h4 class="mb-1">Teachers UI</h4>
+                            <p class="text-muted mb-0">Voice Recording & Report Creation</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Direct Access:</strong>
+                        <div class="url-badge mt-1">http://localhost:3000/teachers.html</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Via Demo:</strong>
+                        <div class="url-badge mt-1">http://localhost:3000/demo.html?role=teacher</div>
+                    </div>
+                    
+                    <ul class="feature-list mb-3">
+                        <li><i class="fas fa-microphone"></i> Voice Recording Interface</li>
+                        <li><i class="fas fa-waveform"></i> Real-time Audio Visualization</li>
+                        <li><i class="fas fa-edit"></i> Draft Review & Editing</li>
+                        <li><i class="fas fa-question-circle"></i> Resources & Support</li>
+                    </ul>
+                    
+                    <div class="d-grid gap-2">
+                        <a href="teachers.html" class="btn btn-primary">
+                            <i class="fas fa-external-link-alt me-2"></i>Open Teachers UI
+                        </a>
+                        <a href="demo.html?role=teacher" class="btn btn-outline-primary">
+                            <i class="fas fa-sign-in-alt me-2"></i>Via Login Demo
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Parents UI -->
+            <div class="col-lg-6 mb-4">
+                <div class="url-card parent">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div>
+                            <h4 class="mb-1">Parents UI</h4>
+                            <p class="text-muted mb-0">Interactive Report Viewing</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Direct Access:</strong>
+                        <div class="url-badge mt-1">http://localhost:3000/parents.html</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Via Demo:</strong>
+                        <div class="url-badge mt-1">http://localhost:3000/demo.html?role=parent</div>
+                    </div>
+                    
+                    <ul class="feature-list mb-3">
+                        <li><i class="fas fa-chart-bar"></i> Interactive Progress Reports</li>
+                        <li><i class="fas fa-language"></i> Multi-language Support</li>
+                        <li><i class="fas fa-envelope"></i> Teacher Communication</li>
+                        <li><i class="fas fa-download"></i> Download & Print Reports</li>
+                    </ul>
+                    
+                    <div class="d-grid gap-2">
+                        <a href="parents.html" class="btn btn-success">
+                            <i class="fas fa-external-link-alt me-2"></i>Open Parents UI
+                        </a>
+                        <a href="demo.html?role=parent" class="btn btn-outline-success">
+                            <i class="fas fa-sign-in-alt me-2"></i>Via Login Demo
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Demo -->
+            <div class="col-lg-6 mb-4">
+                <div class="url-card demo">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-warning text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                            <i class="fas fa-play"></i>
+                        </div>
+                        <div>
+                            <h4 class="mb-1">Main Demo</h4>
+                            <p class="text-muted mb-0">Complete System with Login</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Main Demo:</strong>
+                        <div class="url-badge mt-1">http://localhost:3000/demo.html</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Home Page:</strong>
+                        <div class="url-badge mt-1">http://localhost:3000/</div>
+                    </div>
+                    
+                    <ul class="feature-list mb-3">
+                        <li><i class="fas fa-sign-in-alt"></i> Complete Login System</li>
+                        <li><i class="fas fa-exchange-alt"></i> Role-based Navigation</li>
+                        <li><i class="fas fa-cogs"></i> All Features Integrated</li>
+                        <li><i class="fas fa-mobile-alt"></i> Responsive Design</li>
+                    </ul>
+                    
+                    <div class="d-grid gap-2">
+                        <a href="demo.html" class="btn btn-warning">
+                            <i class="fas fa-external-link-alt me-2"></i>Open Main Demo
+                        </a>
+                        <a href="/" class="btn btn-outline-warning">
+                            <i class="fas fa-home me-2"></i>Home Page
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Access Section -->
+        <div class="row mt-5">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-bolt me-2"></i>Quick Access Links
+                        </h5>
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <a href="admin.html" class="btn btn-outline-danger w-100">
+                                    <i class="fas fa-user-shield me-2"></i>Admin
+                                </a>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <a href="teachers.html" class="btn btn-outline-primary w-100">
+                                    <i class="fas fa-chalkboard-teacher me-2"></i>Teachers
+                                </a>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <a href="parents.html" class="btn btn-outline-success w-100">
+                                    <i class="fas fa-users me-2"></i>Parents
+                                </a>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <a href="demo.html" class="btn btn-outline-warning w-100">
+                                    <i class="fas fa-play me-2"></i>Demo
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Server Info -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-server me-2"></i>Server Information</h6>
+                    <p class="mb-2"><strong>Server:</strong> Python HTTP Server running on port 3000</p>
+                    <p class="mb-2"><strong>Status:</strong> <span class="badge bg-success">Running</span></p>
+                    <p class="mb-0"><strong>Base URL:</strong> <code>http://localhost:3000</code></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 

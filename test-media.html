@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-image { max-width: 300px; margin: 10px; border: 1px solid #ccc; }
+        .test-video { max-width: 300px; margin: 10px; border: 1px solid #ccc; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Media File Test</h1>
+    
+    <h2>Test Images</h2>
+    <div>
+        <img src="http://localhost:5050/uploads/media/temp-media-1755501869327-33003369.jpg" 
+             alt="Test Image 1" 
+             class="test-image"
+             onload="console.log('✅ Image 1 loaded successfully')"
+             onerror="console.error('❌ Image 1 failed to load')">
+    </div>
+    
+    <div>
+        <img src="http://localhost:5050/uploads/media/temp-media-1755501869328-689503702.jpg" 
+             alt="Test Image 2" 
+             class="test-image"
+             onload="console.log('✅ Image 2 loaded successfully')"
+             onerror="console.error('❌ Image 2 failed to load')">
+    </div>
+    
+    <h2>Test Videos</h2>
+    <div>
+        <video src="http://localhost:5050/uploads/media/temp-media-1755499648493-290020660.mp4" 
+               controls 
+               class="test-video"
+               onloadstart="console.log('🎬 Video 1 loading started')"
+               oncanplay="console.log('✅ Video 1 can play')"
+               onerror="console.error('❌ Video 1 failed to load')">
+        </video>
+    </div>
+    
+    <div>
+        <video src="http://localhost:5050/uploads/media/temp-media-1755499207613-564088223.mp4" 
+               controls 
+               class="test-video"
+               onloadstart="console.log('🎬 Video 2 loading started')"
+               oncanplay="console.log('✅ Video 2 can play')"
+               onerror="console.error('❌ Video 2 failed to load')">
+        </video>
+    </div>
+    
+    <h2>Test Results</h2>
+    <div id="results"></div>
+    
+    <script>
+        // Test fetch access
+        async function testFetch() {
+            const testUrl = 'http://localhost:5050/uploads/media/temp-media-1755501869327-33003369.jpg';
+            try {
+                const response = await fetch(testUrl, { method: 'HEAD' });
+                console.log('🔍 Fetch test result:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    contentType: response.headers.get('content-type'),
+                    cors: response.headers.get('access-control-allow-origin')
+                });
+                
+                if (response.ok) {
+                    document.getElementById('results').innerHTML += '<p class="success">✅ Fetch test successful</p>';
+                } else {
+                    document.getElementById('results').innerHTML += '<p class="error">❌ Fetch test failed: ' + response.status + '</p>';
+                }
+            } catch (error) {
+                console.error('❌ Fetch test error:', error);
+                document.getElementById('results').innerHTML += '<p class="error">❌ Fetch test error: ' + error.message + '</p>';
+            }
+        }
+        
+        // Run test when page loads
+        window.addEventListener('load', testFetch);
+    </script>
+</body>
+</html>

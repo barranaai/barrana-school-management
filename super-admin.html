@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barrana.ai Super Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --barrana-primary: #1976d2;
+            --barrana-secondary: #dc004e;
+            --barrana-success: #2e7d32;
+            --barrana-warning: #ed6c02;
+            --barrana-error: #d32f2f;
+            --barrana-info: #0288d1;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f8f9fa;
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: var(--barrana-primary) !important;
+        }
+        
+        .sidebar {
+            background: white;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            height: 100vh;
+            position: fixed;
+            width: 280px;
+            overflow-y: auto;
+        }
+        
+        .main-content {
+            margin-left: 280px;
+            padding: 20px;
+        }
+        
+        .metric-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+            border-left: 4px solid var(--barrana-primary);
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .metric-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+        }
+        
+        .trend-up { color: var(--barrana-success); }
+        .trend-down { color: var(--barrana-error); }
+        
+        .school-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+        
+        .school-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        
+        .status-active { background: var(--barrana-success); }
+        .status-pending { background: var(--barrana-warning); }
+        .status-inactive { background: var(--barrana-error); }
+        
+        .section {
+            display: none;
+        }
+        
+        .section.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <span class="navbar-brand">
+                <i class="fas fa-crown me-2"></i>
+                Barrana.ai: Multi-School Overview
+            </span>
+            <div class="d-flex align-items-center">
+                <span class="badge bg-danger me-3">5</span>
+                <div class="dropdown">
+                    <button class="btn btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-user-shield me-2"></i>Super Admin
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="logout()">Logout</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="d-flex">
+        <!-- Sidebar -->
+        <div class="sidebar p-3">
+            <h5 class="mb-3 text-primary">Super Admin Navigation</h5>
+            <div class="list-group list-group-flush">
+                <a href="#" class="list-group-item list-group-item-action active" onclick="showSection('overview')">
+                    <i class="fas fa-tachometer-alt me-2"></i>Global Overview
+                </a>
+                <a href="#" class="list-group-item list-group-item-action" onclick="showSection('schools')">
+                    <i class="fas fa-school me-2"></i>School Management
+                </a>
+                <a href="#" class="list-group-item list-group-item-action" onclick="showSection('onboarding')">
+                    <i class="fas fa-user-plus me-2"></i>Onboarding
+                </a>
+                <a href="#" class="list-group-item list-group-item-action" onclick="showSection('billing')">
+                    <i class="fas fa-credit-card me-2"></i>Billing & Subscriptions
+                </a>
+                <a href="#" class="list-group-item list-group-item-action" onclick="showSection('analytics')">
+                    <i class="fas fa-chart-line me-2"></i>Global Analytics
+                </a>
+                <a href="#" class="list-group-item list-group-item-action" onclick="showSection('support')">
+                    <i class="fas fa-headset me-2"></i>Support Center
+                </a>
+                <a href="#" class="list-group-item list-group-item-action" onclick="showSection('system')">
+                    <i class="fas fa-cog me-2"></i>System Configuration
+                </a>
+                <a href="#" class="list-group-item list-group-item-action" onclick="showSection('team')">
+                    <i class="fas fa-users-cog me-2"></i>Team Management
+                </a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Global Overview Section -->
+            <div id="overviewSection" class="section active">
+                <h2 class="mb-4">Global Overview & Key Business Metrics</h2>
+                
+                <!-- Top Insights -->
+                <div class="alert alert-info mb-4">
+                    <h6><i class="fas fa-lightbulb me-2"></i>Top 3 Global Insights</h6>
+                    <ul class="mb-0">
+                        <li>Overall parent engagement across all schools is trending upwards (+23% MoM)</li>
+                        <li>Common growth area identified across elementary schools is fine motor skills</li>
+                        <li>Montessori schools show 40% higher report completion rates</li>
+                    </ul>
+                </div>
+
+                <!-- Key Metrics -->
+                <div class="row mb-4">
+                    <div class="col-md-3 mb-3">
+                        <div class="metric-card">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="metric-icon me-3" style="background: var(--barrana-primary);">
+                                    <i class="fas fa-school"></i>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Total Active Schools</div>
+                                    <div class="h4 mb-0 fw-bold">247</div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-arrow-up trend-up me-2"></i>
+                                <span class="text-success small">+12% MoM</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <div class="metric-card">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="metric-icon me-3" style="background: var(--barrana-success);">
+                                    <i class="fas fa-users"></i>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Total Students</div>
+                                    <div class="h4 mb-0 fw-bold">18,432</div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-arrow-up trend-up me-2"></i>
+                                <span class="text-success small">+8% MoM</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <div class="metric-card">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="metric-icon me-3" style="background: var(--barrana-warning);">
+                                    <i class="fas fa-file-alt"></i>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Reports Generated</div>
+                                    <div class="h4 mb-0 fw-bold">89,247</div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-arrow-up trend-up me-2"></i>
+                                <span class="text-success small">+15% MoM</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <div class="metric-card">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="metric-icon me-3" style="background: var(--barrana-info);">
+                                    <i class="fas fa-dollar-sign"></i>
+                                </div>
+                                <div>
+                                    <div class="text-muted small">Monthly Revenue</div>
+                                    <div class="h4 mb-0 fw-bold">$124,750</div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-arrow-up trend-up me-2"></i>
+                                <span class="text-success small">+18% MoM</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Health -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">System Health Status</h6>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span>API Uptime</span>
+                                    <span class="badge bg-success">99.9%</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span>n8n Workflows</span>
+                                    <span class="badge bg-success">All Active</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span>Database Performance</span>
+                                    <span class="badge bg-success">Optimal</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span>AI Model Response Time</span>
+                                    <span class="badge bg-warning">2.3s avg</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">Quick Actions</h6>
+                                <button class="btn btn-primary w-100 mb-2" onclick="showSection('onboarding')">
+                                    <i class="fas fa-plus me-2"></i>Add New School
+                                </button>
+                                <button class="btn btn-outline-primary w-100 mb-2" onclick="showSection('analytics')">
+                                    <i class="fas fa-chart-bar me-2"></i>View Analytics
+                                </button>
+                                <button class="btn btn-outline-warning w-100" onclick="showSection('support')">
+                                    <i class="fas fa-headset me-2"></i>Support Tickets
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- School Management Section -->
+            <div id="schoolsSection" class="section">
+                <h2 class="mb-4">School Management & Onboarding</h2>
+                
+                <!-- Search and Filters -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <input type="text" class="form-control" placeholder="Search schools..." id="schoolSearch">
+                            <button class="btn btn-outline-secondary" type="button">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <select class="form-select d-inline-block w-auto me-2">
+                            <option>All Status</option>
+                            <option>Active</option>
+                            <option>Pending</option>
+                            <option>Inactive</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="showSection('onboarding')">
+                            <i class="fas fa-plus me-2"></i>Add School
+                        </button>
+                    </div>
+                </div>
+
+                <!-- School Directory -->
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <div class="school-card">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="mb-0">Sunshine Montessori</h6>
+                                <span class="badge status-active text-white">Active</span>
+                            </div>
+                            <p class="text-muted small mb-2">Contact: Sarah Johnson (sarah@sunshine.edu)</p>
+                            <div class="row text-center mb-2">
+                                <div class="col-4">
+                                    <small class="text-muted">Students</small>
+                                    <div class="fw-bold">156</div>
+                                </div>
+                                <div class="col-4">
+                                    <small class="text-muted">Reports</small>
+                                    <div class="fw-bold">892</div>
+                                </div>
+                                <div class="col-4">
+                                    <small class="text-muted">Plan</small>
+                                    <div class="fw-bold">Premium</div>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewSchool('SCH001')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="impersonateSchool('SCH001')">
+                                    <i class="fas fa-user-secret"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="contactSchool('SCH001')">
+                                    <i class="fas fa-envelope"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4 mb-3">
+                        <div class="school-card">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="mb-0">Little Explorers Daycare</h6>
+                                <span class="badge status-pending text-white">Pending</span>
+                            </div>
+                            <p class="text-muted small mb-2">Contact: Mike Chen (mike@explorers.edu)</p>
+                            <div class="row text-center mb-2">
+                                <div class="col-4">
+                                    <small class="text-muted">Students</small>
+                                    <div class="fw-bold">89</div>
+                                </div>
+                                <div class="col-4">
+                                    <small class="text-muted">Reports</small>
+                                    <div class="fw-bold">234</div>
+                                </div>
+                                <div class="col-4">
+                                    <small class="text-muted">Plan</small>
+                                    <div class="fw-bold">Basic</div>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewSchool('SCH002')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="impersonateSchool('SCH002')">
+                                    <i class="fas fa-user-secret"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="contactSchool('SCH002')">
+                                    <i class="fas fa-envelope"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4 mb-3">
+                        <div class="school-card">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="mb-0">Elite Private Academy</h6>
+                                <span class="badge status-active text-white">Active</span>
+                            </div>
+                            <p class="text-muted small mb-2">Contact: Dr. Emily Rodriguez (emily@elite.edu)</p>
+                            <div class="row text-center mb-2">
+                                <div class="col-4">
+                                    <small class="text-muted">Students</small>
+                                    <div class="fw-bold">342</div>
+                                </div>
+                                <div class="col-4">
+                                    <small class="text-muted">Reports</small>
+                                    <div class="fw-bold">1,567</div>
+                                </div>
+                                <div class="col-4">
+                                    <small class="text-muted">Plan</small>
+                                    <div class="fw-bold">Enterprise</div>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewSchool('SCH003')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="impersonateSchool('SCH003')">
+                                    <i class="fas fa-user-secret"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="contactSchool('SCH003')">
+                                    <i class="fas fa-envelope"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Onboarding Section -->
+            <div id="onboardingSection" class="section">
+                <h2 class="mb-4">New School Onboarding Workflow</h2>
+                
+                <div class="card">
+                    <div class="card-body">
+                        <form id="onboardingForm">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>School Information</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label">School Name</label>
+                                        <input type="text" class="form-control" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Contact Person</label>
+                                        <input type="text" class="form-control" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Email</label>
+                                        <input type="email" class="form-control" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Phone</label>
+                                        <input type="tel" class="form-control" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Address</label>
+                                        <textarea class="form-control" rows="3"></textarea>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <h6>Subscription & Setup</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label">Subscription Plan</label>
+                                        <select class="form-select" required>
+                                            <option>Basic ($99/month)</option>
+                                            <option>Premium ($199/month)</option>
+                                            <option>Enterprise ($399/month)</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Estimated Students</label>
+                                        <input type="number" class="form-control" min="1" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">School Type</label>
+                                        <select class="form-select" required>
+                                            <option>Daycare</option>
+                                            <option>Montessori</option>
+                                            <option>Private School</option>
+                                            <option>Public School</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Admin Username</label>
+                                        <input type="text" class="form-control" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Initial Password</label>
+                                        <input type="password" class="form-control" required>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="text-end">
+                                <button type="button" class="btn btn-secondary me-2" onclick="showSection('schools')">Cancel</button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-rocket me-2"></i>Provision School
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Billing Section -->
+            <div id="billingSection" class="section">
+                <h2 class="mb-4">Billing & Subscription Management</h2>
+                
+                <!-- Revenue Metrics -->
+                <div class="row mb-4">
+                    <div class="col-md-3 mb-3">
+                        <div class="metric-card">
+                            <div class="text-center">
+                                <div class="h3 text-primary">$124,750</div>
+                                <small class="text-muted">Monthly Recurring Revenue</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="metric-card">
+                            <div class="text-center">
+                                <div class="h3 text-success">$1,497,000</div>
+                                <small class="text-muted">Annual Recurring Revenue</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="metric-card">
+                            <div class="text-center">
+                                <div class="h3 text-info">$505</div>
+                                <small class="text-muted">Average Revenue Per School</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="metric-card">
+                            <div class="text-center">
+                                <div class="h3 text-warning">2.1%</div>
+                                <small class="text-muted">Monthly Churn Rate</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Subscription Plans -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h6 class="card-title">Subscription Plans</h6>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Plan</th>
+                                        <th>Price</th>
+                                        <th>Schools</th>
+                                        <th>Features</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Basic</strong></td>
+                                        <td>$99/month</td>
+                                        <td>156 schools</td>
+                                        <td>Core reports, Email support</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="editPlan('basic')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Premium</strong></td>
+                                        <td>$199/month</td>
+                                        <td>78 schools</td>
+                                        <td>Advanced reports, Priority support</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="editPlan('premium')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Enterprise</strong></td>
+                                        <td>$399/month</td>
+                                        <td>13 schools</td>
+                                        <td>Custom features, Dedicated support</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="editPlan('enterprise')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Section -->
+            <div id="analyticsSection" class="section">
+                <h2 class="mb-4">Advanced Global Analytics & Business Intelligence</h2>
+                
+                <!-- Geographic Distribution -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h6 class="card-title">Geographic Distribution of Schools</h6>
+                        <div class="row text-center">
+                            <div class="col-md-3">
+                                <div class="h4 text-primary">156</div>
+                                <small class="text-muted">United States</small>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="h4 text-success">45</div>
+                                <small class="text-muted">Canada</small>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="h4 text-warning">32</div>
+                                <small class="text-muted">United Kingdom</small>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="h4 text-info">14</div>
+                                <small class="text-muted">Australia</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Performance Metrics -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">AI Performance Benchmarking</h6>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between">
+                                        <span>STT Accuracy</span>
+                                        <span class="fw-bold">94.2%</span>
+                                    </div>
+                                    <div class="progress" style="height: 6px;">
+                                        <div class="progress-bar bg-success" style="width: 94.2%"></div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between">
+                                        <span>LLM Report Quality</span>
+                                        <span class="fw-bold">4.7/5.0</span>
+                                    </div>
+                                    <div class="progress" style="height: 6px;">
+                                        <div class="progress-bar bg-primary" style="width: 94%"></div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between">
+                                        <span>Average Response Time</span>
+                                        <span class="fw-bold">2.3s</span>
+                                    </div>
+                                    <div class="progress" style="height: 6px;">
+                                        <div class="progress-bar bg-warning" style="width: 85%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">AI Cost Analysis</h6>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between">
+                                        <span>Monthly API Costs</span>
+                                        <span class="fw-bold">$8,450</span>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between">
+                                        <span>Cost per Report</span>
+                                        <span class="fw-bold">$0.09</span>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between">
+                                        <span>Projected Monthly</span>
+                                        <span class="fw-bold">$12,200</span>
+                                    </div>
+                                </div>
+                                <div class="alert alert-info">
+                                    <small><i class="fas fa-lightbulb me-2"></i>AI Efficiency Opportunities: Optimize prompts for 15% cost reduction</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Support Section -->
+            <div id="supportSection" class="section">
+                <h2 class="mb-4">Support & Communication Center</h2>
+                
+                <!-- Support Tickets -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="card-title mb-0">Support Tickets</h6>
+                            <button class="btn btn-primary btn-sm">
+                                <i class="fas fa-plus me-2"></i>New Ticket
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>School</th>
+                                        <th>Issue</th>
+                                        <th>Status</th>
+                                        <th>Priority</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>#TKT-001</td>
+                                        <td>Sunshine Montessori</td>
+                                        <td>Voice recording not working</td>
+                                        <td><span class="badge bg-warning">In Progress</span></td>
+                                        <td><span class="badge bg-danger">High</span></td>
+                                        <td>2 hours ago</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary">View</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>#TKT-002</td>
+                                        <td>Little Explorers</td>
+                                        <td>Report template customization</td>
+                                        <td><span class="badge bg-success">Resolved</span></td>
+                                        <td><span class="badge bg-warning">Medium</span></td>
+                                        <td>1 day ago</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary">View</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Global Announcements -->
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">Global Announcements</h6>
+                        <div class="mb-3">
+                            <textarea class="form-control" rows="3" placeholder="Type your announcement..."></textarea>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary">
+                                <i class="fas fa-paper-plane me-2"></i>Send to All Schools
+                            </button>
+                            <button class="btn btn-outline-secondary">
+                                <i class="fas fa-save me-2"></i>Save Draft
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Configuration Section -->
+            <div id="systemSection" class="section">
+                <h2 class="mb-4">System Configuration & Template Management</h2>
+                
+                <!-- AI Model Management -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h6 class="card-title">AI Model Management</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Primary LLM Model</label>
+                                    <select class="form-select">
+                                        <option>GPT-4o</option>
+                                        <option>Gemini 1.5 Pro</option>
+                                        <option>Claude 3.5 Sonnet</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">STT Service</label>
+                                    <select class="form-select">
+                                        <option>Google Cloud Speech</option>
+                                        <option>Azure Speech</option>
+                                        <option>Amazon Transcribe</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">API Key (Masked)</label>
+                                    <input type="password" class="form-control" value="sk-...abc123">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Usage Limit</label>
+                                    <input type="number" class="form-control" value="10000">
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Save Configuration
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Feature Flags -->
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">Feature Flag Management</h6>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Feature</th>
+                                        <th>Status</th>
+                                        <th>Rollout</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Multi-language Reports</td>
+                                        <td><span class="badge bg-success">Active</span></td>
+                                        <td>100% of schools</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-warning">Disable</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Advanced Analytics</td>
+                                        <td><span class="badge bg-warning">Beta</span></td>
+                                        <td>25% of schools</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-success">Enable All</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Voice Commands</td>
+                                        <td><span class="badge bg-secondary">Disabled</span></td>
+                                        <td>0% of schools</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary">Enable</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Team Management Section -->
+            <div id="teamSection" class="section">
+                <h2 class="mb-4">User & Access Management (Barrana.ai Staff)</h2>
+                
+                <!-- Team Members -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="card-title mb-0">Barrana.ai Team Accounts</h6>
+                            <button class="btn btn-primary btn-sm" onclick="addTeamMember()">
+                                <i class="fas fa-plus me-2"></i>Add Team Member
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Role</th>
+                                        <th>Permissions</th>
+                                        <th>Last Login</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px;">
+                                                    <i class="fas fa-user-shield"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="fw-bold">John Smith</div>
+                                                    <small class="text-muted">john@barrana.ai</small>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge bg-danger">Super Admin</span></td>
+                                        <td>Full Access</td>
+                                        <td>2 hours ago</td>
+                                        <td><span class="badge bg-success">Active</span></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="editTeamMember('TM001')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px;">
+                                                    <i class="fas fa-user-tie"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="fw-bold">Sarah Johnson</div>
+                                                    <small class="text-muted">sarah@barrana.ai</small>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td><span class="badge bg-primary">Support Lead</span></td>
+                                        <td>Support, Analytics</td>
+                                        <td>1 day ago</td>
+                                        <td><span class="badge bg-success">Active</span></td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="editTeamMember('TM002')">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Audit Log -->
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">Audit Log for Super Admin Actions</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>User</th>
+                                        <th>Action</th>
+                                        <th>Target</th>
+                                        <th>IP Address</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2024-01-15 16:30</td>
+                                        <td>John Smith</td>
+                                        <td>School Impersonation</td>
+                                        <td>Sunshine Montessori</td>
+                                        <td><code>192.168.1.100</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>2024-01-15 16:15</td>
+                                        <td>Sarah Johnson</td>
+                                        <td>Support Ticket Resolved</td>
+                                        <td>#TKT-002</td>
+                                        <td><code>192.168.1.101</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td>2024-01-15 16:00</td>
+                                        <td>John Smith</td>
+                                        <td>New School Added</td>
+                                        <td>Little Explorers</td>
+                                        <td><code>192.168.1.100</code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Navigation function
+        function showSection(section) {
+            // Hide all sections
+            const sections = ['overview', 'schools', 'onboarding', 'billing', 'analytics', 'support', 'system', 'team'];
+            sections.forEach(s => {
+                document.getElementById(s + 'Section').style.display = 'none';
+            });
+            
+            // Show selected section
+            document.getElementById(section + 'Section').style.display = 'block';
+            
+            // Update active state in sidebar
+            document.querySelectorAll('.list-group-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.classList.add('active');
+        }
+
+        // School Management Functions
+        function viewSchool(schoolId) { alert(`Viewing school profile for ${schoolId}...`); }
+        function impersonateSchool(schoolId) { 
+            if (confirm('This will log you in as the school admin. Continue?')) {
+                alert(`Impersonating school ${schoolId}...`);
+            }
+        }
+        function contactSchool(schoolId) { alert(`Opening contact form for school ${schoolId}...`); }
+
+        // Onboarding Functions
+        document.getElementById('onboardingForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            alert('School provisioning initiated! Welcome email will be sent automatically.');
+            showSection('schools');
+        });
+
+        // Billing Functions
+        function editPlan(planId) { alert(`Editing ${planId} plan...`); }
+
+        // Team Management Functions
+        function addTeamMember() { alert('Opening team member creation form...'); }
+        function editTeamMember(memberId) { alert(`Editing team member ${memberId}...`); }
+
+        // Support Functions
+        function createTicket() { alert('Opening support ticket creation form...'); }
+
+        // Logout function
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                window.location.href = 'index.html';
+            }
+        }
+
+        // Initialize search functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const schoolSearch = document.getElementById('schoolSearch');
+            if (schoolSearch) {
+                schoolSearch.addEventListener('input', function(e) {
+                    const searchTerm = e.target.value.toLowerCase();
+                    const schoolCards = document.querySelectorAll('.school-card');
+                    schoolCards.forEach(card => {
+                        const schoolName = card.querySelector('h6').textContent.toLowerCase();
+                        if (schoolName.includes(searchTerm)) {
+                            card.style.display = '';
+                        } else {
+                            card.style.display = 'none';
+                        }
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html> 

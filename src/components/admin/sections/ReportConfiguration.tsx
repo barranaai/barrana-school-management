@@ -1,0 +1,1230 @@
+import React, { useState, useEffect } from 'react';
+import { useData } from '../../../contexts/DataContext';
+import { useAuth } from '../../../contexts/AuthContext';
+import { REPORT_FREQUENCIES } from '../../../constants/reportFrequencies';
+import { reportTemplateService, type ReportTemplate, type CreateReportTemplateData } from '../../../services/reportTemplateService';
+import apiService from '../../../services/apiService';
+import { schoolService } from '../../../services/schoolService';
+import { useNavigate } from 'react-router-dom';
+import FrequencyConfiguration from './FrequencyConfiguration';
+import {
+  Box,
+  Grid,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  Switch,
+  FormControlLabel,
+  Chip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Container,
+  Fade,
+  Grow,
+} from '@mui/material';
+import {
+  Add,
+  Edit,
+  Delete,
+  ColorLens,
+  Description,
+  Login as LoginIcon,
+  CloudUpload,
+  Delete as DeleteIcon,
+  Schedule,
+} from '@mui/icons-material';
+
+const ReportConfiguration: React.FC = () => {
+  const { school } = useData();
+  const { user, isAuthenticated, token } = useAuth();
+  const navigate = useNavigate();
+  const [openTemplateDialog, setOpenTemplateDialog] = useState(false);
+  const [openBrandingDialog, setOpenBrandingDialog] = useState(false);
+  const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
+  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [formData, setFormData] = useState<CreateReportTemplateData>({
+    name: '',
+    grade: '',
+    reportFrequency: 'Monthly',
+    content: '',
+    isActive: true
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSuperAdmin = user?.role === 'super_admin';
+  const isSchoolAdmin = user?.role === 'school_admin';
+  const [superAdminSchools, setSuperAdminSchools] = useState<Array<{ _id: string; name: string; settings?: any }>>([]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>('');
+  const [selectedSchoolGrades, setSelectedSchoolGrades] = useState<string[]>([]);
+  const [localSchoolSettings, setLocalSchoolSettings] = useState<any>({});
+
+  // Helper to display grade labels in Proper Case from various formats (snake_case, kebab-case, camelCase)
+  const toProperCase = (raw: string): string => {
+    if (!raw) return '';
+    const spaced = raw
+      .replace(/[_-]+/g, ' ') // snake/kebab to spaces
+      .replace(/([a-z])([A-Z])/g, '$1 $2'); // camelCase split
+    return spaced.replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  // Fixed grade options list (display values) - fallback when no school grades available
+  const DEFAULT_GRADE_OPTIONS: string[] = [
+    'Infant',
+    'Toddler',
+    'Preschool',
+    'Kindergarten',
+    'Primary/Junior School',
+    'Junior School',
+    'Infant Community / Nido',
+    'Pre Casa/Toddler',
+    "Casa / Children's House",
+    'Sr Casa',
+    'Lower Elementary',
+    'Upper Elementary',
+    'Secondary',
+    'Junior Kindergarten (JK)',
+    'Senior Kindergarten (SK)',
+    'Grade 1',
+    'Grade 2',
+    'Grade 3',
+    'Grade 4',
+    'Grade 5',
+    'Grade 6',
+    'Grade 7',
+    'Grade 8',
+    'Grade 9',
+    'Grade 10',
+    'Grade 11',
+    'Grade 12',
+  ];
+
+  // Get grade options based on user role and selected school
+  const getGradeOptions = (): string[] => {
+    if (isSuperAdmin) {
+      // For super admin, use selected school's grades if available
+      if (selectedSchoolGrades.length > 0) {
+        return selectedSchoolGrades.map(grade => toProperCase(grade));
+      }
+      // Fallback to default options
+      return DEFAULT_GRADE_OPTIONS;
+    } else {
+      // For school admin, use current school's grades if available
+      if (school?.gradeLevels && school.gradeLevels.length > 0) {
+        return school.gradeLevels.map(grade => toProperCase(grade));
+      }
+      // Fallback to default options
+      return DEFAULT_GRADE_OPTIONS;
+    }
+  };
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🔍 ReportConfiguration - Component mounted');
+    console.log('🔍 ReportConfiguration - Auth state:', { isAuthenticated, user, token });
+    console.log('🔍 ReportConfiguration - School data:', school);
+  }, [isAuthenticated, user, token, school]);
+
+  // Load report templates
+  useEffect(() => {
+    const loadReportTemplates = async () => {
+      try {
+        console.log('🔍 ReportConfiguration - Loading report templates...');
+        console.log('🔍 ReportConfiguration - Authentication state:', { isAuthenticated, token });
+        console.log('🔍 ReportConfiguration - School ID:', school?.id);
+        
+        if (!isAuthenticated || !token) {
+          console.error('❌ ReportConfiguration - Not authenticated or no token');
+          setError('Authentication required. Please log in to access report templates.');
+          setIsLoading(false);
+          return;
+        }
+
+        setIsLoading(true);
+        setError(null);
+        
+        // Determine schoolId
+        const schoolId = isSuperAdmin ? selectedSchoolId : school?.id;
+        console.log('🔍 ReportConfiguration - Calling service with schoolId:', schoolId);
+        
+        const response = await reportTemplateService.getReportTemplates(schoolId);
+        console.log('🔍 ReportConfiguration - Service response:', response);
+        
+        if (response.success && response.data) {
+          console.log('✅ ReportConfiguration - Templates loaded successfully:', response.data);
+          setReportTemplates(response.data);
+          setError(null); // Clear any previous errors
+        } else {
+          console.error('❌ ReportConfiguration - Service returned error:', response);
+          setError(response.message || 'Failed to load report templates');
+        }
+      } catch (err) {
+        console.error('❌ ReportConfiguration - Error loading report templates:', err);
+        setError('Error loading report templates. Please check your connection and try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadReportTemplates();
+  }, [isAuthenticated, token, school?.id, selectedSchoolId]);
+
+  // Load schools for super admin
+  useEffect(() => {
+    const loadSchools = async () => {
+      if (!isSuperAdmin) return;
+      try {
+        const resp = await apiService.getSchools();
+        const list = (resp.data || []).map((s: any) => ({ 
+          _id: s._id || s.id, 
+          name: s.name,
+          settings: s.settings || {}
+        }));
+        setSuperAdminSchools(list);
+        if (!selectedSchoolId && list.length > 0) {
+          setSelectedSchoolId(list[0]._id);
+        }
+      } catch (e) {
+        console.error('Failed to load schools for super admin', e);
+      }
+    };
+    loadSchools();
+  }, [isSuperAdmin]);
+
+  // Load selected school details (grades) for super admin
+  useEffect(() => {
+    const loadSelectedSchoolDetails = async () => {
+      if (!isSuperAdmin || !selectedSchoolId) {
+        console.log('🐛 Skipping school details load - isSuperAdmin:', isSuperAdmin, 'selectedSchoolId:', selectedSchoolId);
+        return;
+      }
+      try {
+        console.log('🐛 Loading school details for selectedSchoolId:', selectedSchoolId);
+        const resp = await apiService.getSchools();
+        console.log('🐛 All schools response:', resp.data);
+        const school = (resp.data || []).find((s: any) => (s._id || s.id) === selectedSchoolId);
+        console.log('🐛 Found selected school:', school);
+        if (school && school.gradeLevels) {
+          console.log('🐛 Setting school grades:', school.gradeLevels);
+          setSelectedSchoolGrades(school.gradeLevels);
+        } else {
+          console.log('🐛 No grades found for school, using empty array');
+          // Fallback to default grades if school has no specific grades
+          setSelectedSchoolGrades([]);
+        }
+        
+        // Update local school settings
+        if (school && (school as any).settings) {
+          setLocalSchoolSettings((school as any).settings);
+        } else {
+          setLocalSchoolSettings({});
+        }
+      } catch (e) {
+        console.error('🐛 Failed to load school details', e);
+        setSelectedSchoolGrades([]);
+        setLocalSchoolSettings({});
+      }
+    };
+    loadSelectedSchoolDetails();
+  }, [isSuperAdmin, selectedSchoolId]);
+
+  // Load school logo on component mount
+  useEffect(() => {
+    if (isAuthenticated && school?.id) {
+      console.log('Loading school logo for school ID:', school.id);
+      loadSchoolLogo();
+    }
+  }, [isAuthenticated, school?.id]);
+
+  // Initialize local school settings for school admins
+  useEffect(() => {
+    if (isSchoolAdmin && school?.settings) {
+      setLocalSchoolSettings(school.settings);
+    }
+  }, [isSchoolAdmin, school?.settings]);
+
+  // Show authentication error message
+  if (!isAuthenticated || !token) {
+    return (
+      <Box>
+        <Typography variant="h4" gutterBottom>
+          Report & Template Configuration
+        </Typography>
+        
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          <Typography variant="body1">
+            You need to be logged in to access report templates. Please log in with your credentials.
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            Demo credentials: alex.chen@barrana.ai / demo123 (Super Admin)
+          </Typography>
+          <Box sx={{ mt: 2 }}>
+            <Button
+              variant="contained"
+              startIcon={<LoginIcon />}
+              onClick={() => navigate('/login')}
+            >
+              Go to Login
+            </Button>
+          </Box>
+        </Alert>
+      </Box>
+    );
+  }
+
+  // CRUD Operations
+  const handleCreateTemplate = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      // DEBUG: Log form data
+      console.log('🐛 DEBUG - Form Data:', formData);
+      console.log('🐛 DEBUG - Selected School ID:', selectedSchoolId);
+      console.log('🐛 DEBUG - Is Super Admin:', isSuperAdmin);
+      console.log('🐛 DEBUG - Current School:', school);
+      
+      const validation = reportTemplateService.validateTemplateData(formData);
+      console.log('🐛 DEBUG - Validation Result:', validation);
+      
+      if (!validation.isValid) {
+        setError(validation.errors.join(', '));
+        return;
+      }
+
+      if (isSuperAdmin && !selectedSchoolId) {
+        setError('Please select a school before creating a template.');
+        return;
+      }
+
+      // Include schoolId when super admin uses this screen
+      const payload = isSuperAdmin ? { ...formData, schoolId: selectedSchoolId } : (school?.id ? { ...formData, schoolId: school.id } : formData);
+      console.log('🐛 DEBUG - Final Payload:', payload);
+      
+      const response = await reportTemplateService.createReportTemplate(payload as any);
+      console.log('🐛 DEBUG - API Response:', response);
+      
+      if (response.success && response.data) {
+        setReportTemplates(prev => [response.data!, ...prev]);
+        setOpenTemplateDialog(false);
+        resetForm();
+        // Show success message
+      } else {
+        console.error('🐛 DEBUG - API Error Response:', response);
+        setError(response.message || response.error || 'Failed to create template');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error creating template';
+      console.error('🐛 DEBUG - Catch Error:', err);
+      setError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!selectedTemplate) return;
+
+    try {
+      setIsSubmitting(true);
+      const validation = reportTemplateService.validateTemplateData(formData);
+      
+      if (!validation.isValid) {
+        setError(validation.errors.join(', '));
+        return;
+      }
+
+      const response = await reportTemplateService.updateReportTemplate({
+        id: selectedTemplate._id,
+        ...formData
+      });
+      
+      if (response.success && response.data) {
+        setReportTemplates(prev => 
+          prev.map(template => 
+            template._id === selectedTemplate._id ? response.data! : template
+          )
+        );
+        setOpenTemplateDialog(false);
+        resetForm();
+        // Show success message
+      } else {
+        setError(response.message || 'Failed to update template');
+      }
+    } catch (err) {
+      setError('Error updating template');
+      console.error('Error updating template:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    if (!window.confirm('Are you sure you want to delete this template?')) {
+      return;
+    }
+
+    try {
+      const response = await reportTemplateService.deleteReportTemplate(templateId);
+      
+      if (response.success) {
+        setReportTemplates(prev => prev.filter(template => template._id !== templateId));
+        // Show success message
+      } else {
+        setError(response.message || 'Failed to delete template');
+      }
+    } catch (err) {
+      setError('Error deleting template');
+      console.error('Error deleting template:', err);
+    }
+  };
+
+  const handleToggleStatus = async (templateId: string) => {
+    try {
+      const response = await reportTemplateService.toggleTemplateStatus(templateId);
+      
+      if (response.success && response.data) {
+        setReportTemplates(prev => 
+          prev.map(template => 
+            template._id === templateId ? response.data! : template
+          )
+        );
+        // Show success message
+      } else {
+        setError(response.message || 'Failed to toggle template status');
+      }
+    } catch (err) {
+      // Show specific message if backend prevented disabling the last active template
+      const message = err instanceof Error ? err.message : 'Error toggling template status';
+      setError(message.includes('At least one report frequency') ? message : 'Error toggling template status');
+      console.error('Error toggling template status:', err);
+    }
+  };
+
+  const handleEditTemplate = (template: ReportTemplate) => {
+    setSelectedTemplate(template);
+        setFormData({
+          name: template.name,
+          grade: template.grade,
+          reportFrequency: template.reportFrequency,
+          content: template.content,
+          customFields: template.customFields,
+          settings: template.settings,
+          isActive: template.isActive
+        });
+    setOpenTemplateDialog(true);
+  };
+
+  const handleAddTemplate = () => {
+    setSelectedTemplate(null);
+    resetForm();
+    setOpenTemplateDialog(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      grade: '',
+      reportFrequency: 'Monthly',
+      content: '',
+      isActive: true
+    });
+    setError(null);
+  };
+
+  const handleFormChange = (field: keyof CreateReportTemplateData, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const brandingSettings = {
+    schoolName: 'Bright Future Academy',
+    primaryColor: '#1976d2',
+    secondaryColor: '#dc004e',
+    logo: '/logo.png',
+    fontFamily: 'Segoe UI',
+    fontSize: '14px',
+  };
+
+  // Logo upload functions
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !school?.id) return;
+
+    try {
+      setIsUploadingLogo(true);
+      const formData = new FormData();
+      formData.append('logo', file);
+
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5050/api'}/schools/${school.id}/logo`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('Logo upload response:', result);
+        console.log('Setting logo URL to:', result.data.logoUrl);
+        setSchoolLogo(result.data.logoUrl);
+        // Show success message
+        console.log('Logo uploaded successfully');
+      } else {
+        console.error('Failed to upload logo:', result.message);
+      }
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleLogoDelete = async () => {
+    if (!school?.id) return;
+
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5050/api'}/schools/${school.id}/logo`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSchoolLogo(null);
+        console.log('Logo deleted successfully');
+      } else {
+        console.error('Failed to delete logo:', result.message);
+      }
+    } catch (error) {
+      console.error('Error deleting logo:', error);
+    }
+  };
+
+  const loadSchoolLogo = async () => {
+    if (!school?.id) return;
+
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5050/api'}/schools/${school.id}/logo`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.data.logoUrl) {
+        console.log('Logo URL received:', result.data.logoUrl);
+        setSchoolLogo(result.data.logoUrl);
+      }
+    } catch (error) {
+      console.error('Error loading school logo:', error);
+    }
+  };
+
+  return (
+    <Container maxWidth="xl">
+      <Fade in timeout={800}>
+        <Box sx={{ mb: 4 }}>
+          <Typography 
+            variant="h4" 
+            gutterBottom
+            sx={{
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            }}
+          >
+            Report & Template Configuration
+          </Typography>
+          <Typography 
+            variant="body1" 
+            sx={{ 
+              color: 'text.secondary',
+              opacity: 0.8,
+              fontWeight: 500,
+            }}
+          >
+            Configure report templates, custom fields, branding, and email templates for your school.
+          </Typography>
+        </Box>
+      </Fade>
+
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <Typography variant="body1">
+          Configure report templates, custom fields, branding, and email templates for your school.
+        </Typography>
+        {reportTemplates.length > 0 && (
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            Found {reportTemplates.length} report template(s) for your school.
+          </Typography>
+        )}
+      </Alert>
+
+      {/* Report Templates */}
+      <Grow in timeout={1000}>
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <Paper
+              elevation={0}
+              sx={{
+                background: 'rgba(255,255,255,0.8)',
+                borderRadius: 4,
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,255,255,0.3)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
+              }}
+            >
+              <CardContent sx={{ p: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, gap: 2 }}>
+                  <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Description sx={{ mr: 1 }} />
+                    Report Templates
+                  </Typography>
+                  {isSuperAdmin && (
+                    <FormControl size="small" sx={{ minWidth: 260 }}>
+                      <InputLabel>School</InputLabel>
+                      <Select
+                        label="School"
+                        value={selectedSchoolId}
+                        onChange={(e) => {
+                          setSelectedSchoolId(e.target.value);
+                          // Reset form grade when school changes since grades may be different
+                          if (formData.grade) {
+                            setFormData(prev => ({ ...prev, grade: '' }));
+                          }
+                        }}
+                      >
+                        {superAdminSchools.map((s) => (
+                          <MenuItem key={s._id} value={s._id}>{s.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+                  {isSuperAdmin && (
+                    <Button
+                      variant="contained"
+                      startIcon={<Add />}
+                      onClick={handleAddTemplate}
+                      sx={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        borderRadius: 3,
+                        px: 3,
+                        py: 1.2,
+                        fontWeight: 600,
+                        boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                        '&:hover': {
+                          background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                          transform: 'translateY(-2px)',
+                          boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)'
+                        },
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    >
+                      Add Template
+                    </Button>
+                  )}
+                </Box>
+
+                <TableContainer component={Paper} sx={{ boxShadow: 'none', borderRadius: 3 }}>
+                  <Table>
+                    <TableHead>
+                      <TableRow sx={{ background: 'rgba(102, 126, 234, 0.05)' }}>
+                      <TableCell>Template Name</TableCell>
+                      <TableCell>Grade</TableCell>
+                      <TableCell>Report Frequency</TableCell>
+                      <TableCell>AI Prompt</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Last Modified</TableCell>
+                      <TableCell>Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                    {isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center">
+                          <Typography>Loading templates...</Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : error ? (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center">
+                          <Alert severity="error" sx={{ mb: 2 }}>
+                            <Typography variant="body1">{error}</Typography>
+                            {error.includes('Authentication') && (
+                              <Typography variant="body2" sx={{ mt: 1 }}>
+                                Please log in with valid credentials to access report templates.
+                              </Typography>
+                            )}
+                          </Alert>
+                        </TableCell>
+                      </TableRow>
+                    ) : reportTemplates.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center">
+                          <Typography>No templates found</Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      reportTemplates.map((template) => (
+                        <TableRow key={template._id}>
+                          <TableCell>
+                            <Typography variant="body1" fontWeight="bold">
+                              {template.name}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                          <Chip label={toProperCase(template.grade)} color="primary" size="small" />
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={template.reportFrequency}
+                              color="secondary"
+                              size="small"
+                              sx={{
+                                backgroundColor: 'rgba(156, 39, 176, 0.1)',
+                                color: '#9c27b0',
+                                fontWeight: 600,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={template.aiPrompt ? 'Custom' : 'Default'}
+                              color={template.aiPrompt ? 'info' : 'default'}
+                              size="small"
+                              variant={template.aiPrompt ? 'filled' : 'outlined'}
+                              sx={{
+                                backgroundColor: template.aiPrompt ? 'rgba(33, 150, 243, 0.1)' : undefined,
+                                color: template.aiPrompt ? '#2196f3' : undefined,
+                                fontWeight: template.aiPrompt ? 600 : 400,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={template.isActive ? 'Active' : 'Inactive'}
+                              color={template.isActive ? 'success' : 'default'}
+                              size="small"
+                              onClick={() => handleToggleStatus(template._id)}
+                              sx={{ cursor: 'pointer' }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {new Date(template.lastModified).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <IconButton 
+                                size="small" 
+                                color="primary"
+                                onClick={() => handleEditTemplate(template)}
+                              >
+                                <Edit />
+                              </IconButton>
+                              <IconButton 
+                                size="small" 
+                                color="error"
+                                onClick={() => handleDeleteTemplate(template._id)}
+                              >
+                                <Delete />
+                              </IconButton>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Paper>
+          </Grid>
+        </Grid>
+      </Grow>
+
+      {/* Frequency & Calendar Configuration - Only for School Admins */}
+      {isSchoolAdmin && (
+        <Grow in timeout={1200}>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12}>
+              <Paper
+                elevation={0}
+                sx={{
+                  background: 'rgba(255,255,255,0.8)',
+                  borderRadius: 4,
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
+                }}
+              >
+                <CardContent>
+                  <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                    <Schedule sx={{ mr: 1 }} />
+                    Frequency & Calendar Configuration
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Configure timezone, working days, holidays, and report due dates for each frequency type.
+                  </Typography>
+                  
+                  {/* Debug section for settings */}
+                  <Alert severity="info" sx={{ mb: 2, fontSize: '0.8em' }}>
+                    <Typography variant="caption" component="div" sx={{ mb: 1 }}>
+                      🐛 <strong>Settings Debug Info:</strong>
+                    </Typography>
+                    <Typography variant="caption" component="div">
+                      • School ID: {school?.id || 'None'}
+                    </Typography>
+                    <Typography variant="caption" component="div">
+                      • Local Settings: {JSON.stringify(localSchoolSettings, null, 2).substring(0, 200)}...
+                    </Typography>
+                    <Typography variant="caption" component="div">
+                      • School Settings: {JSON.stringify(school?.settings, null, 2).substring(0, 200)}...
+                    </Typography>
+                  </Alert>
+                  
+                  <FrequencyConfiguration
+                    schoolSettings={localSchoolSettings}
+                    onSettingsChange={async (updatedSettings) => {
+                      console.log('🔄 ReportConfiguration - Settings change triggered');
+                      console.log('🔄 Previous settings:', localSchoolSettings);
+                      console.log('🔄 Updated settings:', updatedSettings);
+                      
+                      // Store current settings for potential rollback
+                      const previousSettings = { ...localSchoolSettings };
+                      
+                      try {
+                        const schoolId = school?.id;
+                        if (!schoolId) {
+                          console.error('No school ID available for settings update');
+                          return;
+                        }
+                        
+                        console.log('🔄 Updating school settings for school ID:', schoolId);
+                        
+                        // Update local state immediately for responsive UI
+                        setLocalSchoolSettings(updatedSettings);
+                        
+                        const response = await schoolService.updateSchoolSettings(schoolId, updatedSettings);
+                        
+                        if (response.success) {
+                          console.log('✅ School settings updated successfully:', response.data);
+                        } else {
+                          console.error('❌ Failed to update school settings:', response.error);
+                          setError(response.error || 'Failed to update school settings');
+                          // Revert local state on error
+                          setLocalSchoolSettings(previousSettings);
+                        }
+                      } catch (error) {
+                        console.error('❌ Error updating school settings:', error);
+                        setError('Failed to update school settings');
+                        // Revert local state on error
+                        setLocalSchoolSettings(previousSettings);
+                      }
+                    }}
+                  />
+                </CardContent>
+              </Paper>
+            </Grid>
+          </Grid>
+        </Grow>
+      )}
+
+      {/* Branding & Formatting */}
+      <Grow in timeout={1300}>
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <Paper
+              elevation={0}
+              sx={{
+                background: 'rgba(255,255,255,0.8)',
+                borderRadius: 4,
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,255,255,0.3)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
+              }}
+            >
+              <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center' }}>
+                  <ColorLens sx={{ mr: 1 }} />
+                  Branding & Formatting
+                </Typography>
+                <Button
+                    variant="outlined"
+                    startIcon={<Edit />}
+                    onClick={() => setOpenBrandingDialog(true)}
+                    sx={{
+                      borderRadius: 3,
+                      px: 3,
+                      py: 1.2,
+                      fontWeight: 600,
+                      borderColor: 'rgba(102, 126, 234, 0.3)',
+                      color: '#667eea',
+                      '&:hover': {
+                        borderColor: '#667eea',
+                        background: 'rgba(102, 126, 234, 0.05)',
+                        transform: 'translateY(-2px)'
+                      },
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                  >
+                    Edit
+                  </Button>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">School Name</Typography>
+                <Typography variant="body1">{brandingSettings.schoolName}</Typography>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">Primary Color</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box
+                    sx={{
+                      width: 20,
+                      height: 20,
+                      bgcolor: brandingSettings.primaryColor,
+                      borderRadius: 1,
+                    }}
+                  />
+                  <Typography variant="body1">{brandingSettings.primaryColor}</Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">Secondary Color</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box
+                    sx={{
+                      width: 20,
+                      height: 20,
+                      bgcolor: brandingSettings.secondaryColor,
+                      borderRadius: 1,
+                    }}
+                  />
+                  <Typography variant="body1">{brandingSettings.secondaryColor}</Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">Font Family</Typography>
+                <Typography variant="body1">{brandingSettings.fontFamily}</Typography>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">Font Size</Typography>
+                <Typography variant="body1">{brandingSettings.fontSize}</Typography>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>School Logo</Typography>
+                {schoolLogo && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                    Debug: Logo URL = {schoolLogo}
+                  </Typography>
+                )}
+                {schoolLogo ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Box sx={{ position: 'relative' }}>
+                      <img 
+                        src={`${process.env.REACT_APP_API_URL || 'http://localhost:5050'}${schoolLogo}`} 
+                        alt="School Logo" 
+                        style={{ 
+                          maxWidth: 100, 
+                          maxHeight: 60, 
+                          objectFit: 'contain',
+                          border: '1px solid #ddd',
+                          borderRadius: 4
+                        }} 
+                        onError={(e) => {
+                          console.error('Failed to load logo image:', schoolLogo);
+                          console.error('Full image URL:', `${process.env.REACT_APP_API_URL || 'http://localhost:5050'}${schoolLogo}`);
+                          e.currentTarget.style.display = 'none';
+                          // Show error message
+                          if (e.currentTarget.parentNode) {
+                            const errorMsg = document.createElement('div');
+                            errorMsg.textContent = 'Image failed to load';
+                            errorMsg.style.cssText = 'color: red; font-size: 12px; margin-top: 5px;';
+                            e.currentTarget.parentNode.appendChild(errorMsg);
+                          }
+                        }}
+                        onLoad={() => {
+                          console.log('Logo image loaded successfully:', schoolLogo);
+                        }}
+                      />
+                    </Box>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      size="small"
+                      startIcon={<DeleteIcon />}
+                      onClick={handleLogoDelete}
+                    >
+                      Remove
+                    </Button>
+                  </Box>
+                ) : (
+                  <Box sx={{ textAlign: 'center', py: 2, border: '2px dashed #ddd', borderRadius: 2 }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      No logo uploaded
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      component="label"
+                      startIcon={<CloudUpload />}
+                      disabled={isUploadingLogo}
+                    >
+                      {isUploadingLogo ? 'Uploading...' : 'Upload Logo'}
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                      />
+                    </Button>
+                  </Box>
+                )}
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                  Upload a logo to display in student report emails. Recommended size: 200x60px, max 5MB.
+                </Typography>
+              </Box>
+              </CardContent>
+            </Paper>
+          </Grid>
+        </Grid>
+      </Grow>
+
+      {/* Template Dialog */}
+      <Dialog open={openTemplateDialog} onClose={() => setOpenTemplateDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {selectedTemplate ? 'Edit Report Template' : 'Add Report Template'}
+        </DialogTitle>
+        <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          
+          {/* DEBUG SECTION */}
+          <Alert severity="info" sx={{ mb: 2, fontSize: '0.8em' }}>
+            <Typography variant="caption" component="div" sx={{ mb: 1 }}>
+              🐛 <strong>Debug Info:</strong>
+            </Typography>
+            <Typography variant="caption" component="div">
+              • Super Admin: {isSuperAdmin ? 'Yes' : 'No'}
+            </Typography>
+            {isSuperAdmin ? (
+              <Typography variant="caption" component="div">
+                • Selected School: {superAdminSchools.find(s => s._id === selectedSchoolId)?.name || 'None'} (ID: {selectedSchoolId || 'None'})
+              </Typography>
+            ) : (
+              <Typography variant="caption" component="div">
+                • Current School: {school?.name || 'None'} (ID: {school?.id || 'None'})
+              </Typography>
+            )}
+            <Typography variant="caption" component="div">
+              • Available Grades: {getGradeOptions().length} ({getGradeOptions().slice(0, 3).join(', ')}{getGradeOptions().length > 3 ? '...' : ''})
+            </Typography>
+            <Typography variant="caption" component="div">
+              • Form Data: {JSON.stringify({
+                name: formData.name,
+                grade: formData.grade,
+                reportFrequency: formData.reportFrequency,
+                content: formData.content?.substring(0, 50) + (formData.content && formData.content.length > 50 ? '...' : ''),
+                isActive: formData.isActive
+              })}
+            </Typography>
+            <Typography variant="caption" component="div">
+              • Expected Payload: {JSON.stringify(isSuperAdmin ? { ...formData, schoolId: selectedSchoolId } : (school?.id ? { ...formData, schoolId: school.id } : formData))}
+            </Typography>
+          </Alert>
+          
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField 
+                fullWidth 
+                label="Template Name" 
+                value={formData.name}
+                onChange={(e) => handleFormChange('name', e.target.value)}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Grade</InputLabel>
+                <Select 
+                  label="Grade"
+                  value={formData.grade}
+                  onChange={(e) => handleFormChange('grade', e.target.value)}
+                  required
+                >
+                  {getGradeOptions().map((grade) => (
+                    <MenuItem key={grade} value={grade}>
+                      {grade}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Report Frequency</InputLabel>
+                <Select 
+                  label="Report Frequency"
+                  value={formData.reportFrequency}
+                  onChange={(e) => handleFormChange('reportFrequency', e.target.value)}
+                  required
+                >
+                  {REPORT_FREQUENCIES.map((frequency) => (
+                    <MenuItem key={frequency} value={frequency}>
+                      {frequency}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={formData.isActive}
+                    onChange={(e) => handleFormChange('isActive', e.target.checked)}
+                  />
+                }
+                label="Active"
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Template Content (Structured Format)"
+                multiline
+                rows={8}
+                placeholder={isSuperAdmin ? "Enter the structured template format. Example:&#10;&#10;Practical Life (Self-Care & Environment):&#10;&#10;Feeding: Write the details about, Self-feeding attempts, proficiency with utensils, willingness to try new foods, independence during mealtime.&#10;&#10;Sleeping: Write the details about, Sleep patterns, ability to self-soothe, duration of naps." : "Template content is read-only for school admins"}
+                value={formData.content || ''}
+                onChange={isSuperAdmin ? (e) => handleFormChange('content', e.target.value) : undefined}
+                helperText={isSuperAdmin ? "Required: Structured template format that defines the sections and subsections for intelligent report generation." : "Template content can only be edited by super admins. You can view the content but cannot modify it."}
+                InputProps={{
+                  readOnly: !isSuperAdmin,
+                }}
+                sx={{ 
+                  '& .MuiInputBase-root': {
+                    fontFamily: 'monospace',
+                    fontSize: '0.9rem',
+                    backgroundColor: !isSuperAdmin ? 'rgba(0, 0, 0, 0.04)' : 'inherit'
+                  }
+                }}
+              />
+            </Grid>
+            
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenTemplateDialog(false)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            onClick={selectedTemplate ? handleUpdateTemplate : handleCreateTemplate}
+            disabled={isSubmitting}
+            sx={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              fontWeight: 600,
+              '&:hover': {
+                background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)'
+              }
+            }}
+          >
+            {isSubmitting ? 'Saving...' : (selectedTemplate ? 'Update Template' : 'Save Template')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Branding Dialog */}
+      <Dialog open={openBrandingDialog} onClose={() => setOpenBrandingDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Edit Branding & Formatting</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField fullWidth label="School Name" defaultValue={brandingSettings.schoolName} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Primary Color" defaultValue={brandingSettings.primaryColor} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Secondary Color" defaultValue={brandingSettings.secondaryColor} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Font Family</InputLabel>
+                <Select label="Font Family" defaultValue={brandingSettings.fontFamily}>
+                  <MenuItem value="Segoe UI">Segoe UI</MenuItem>
+                  <MenuItem value="Arial">Arial</MenuItem>
+                  <MenuItem value="Helvetica">Helvetica</MenuItem>
+                  <MenuItem value="Times New Roman">Times New Roman</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Font Size" defaultValue={brandingSettings.fontSize} />
+            </Grid>
+            <Grid item xs={12}>
+              <Button variant="outlined" component="label">
+                Upload Logo
+                <input type="file" hidden accept="image/*" />
+              </Button>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenBrandingDialog(false)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            onClick={() => setOpenBrandingDialog(false)}
+            sx={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              fontWeight: 600,
+              '&:hover': {
+                background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)'
+              }
+            }}
+          >
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
+  );
+};
+
+export default ReportConfiguration; 

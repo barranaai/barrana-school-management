@@ -1,0 +1,446 @@
+// Email Service for Barrana.ai
+// This service handles all email operations
+
+export interface EmailConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  auth: {
+    user: string;
+    pass: string;
+  };
+  from: string;
+}
+
+export interface EmailTemplate {
+  subject: string;
+  html: string;
+  text: string;
+}
+
+export interface EmailRequest {
+  to: string | string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  template?: string;
+  templateData?: { [key: string]: any };
+  attachments?: Array<{
+    filename: string;
+    content: string | Buffer;
+    contentType?: string;
+  }>;
+}
+
+export interface EmailResponse {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+class EmailService {
+  private config: EmailConfig | null = null;
+  private isInitialized: boolean = false;
+
+  // Initialize email service
+  initialize(config: EmailConfig): void {
+    this.config = config;
+    this.isInitialized = true;
+  }
+
+  // Check if service is initialized
+  isServiceInitialized(): boolean {
+    return this.isInitialized;
+  }
+
+  // Send email
+  async sendEmail(request: EmailRequest): Promise<EmailResponse> {
+    if (!this.isInitialized) {
+      return {
+        success: false,
+        error: 'Email service not initialized'
+      };
+    }
+
+    try {
+      // In a real implementation, this would use Nodemailer or similar
+      // For now, we'll simulate the email sending
+      await this.simulateEmailSending(request);
+
+      return {
+        success: true,
+        messageId: this.generateMessageId()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Email sending failed'
+      };
+    }
+  }
+
+  // Send student progress report
+  async sendProgressReport(
+    studentName: string,
+    parentEmail: string,
+    reportContent: string,
+    reportId: string
+  ): Promise<EmailResponse> {
+    const template = this.getProgressReportTemplate(studentName, reportContent, reportId);
+    
+    return this.sendEmail({
+      to: parentEmail,
+      subject: template.subject,
+      html: template.html,
+      text: template.text
+    });
+  }
+
+  // Send welcome email to new parents
+  async sendWelcomeEmail(
+    parentName: string,
+    parentEmail: string,
+    studentName: string,
+    schoolName: string
+  ): Promise<EmailResponse> {
+    const template = this.getWelcomeTemplate(parentName, studentName, schoolName);
+    
+    return this.sendEmail({
+      to: parentEmail,
+      subject: template.subject,
+      html: template.html,
+      text: template.text
+    });
+  }
+
+  // Send notification email
+  async sendNotification(
+    recipientEmail: string,
+    notificationType: 'report_ready' | 'system_update' | 'reminder',
+    data: { [key: string]: any }
+  ): Promise<EmailResponse> {
+    const template = this.getNotificationTemplate(notificationType, data);
+    
+    return this.sendEmail({
+      to: recipientEmail,
+      subject: template.subject,
+      html: template.html,
+      text: template.text
+    });
+  }
+
+  // Send bulk emails
+  async sendBulkEmail(
+    recipients: string[],
+    subject: string,
+    html: string,
+    text?: string
+  ): Promise<EmailResponse[]> {
+    const promises = recipients.map(email =>
+      this.sendEmail({ to: email, subject, html, text })
+    );
+
+    return Promise.all(promises);
+  }
+
+  // Get email templates
+  private getProgressReportTemplate(
+    studentName: string,
+    reportContent: string,
+    reportId: string
+  ): EmailTemplate {
+    const subject = `Progress Report for ${studentName} - Barrana.ai`;
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Progress Report - ${studentName}</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .report-content { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+          .button { display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+          .highlight { background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📊 Progress Report</h1>
+            <h2>${studentName}</h2>
+            <p>Generated by Barrana.ai AI Assistant</p>
+          </div>
+          
+          <div class="content">
+            <div class="highlight">
+              <strong>Dear Parent,</strong><br>
+              We're pleased to share ${studentName}'s progress report. This report was generated using our AI-powered system to provide you with comprehensive insights into your child's development.
+            </div>
+            
+            <div class="report-content">
+              ${reportContent.replace(/\n/g, '<br>')}
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="#" class="button">View Full Report</a>
+            </div>
+            
+            <div style="background: #e8f4fd; padding: 15px; border-radius: 5px; margin: 20px 0;">
+              <strong>💡 Next Steps:</strong><br>
+              • Review the report with your child<br>
+              • Discuss areas for growth positively<br>
+              • Contact the teacher if you have questions<br>
+              • Set goals for continued improvement
+            </div>
+          </div>
+          
+          <div class="footer">
+            <p>This report was generated by Barrana.ai's AI-powered system</p>
+            <p>Report ID: ${reportId} | Generated: ${new Date().toLocaleDateString()}</p>
+            <p>If you have any questions, please contact your child's teacher or school administrator.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+Progress Report for ${studentName}
+
+Dear Parent,
+
+We're pleased to share ${studentName}'s progress report. This report was generated using our AI-powered system to provide you with comprehensive insights into your child's development.
+
+${reportContent}
+
+Next Steps:
+• Review the report with your child
+• Discuss areas for growth positively
+• Contact the teacher if you have questions
+• Set goals for continued improvement
+
+This report was generated by Barrana.ai's AI-powered system
+Report ID: ${reportId}
+Generated: ${new Date().toLocaleDateString()}
+
+If you have any questions, please contact your child's teacher or school administrator.
+    `;
+
+    return { subject, html, text };
+  }
+
+  private getWelcomeTemplate(
+    parentName: string,
+    studentName: string,
+    schoolName: string
+  ): EmailTemplate {
+    const subject = `Welcome to ${schoolName} - Barrana.ai`;
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Welcome to ${schoolName}</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+          .button { display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 10px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🎓 Welcome to ${schoolName}</h1>
+            <p>Powered by Barrana.ai</p>
+          </div>
+          
+          <div class="content">
+            <h2>Dear ${parentName},</h2>
+            
+            <p>Welcome to ${schoolName}! We're excited to have ${studentName} join our learning community.</p>
+            
+            <p>At ${schoolName}, we use Barrana.ai's advanced AI-powered system to provide you with:</p>
+            
+            <ul>
+              <li>📊 <strong>Detailed Progress Reports</strong> - AI-generated insights into your child's development</li>
+              <li>🎤 <strong>Voice-to-Text Technology</strong> - Teachers can record observations that are automatically transcribed</li>
+              <li>🤖 <strong>AI-Powered Analysis</strong> - Comprehensive analysis of academic and social development</li>
+              <li>📱 <strong>Real-time Updates</strong> - Stay informed about your child's progress</li>
+              <li>🌍 <strong>Multi-language Support</strong> - Reports available in multiple languages</li>
+            </ul>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="#" class="button">Access Your Dashboard</a>
+            </div>
+            
+            <p><strong>What to expect:</strong></p>
+            <ul>
+              <li>Regular progress reports generated by our AI system</li>
+              <li>Detailed insights into academic and social development</li>
+              <li>Personalized recommendations for continued growth</li>
+              <li>Easy communication with teachers</li>
+            </ul>
+            
+            <p>If you have any questions or need assistance, please don't hesitate to contact us.</p>
+            
+            <p>Best regards,<br>
+            The ${schoolName} Team<br>
+            Powered by Barrana.ai</p>
+          </div>
+          
+          <div class="footer">
+            <p>This email was sent by Barrana.ai's automated system</p>
+            <p>© 2024 Barrana.ai - Transforming Education with AI</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+Welcome to ${schoolName}
+
+Dear ${parentName},
+
+Welcome to ${schoolName}! We're excited to have ${studentName} join our learning community.
+
+At ${schoolName}, we use Barrana.ai's advanced AI-powered system to provide you with:
+
+• Detailed Progress Reports - AI-generated insights into your child's development
+• Voice-to-Text Technology - Teachers can record observations that are automatically transcribed
+• AI-Powered Analysis - Comprehensive analysis of academic and social development
+• Real-time Updates - Stay informed about your child's progress
+• Multi-language Support - Reports available in multiple languages
+
+What to expect:
+• Regular progress reports generated by our AI system
+• Detailed insights into academic and social development
+• Personalized recommendations for continued growth
+• Easy communication with teachers
+
+If you have any questions or need assistance, please don't hesitate to contact us.
+
+Best regards,
+The ${schoolName} Team
+Powered by Barrana.ai
+
+This email was sent by Barrana.ai's automated system
+© 2024 Barrana.ai - Transforming Education with AI
+    `;
+
+    return { subject, html, text };
+  }
+
+  private getNotificationTemplate(
+    type: 'report_ready' | 'system_update' | 'reminder',
+    data: { [key: string]: any }
+  ): EmailTemplate {
+    switch (type) {
+      case 'report_ready':
+        return {
+          subject: `New Progress Report Available - ${data.studentName}`,
+          html: `<h2>New Progress Report</h2><p>A new progress report for ${data.studentName} is now available.</p>`,
+          text: `New Progress Report\n\nA new progress report for ${data.studentName} is now available.`
+        };
+      
+      case 'system_update':
+        return {
+          subject: 'Barrana.ai System Update',
+          html: `<h2>System Update</h2><p>${data.message}</p>`,
+          text: `System Update\n\n${data.message}`
+        };
+      
+      case 'reminder':
+        return {
+          subject: `Reminder: ${data.title}`,
+          html: `<h2>Reminder</h2><p>${data.message}</p>`,
+          text: `Reminder\n\n${data.message}`
+        };
+      
+      default:
+        return {
+          subject: 'Notification from Barrana.ai',
+          html: '<h2>Notification</h2><p>You have a new notification.</p>',
+          text: 'Notification\n\nYou have a new notification.'
+        };
+    }
+  }
+
+  // Simulate email sending
+  private async simulateEmailSending(request: EmailRequest): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        console.log('Email sent:', {
+          to: request.to,
+          subject: request.subject,
+          timestamp: new Date().toISOString()
+        });
+        resolve();
+      }, 1000); // Simulate network delay
+    });
+  }
+
+  // Generate message ID
+  private generateMessageId(): string {
+    return `<${Date.now()}.${Math.random().toString(36).substr(2, 9)}@barrana.ai>`;
+  }
+
+  // Get email statistics
+  async getEmailStats(): Promise<{
+    sent: number;
+    delivered: number;
+    failed: number;
+    rate: number;
+  }> {
+    // Simulate email statistics
+    return {
+      sent: 1250,
+      delivered: 1180,
+      failed: 70,
+      rate: 94.4
+    };
+  }
+
+  // Test email configuration
+  async testConfiguration(): Promise<EmailResponse> {
+    if (!this.isInitialized) {
+      return {
+        success: false,
+        error: 'Email service not initialized'
+      };
+    }
+
+    try {
+      await this.simulateEmailSending({
+        to: 'test@example.com',
+        subject: 'Test Email',
+        text: 'This is a test email from Barrana.ai'
+      });
+
+      return {
+        success: true,
+        messageId: this.generateMessageId()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Email test failed'
+      };
+    }
+  }
+}
+
+// Export singleton instance
+export const emailService = new EmailService();
+export default emailService; 
