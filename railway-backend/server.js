@@ -86,11 +86,9 @@ app.use(helmet({
 // app.use('/api/', limiter);
 // app.use('/api/', speedLimiter);
 
-// CORS configuration
+// CORS configuration - Allow all origins for Railway deployment
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com'] 
-    : ['http://localhost:3000', 'http://localhost:8081', 'http://localhost:19006'],
+  origin: true, // Allow all origins for now
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -109,6 +107,16 @@ if (process.env.NODE_ENV === 'development') {
 } else {
   app.use(morgan('combined'));
 }
+
+// Root endpoint for testing
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'Barrana AI School Management API',
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+  });
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
