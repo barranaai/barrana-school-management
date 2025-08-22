@@ -27,7 +27,7 @@ const communicationRoutes = require('./routes/communication');
 const debugRoutes = require('./routes/debug');
 
 const app = express();
-const PORT = process.env.PORT || 5050;
+const PORT = process.env.PORT || 3000;
 
 // Connect to MongoDB
 connectDB();
@@ -179,10 +179,11 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   logger.info(`🚀 Barrana.ai Backend Server running on port ${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV}`);
   logger.info(`🔗 Health Check: http://localhost:${PORT}/api/health`);
+  logger.info(`🌐 Server listening on 0.0.0.0:${PORT}`);
 });
 
 // Graceful shutdown
