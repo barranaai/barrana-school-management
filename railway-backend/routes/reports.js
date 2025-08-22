@@ -13,8 +13,21 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
-const ffmpeg = require('fluent-ffmpeg');
 const { sendReportEmail } = require('../services/emailService');
+
+// Check if ffmpeg is available (it won't be in Railway)
+let ffmpeg = null;
+let ffmpegPath = null;
+
+try {
+  ffmpeg = require('fluent-ffmpeg');
+  ffmpegPath = require('ffmpeg-static');
+  if (ffmpeg && ffmpegPath) {
+    ffmpeg.setFfmpegPath(ffmpegPath);
+  }
+} catch (error) {
+  console.log('FFmpeg not available in reports route - audio/video processing disabled');
+}
 
 // Configure multer for file uploads with report ID
 const storage = multer.diskStorage({

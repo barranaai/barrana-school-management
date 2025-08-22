@@ -1,14 +1,22 @@
 # Railway-specific Dockerfile for Backend Only
-FROM node:18-alpine
+FROM node:18-slim
 
 # Set working directory
 WORKDIR /app
 
+# Install system dependencies if needed
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the clean package.json for Railway
+COPY package.railway.json ./package.json
+
+# Install dependencies (no conflicts since this is backend-only)
+RUN npm ci --only=production
+
 # Copy the isolated backend directory
 COPY railway-backend/ ./
-
-# Install dependencies (no conflicts since this is isolated backend)
-RUN npm ci --only=production
 
 # Create upload directories
 RUN mkdir -p uploads/audio uploads/media uploads/logos
