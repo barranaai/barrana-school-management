@@ -4,14 +4,11 @@ FROM node:18-alpine
 # Set working directory
 WORKDIR /app
 
-# Copy the clean package.json for Railway
-COPY package.railway.json ./package.json
+# Copy the isolated backend directory
+COPY railway-backend/ ./
 
-# Install dependencies (no conflicts since this is backend-only)
+# Install dependencies (no conflicts since this is isolated backend)
 RUN npm ci --only=production
-
-# Copy backend source code
-COPY backend/ ./
 
 # Create upload directories
 RUN mkdir -p uploads/audio uploads/media uploads/logos
