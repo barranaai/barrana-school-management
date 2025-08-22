@@ -4,10 +4,10 @@ FROM node:18-alpine
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY backend/package*.json ./
+# Copy the clean package.json for Railway
+COPY package.railway.json ./package.json
 
-# Install dependencies
+# Install dependencies (no conflicts since this is backend-only)
 RUN npm ci --only=production
 
 # Copy backend source code
