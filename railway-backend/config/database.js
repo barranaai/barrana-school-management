@@ -3,9 +3,7 @@ const { logger } = require('../utils/logger');
 
 const connectDB = async () => {
   try {
-    const mongoURI = process.env.NODE_ENV === 'production' 
-      ? process.env.MONGODB_URI_PROD 
-      : process.env.MONGODB_URI || 'mongodb://localhost:27017/barrana_ai';
+    const mongoURI = process.env.MONGODB_URI || process.env.MONGODB_URI_PROD || 'mongodb://localhost:27017/barrana_ai';
 
     const conn = await mongoose.connect(mongoURI, {
       maxPoolSize: 10,
@@ -38,7 +36,9 @@ const connectDB = async () => {
 
   } catch (error) {
     logger.error('Database connection failed:', error);
-    process.exit(1);
+    // Don't exit the process, let the server continue without database
+    // The app can still serve static files and basic functionality
+    logger.warn('Server will continue without database connection. Please configure MONGODB_URI environment variable.');
   }
 };
 
