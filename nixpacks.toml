@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_18", "npm"]
+
+[phases.install]
+cmds = ["cd railway-backend && npm ci --only=production"]
+
+[phases.build]
+cmds = ["echo 'Build completed'"]
+
+[start]
+cmd = "cd railway-backend && npm start"

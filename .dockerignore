@@ -1,8 +1,8 @@
 # Exclude everything except railway-backend
 *
 !railway-backend/
-!Dockerfile.railway
 !railway.json
+!package.railway.json
 
 # Exclude node_modules and other unnecessary files
 node_modules/
@@ -38,3 +38,7 @@ logs/
 *.zip
 *.tar.gz
 *.rar
+
+# Exclude Docker files (we're using Nixpacks)
+Dockerfile*
+docker-compose*
