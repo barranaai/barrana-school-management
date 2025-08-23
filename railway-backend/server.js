@@ -29,6 +29,12 @@ const debugRoutes = require('./routes/debug');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Debug port configuration
+console.log('🔧 Environment variables:');
+console.log('  PORT:', process.env.PORT);
+console.log('  NODE_ENV:', process.env.NODE_ENV);
+console.log('  Final PORT:', PORT);
+
 // Connect to MongoDB
 connectDB();
 

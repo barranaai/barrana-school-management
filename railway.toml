@@ -3,3 +3,6 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "cd railway-backend && npm start"
+
+[variables]
+PORT = "3000"
