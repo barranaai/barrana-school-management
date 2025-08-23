@@ -351,3 +351,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 *Transforming Education with AI* # Trigger fresh build
 # Environment variables configured
+# Fix API URL configuration
