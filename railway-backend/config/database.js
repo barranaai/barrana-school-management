@@ -3,7 +3,13 @@ const { logger } = require('../utils/logger');
 
 const connectDB = async () => {
   try {
+    // Debug: Log environment variables
+    logger.info(`🔍 Environment variables check:`);
+    logger.info(`MONGODB_URI: ${process.env.MONGODB_URI ? 'SET' : 'NOT SET'}`);
+    logger.info(`MONGODB_URI_PROD: ${process.env.MONGODB_URI_PROD ? 'SET' : 'NOT SET'}`);
+    
     const mongoURI = process.env.MONGODB_URI || process.env.MONGODB_URI_PROD || 'mongodb://localhost:27017/barrana_ai';
+    logger.info(`🔗 Using MongoDB URI: ${mongoURI.substring(0, 20)}...`);
 
     const conn = await mongoose.connect(mongoURI, {
       maxPoolSize: 10,
