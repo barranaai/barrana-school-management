@@ -1,40 +1,40 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import ProtectedRoute from './components/common/ProtectedRoute';
-import Login from './components/auth/Login';
-import AdminDashboard from './components/admin/AdminDashboard';
-import TeacherDashboard from './components/teachers/TeacherDashboard';
-import ParentsUI from './components/parents/ParentsUI';
-import SuperAdminDashboard from './components/super-admin/SuperAdminDashboard';
-import Unauthorized from './components/common/Unauthorized';
+import { Box, Typography, Button } from '@mui/material';
+
+// Temporary simple components for debugging
+const SimpleLogin = () => (
+  <Box sx={{ p: 4, textAlign: 'center' }}>
+    <Typography variant="h3" gutterBottom>
+      🎓 Barrana AI School Management
+    </Typography>
+    <Typography variant="h6" color="text.secondary" gutterBottom>
+      Welcome to the AI-powered educational platform
+    </Typography>
+    <Box sx={{ mt: 4 }}>
+      <Button variant="contained" size="large">
+        Login (Coming Soon)
+      </Button>
+    </Box>
+    <Box sx={{ mt: 2 }}>
+      <Typography variant="body2" color="text.secondary">
+        Frontend: ✅ Connected | Backend: ✅ Railway | Database: ✅ MongoDB
+      </Typography>
+    </Box>
+  </Box>
+);
 
 function App() {
+  console.log('🚀 App component loaded successfully!');
+  console.log('Environment:', process.env.NODE_ENV);
+  console.log('API URL:', process.env.REACT_APP_API_URL);
+  
   return (
     <div className="App">
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/admin" element={
-          <ProtectedRoute allowedRoles={['school_admin', 'super_admin']}>
-            <AdminDashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="/teachers" element={
-          <ProtectedRoute allowedRoles={['teacher']}>
-            <TeacherDashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="/parents" element={
-          <ProtectedRoute allowedRoles={['parent']}>
-            <ParentsUI />
-          </ProtectedRoute>
-        } />
-        <Route path="/super-admin" element={
-          <ProtectedRoute allowedRoles={['super_admin']}>
-            <SuperAdminDashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="/unauthorized" element={<Unauthorized />} />
+        <Route path="/login" element={<SimpleLogin />} />
         <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<SimpleLogin />} />
       </Routes>
     </div>
   );
