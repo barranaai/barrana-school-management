@@ -424,6 +424,18 @@ router.post('/verify-email', [
   }
 });
 
+// @route   GET /api/auth/test
+// @desc    Test auth route
+// @access  Public
+router.get('/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Auth route is working!',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV
+  });
+});
+
 // @route   POST /api/auth/logout
 // @desc    Logout user (client-side token removal)
 // @access  Private
