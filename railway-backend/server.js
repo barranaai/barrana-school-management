@@ -38,25 +38,31 @@ console.log('  Final PORT:', PORT);
 // Connect to MongoDB
 connectDB();
 
-// Static file serving for media files with proper headers (before helmet)
-app.use('/uploads/media', express.static(path.join(__dirname, 'uploads/media'), {
-  setHeaders: (res, filePath) => {
-    const ext = path.extname(filePath).toLowerCase();
-    
-    // Set appropriate content type based on file extension
-    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext)) {
-      res.setHeader('Content-Type', `image/${ext.slice(1)}`);
-    } else if (['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm'].includes(ext)) {
-      res.setHeader('Content-Type', `video/${ext.slice(1)}`);
-    }
-    
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+// Static file serving for media files (only if directory exists)
+try {
+  if (require('fs').existsSync(path.join(__dirname, 'uploads/media'))) {
+    app.use('/uploads/media', express.static(path.join(__dirname, 'uploads/media'), {
+      setHeaders: (res, filePath) => {
+        const ext = path.extname(filePath).toLowerCase();
+        
+        // Set appropriate content type based on file extension
+        if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext)) {
+          res.setHeader('Content-Type', `image/${ext.slice(1)}`);
+        } else if (['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm'].includes(ext)) {
+          res.setHeader('Content-Type', `video/${ext.slice(1)}`);
+        }
+        
+        res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      }
+    }));
   }
-}));
+} catch (error) {
+  console.warn('Could not set up media uploads directory:', error.message);
+}
 
 // Security middleware
 app.use(helmet({
@@ -134,8 +140,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Static file serving for uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static file serving for uploads (only if directory exists)
+try {
+  if (require('fs').existsSync(path.join(__dirname, 'uploads'))) {
+    app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+  }
+} catch (error) {
+  console.warn('Could not set up uploads directory:', error.message);
+}
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -152,14 +164,20 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/communication', communicationRoutes);
 app.use('/api/debug', debugRoutes);
 
-// Static file serving for uploaded audio files
-app.use('/uploads/audio', express.static(path.join(__dirname, 'uploads/audio'), {
-  setHeaders: (res, path) => {
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', 'inline');
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+// Static file serving for uploaded audio files (only if directory exists)
+try {
+  if (require('fs').existsSync(path.join(__dirname, 'uploads/audio'))) {
+    app.use('/uploads/audio', express.static(path.join(__dirname, 'uploads/audio'), {
+      setHeaders: (res, path) => {
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Content-Disposition', 'inline');
+        res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      }
+    }));
   }
-}));
+} catch (error) {
+  console.warn('Could not set up audio uploads directory:', error.message);
+}
 
 // 404 handler
 app.use('*', (req, res) => {
