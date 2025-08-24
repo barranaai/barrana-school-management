@@ -6,14 +6,14 @@ require('dotenv').config();
 const connectDB = require('./config/database');
 const { logger } = require('./utils/logger');
 
-// Import essential routes only
+// Import essential routes only - test one by one
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
-const schoolRoutes = require('./routes/schools');
-const studentRoutes = require('./routes/students');
-const teacherRoutes = require('./routes/teachers');
-const classRoutes = require('./routes/classes');
-const reportRoutes = require('./routes/reports');
+// const schoolRoutes = require('./routes/schools');
+// const studentRoutes = require('./routes/students');
+// const teacherRoutes = require('./routes/teachers');
+// const classRoutes = require('./routes/classes');
+// const reportRoutes = require('./routes/reports');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -63,14 +63,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Essential API Routes only
+// Essential API Routes only - test one by one
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/schools', schoolRoutes);
-app.use('/api/students', studentRoutes);
-app.use('/api/teachers', teacherRoutes);
-app.use('/api/classes', classRoutes);
-app.use('/api/reports', reportRoutes);
+// app.use('/api/schools', schoolRoutes);
+// app.use('/api/students', studentRoutes);
+// app.use('/api/teachers', teacherRoutes);
+// app.use('/api/classes', classRoutes);
+// app.use('/api/reports', reportRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
