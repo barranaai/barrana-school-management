@@ -12,7 +12,7 @@ const userRoutes = require('./routes/users');
 const schoolRoutes = require('./routes/schools');
 const studentRoutes = require('./routes/students');
 const teacherRoutes = require('./routes/teachers');
-// const classRoutes = require('./routes/classes');
+const classRoutes = require('./routes/classes');
 // const reportRoutes = require('./routes/reports');
 
 const app = express();
@@ -69,7 +69,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/schools', schoolRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/teachers', teacherRoutes);
-// app.use('/api/classes', classRoutes);
+app.use('/api/classes', classRoutes);
 // app.use('/api/reports', reportRoutes);
 
 // 404 handler
