@@ -12,7 +12,13 @@ const { protect, authorize } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const sharp = require('sharp');
+// Sharp is optional for Railway deployment
+let sharp = null;
+try {
+  sharp = require('sharp');
+} catch (error) {
+  console.log('Sharp not available in reports route - image processing disabled');
+}
 const { sendReportEmail } = require('../services/emailService');
 
 // Check if ffmpeg is available (it won't be in Railway)
@@ -29,10 +35,16 @@ const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = 'uploads/media';
     // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    } catch (error) {
+      console.warn('Could not create upload directory:', error.message);
+      // Use temp directory as fallback
+      cb(null, '/tmp');
     }
-    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     // Generate unique filename
@@ -48,11 +60,17 @@ const tempStorage = multer.diskStorage({
     const uploadDir = 'uploads/media';
     console.log('Temp storage destination:', uploadDir);
     // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      console.log('Creating upload directory:', uploadDir);
-      fs.mkdirSync(uploadDir, { recursive: true });
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        console.log('Creating upload directory:', uploadDir);
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    } catch (error) {
+      console.warn('Could not create temp upload directory:', error.message);
+      // Use temp directory as fallback
+      cb(null, '/tmp');
     }
-    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     // Generate unique filename for temporary uploads
