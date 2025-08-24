@@ -9,7 +9,7 @@ const { logger } = require('./utils/logger');
 // Import essential routes only - test one by one
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
-// const schoolRoutes = require('./routes/schools');
+const schoolRoutes = require('./routes/schools');
 // const studentRoutes = require('./routes/students');
 // const teacherRoutes = require('./routes/teachers');
 // const classRoutes = require('./routes/classes');
@@ -66,7 +66,7 @@ app.get('/api/health', (req, res) => {
 // Essential API Routes only - test one by one
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-// app.use('/api/schools', schoolRoutes);
+app.use('/api/schools', schoolRoutes);
 // app.use('/api/students', studentRoutes);
 // app.use('/api/teachers', teacherRoutes);
 // app.use('/api/classes', classRoutes);
