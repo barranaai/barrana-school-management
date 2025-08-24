@@ -1,11 +1,19 @@
 const express = require('express');
+require('dotenv').config();
+
+// Test database connection
+const connectDB = require('./config/database');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-console.log('🚀 Starting minimal server...');
+console.log('🚀 Starting minimal server with database...');
 console.log('  PORT:', process.env.PORT);
 console.log('  NODE_ENV:', process.env.NODE_ENV);
 console.log('  Final PORT:', PORT);
+
+// Connect to MongoDB
+connectDB();
 
 // Basic middleware
 app.use(express.json());
