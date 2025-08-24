@@ -3,6 +3,7 @@ require('dotenv').config();
 
 // Test database connection
 const connectDB = require('./config/database');
+const { logger } = require('./utils/logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -72,6 +73,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`📊 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔗 Health Check: http://localhost:${PORT}/api/health`);
   console.log(`🌐 Server listening on 0.0.0.0:${PORT}`);
+  
+  // Test logger
+  logger.info(`🚀 Minimal Server running on port ${PORT}`);
+  logger.info(`📊 Environment: ${process.env.NODE_ENV}`);
 });
 
 // Graceful shutdown
