@@ -2,15 +2,23 @@
 // Note: FFmpeg functionality is disabled for Railway deployment
 // Use Sharp for image optimization instead
 
-const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs').promises;
 
+// Check if sharp is available (may fail in some environments)
+let sharp = null;
+try {
+  sharp = require('sharp');
+  console.log('Sharp module loaded successfully');
+} catch (error) {
+  console.log('Sharp not available - image optimization disabled:', error.message);
+}
+
 // Check if ffmpeg is available (it won't be in Railway)
 let ffmpeg = null;
-
 try {
   ffmpeg = require('fluent-ffmpeg');
+  console.log('FFmpeg module loaded successfully');
 } catch (error) {
   console.log('FFmpeg not available - audio/video optimization disabled');
 }
@@ -18,10 +26,20 @@ try {
 class OptimizationService {
   constructor() {
     this.ffmpegAvailable = !!ffmpeg;
+    this.sharpAvailable = !!sharp;
+    console.log('OptimizationService initialized:', { 
+      sharp: this.sharpAvailable, 
+      ffmpeg: this.ffmpegAvailable 
+    });
   }
 
-  // Image optimization using Sharp (always available)
+  // Image optimization using Sharp (if available)
   async optimizeImage(inputPath, outputPath, options = {}) {
+    if (!this.sharpAvailable) {
+      console.log('Image optimization disabled - Sharp not available');
+      return inputPath;
+    }
+
     try {
       const {
         quality = 80,
@@ -148,8 +166,8 @@ class OptimizationService {
         modified: stats.mtime
       };
 
-      // Try to get image metadata if it's an image
-      if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
+      // Try to get image metadata if it's an image and Sharp is available
+      if (this.sharpAvailable && ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
         try {
           const imageInfo = await sharp(filePath).metadata();
           metadata.width = imageInfo.width;
