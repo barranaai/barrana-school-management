@@ -42,18 +42,9 @@ connectDB();
 // Will re-enable once server is stable
 console.log('Static file serving disabled for Railway stability');
 
-// Security middleware
+// Security middleware - simplified for Railway
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:", "blob:"],
-      mediaSrc: ["'self'", "data:", "https:", "blob:"],
-    },
-  },
+  contentSecurityPolicy: false // Disable CSP for Railway compatibility
 }));
 
 // Rate limiting - Temporarily disabled for testing
