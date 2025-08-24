@@ -5,6 +5,9 @@ require('dotenv').config();
 const connectDB = require('./config/database');
 const { logger } = require('./utils/logger');
 
+// Import one route to test
+const authRoutes = require('./routes/auth');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -18,6 +21,9 @@ connectDB();
 
 // Basic middleware
 app.use(express.json());
+
+// Add auth routes
+app.use('/api/auth', authRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
