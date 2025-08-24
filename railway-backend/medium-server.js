@@ -10,7 +10,7 @@ const { logger } = require('./utils/logger');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const schoolRoutes = require('./routes/schools');
-// const studentRoutes = require('./routes/students');
+const studentRoutes = require('./routes/students');
 // const teacherRoutes = require('./routes/teachers');
 // const classRoutes = require('./routes/classes');
 // const reportRoutes = require('./routes/reports');
@@ -67,7 +67,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/schools', schoolRoutes);
-// app.use('/api/students', studentRoutes);
+app.use('/api/students', studentRoutes);
 // app.use('/api/teachers', teacherRoutes);
 // app.use('/api/classes', classRoutes);
 // app.use('/api/reports', reportRoutes);
