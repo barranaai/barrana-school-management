@@ -436,29 +436,14 @@ router.get('/test', (req, res) => {
   });
 });
 
-// Debug route to check if super admin exists
-router.get('/debug/super-admin', async (req, res) => {
+// Temporary debug route (simplified)
+router.get('/debug/users', async (req, res) => {
   try {
-    const superAdmin = await User.findOne({ role: 'super_admin' });
-    const userByEmail = await User.findByEmail('alex.chen@barrana.ai');
-    const allUsers = await User.find().select('email role firstName lastName');
-    
+    const userCount = await User.countDocuments();
     res.status(200).json({
       success: true,
-      debug: {
-        superAdminExists: !!superAdmin,
-        superAdminData: superAdmin ? {
-          id: superAdmin._id,
-          email: superAdmin.email,
-          role: superAdmin.role,
-          firstName: superAdmin.firstName,
-          lastName: superAdmin.lastName,
-          isActive: superAdmin.isActive
-        } : null,
-        userByEmailExists: !!userByEmail,
-        totalUsers: allUsers.length,
-        allUsers: allUsers
-      }
+      userCount: userCount,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     res.status(500).json({
