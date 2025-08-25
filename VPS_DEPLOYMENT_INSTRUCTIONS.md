@@ -28,7 +28,7 @@ After deployment completes (5-10 minutes), access your application at:
 
 ### Update Environment Variables
 ```bash
-nano /var/www/barrana/app/backend/config.env
+nano /var/www/barrana/barrana-school/backend/config.env
 ```
 
 Add your actual values:
@@ -76,7 +76,7 @@ free -h # Memory usage
 
 ### If Backend Fails to Start
 ```bash
-cd /var/www/barrana/app/backend
+cd /var/www/barrana/barrana-school/backend
 node server.js  # Run directly to see errors
 ```
 
@@ -84,7 +84,7 @@ node server.js  # Run directly to see errors
 ```bash
 nginx -t  # Test nginx config
 systemctl restart nginx
-ls -la /var/www/barrana/app/build/  # Check if frontend built
+ls -la /var/www/barrana/barrana-school/build/  # Check if frontend built
 ```
 
 ### If Database Issues

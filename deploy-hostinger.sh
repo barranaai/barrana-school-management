@@ -72,25 +72,25 @@ print_status "Setting up application directory..."
 mkdir -p /var/www/barrana
 cd /var/www/barrana
 
-print_status "Cloning repository..."
-if [ -d "app" ]; then
-    print_warning "App directory exists, pulling latest changes..."
-    cd app
+print_status "Cloning repository into barrana-school folder..."
+if [ -d "barrana-school" ]; then
+    print_warning "barrana-school directory exists, pulling latest changes..."
+    cd barrana-school
     git pull origin main
 else
-    git clone https://github.com/barranaai/barrana-school-management.git app
-    cd app
+    git clone https://github.com/barranaai/barrana-school-management.git barrana-school
+    cd barrana-school
 fi
 
 print_status "Setting proper ownership..."
 chown -R barrana:barrana /var/www/barrana
 
 print_status "Installing backend dependencies..."
-cd /var/www/barrana/app/backend
+cd /var/www/barrana/barrana-school/backend
 npm install --production
 
 print_status "Installing frontend dependencies..."
-cd /var/www/barrana/app
+cd /var/www/barrana/barrana-school
 npm install
 
 print_status "Creating environment files..."
@@ -113,7 +113,7 @@ module.exports = {
   apps: [{
     name: 'barrana-backend',
     script: './backend/server.js',
-    cwd: '/var/www/barrana/app',
+    cwd: '/var/www/barrana/barrana-school',
     instances: 1,
     exec_mode: 'fork',
     env: {
@@ -144,7 +144,7 @@ server {
     server_name _;
     
     # Serve static frontend files
-    root /var/www/barrana/app/build;
+    root /var/www/barrana/barrana-school/build;
     index index.html;
     
     # Frontend routes (React Router)
@@ -175,7 +175,7 @@ server {
     
     # Uploads directory
     location /uploads {
-        alias /var/www/barrana/app/backend/uploads;
+        alias /var/www/barrana/barrana-school/backend/uploads;
         expires 1d;
         add_header Cache-Control "public";
     }
@@ -215,7 +215,7 @@ print('Super admin user created successfully!');
 "
 
 print_status "Starting backend with PM2..."
-cd /var/www/barrana/app
+cd /var/www/barrana/barrana-school
 sudo -u barrana pm2 start ecosystem.config.js
 
 print_status "Saving PM2 configuration..."
@@ -232,7 +232,7 @@ ufw --force enable
 
 print_status "Setting up log rotation..."
 cat > /etc/logrotate.d/barrana << 'EOF'
-/var/www/barrana/app/logs/*.log {
+/var/www/barrana/barrana-school/logs/*.log {
     daily
     missingok
     rotate 52
@@ -249,8 +249,8 @@ echo ""
 echo "🎉 Deployment completed successfully!"
 echo ""
 echo "📋 Next Steps:"
-echo "1. Edit /var/www/barrana/app/backend/config.env with your settings"
-echo "2. Update /var/www/barrana/app/.env.production with your domain"
+echo "1. Edit /var/www/barrana/barrana-school/backend/config.env with your settings"
+echo "2. Update /var/www/barrana/barrana-school/.env.production if needed"
 echo "3. Restart the backend: sudo -u barrana pm2 restart barrana-backend"
 echo ""
 echo "🌐 Access your application:"
