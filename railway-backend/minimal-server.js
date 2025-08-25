@@ -11,7 +11,7 @@ const authRoutes = require('./routes/auth');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-console.log('🚀 Starting minimal server with database...');
+console.log('🚀 Starting minimal server with core routes for login...');
 console.log('  PORT:', process.env.PORT);
 console.log('  NODE_ENV:', process.env.NODE_ENV);
 console.log('  Final PORT:', PORT);
@@ -22,7 +22,7 @@ connectDB();
 // Basic middleware
 app.use(express.json());
 
-// Add auth routes
+// Core routes for login functionality
 app.use('/api/auth', authRoutes);
 
 // Root endpoint
