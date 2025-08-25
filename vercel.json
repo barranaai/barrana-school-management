@@ -1,8 +1,9 @@
 {
   "version": 2,
-  "name": "barrana-school-frontend",
   "buildCommand": "npm run build",
   "outputDirectory": "build",
+  "cleanUrls": true,
+  "trailingSlash": false,
   "rewrites": [
     {
       "source": "/(.*)",
@@ -21,6 +22,7 @@
     }
   ],
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "REACT_APP_API_URL": "https://barrana-school-management-production.up.railway.app/api"
   }
 }

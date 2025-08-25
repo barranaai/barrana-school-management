@@ -56,3 +56,4 @@ backend/uploads/logos/*
 !backend/uploads/audio/.gitkeep
 !backend/uploads/media/.gitkeep
 !backend/uploads/logos/.gitkeep
+.vercel

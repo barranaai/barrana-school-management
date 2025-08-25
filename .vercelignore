@@ -1,0 +1,42 @@
+# Backend files
+backend/
+railway-backend/
+api/
+lib/
+
+# Backend scripts
+*.js
+!src/**/*.js
+
+# Deployment files
+docker-compose*.yml
+Dockerfile*
+nginx.conf
+railway.json
+Procfile
+
+# Documentation
+*.md
+!README.md
+
+# Other project files
+BarranaMobileApp/
+mobile-specific/
+monitoring/
+scripts/
+
+# Environment files
+*.env*
+config.env*
+
+# Test files
+test_*.js
+check_*.js
+add_*.js
+get_*.js
+run_*.js
+diagnose_*.js
+
+# HTML files (not needed for React app)
+*.html
+!public/index.html
