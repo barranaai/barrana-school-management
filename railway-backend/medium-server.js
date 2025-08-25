@@ -14,6 +14,12 @@ const studentRoutes = require('./routes/students');
 const teacherRoutes = require('./routes/teachers');
 const classRoutes = require('./routes/classes');
 const reportRoutes = require('./routes/reports');
+const reportTemplateRoutes = require('./routes/reportTemplates');
+const billingRoutes = require('./routes/billing');
+const superAdminRoutes = require('./routes/superAdmin');
+const aiRoutes = require('./routes/ai');
+const communicationRoutes = require('./routes/communication');
+const debugRoutes = require('./routes/debug');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -71,6 +77,12 @@ app.use('/api/students', studentRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/report-templates', reportTemplateRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/communication', communicationRoutes);
+app.use('/api/debug', debugRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
