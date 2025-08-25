@@ -181,21 +181,13 @@ class SchoolService {
    * @returns True if valid
    */
   private isValidTimezone(timezone: string): boolean {
-    const validTimezones = [
-      'UTC',
-      'America/New_York',
-      'America/Chicago',
-      'America/Denver',
-      'America/Los_Angeles',
-      'America/Toronto',
-      'America/Vancouver',
-      'Europe/London',
-      'Europe/Paris',
-      'Asia/Tokyo',
-      'Asia/Shanghai',
-      'Australia/Sydney'
-    ];
-    return validTimezones.includes(timezone);
+    try {
+      // Check if it's a valid timezone by trying to create a date with it
+      Intl.DateTimeFormat('en', { timeZone: timezone });
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 
   /**

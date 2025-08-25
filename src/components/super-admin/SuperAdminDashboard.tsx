@@ -89,6 +89,7 @@ import { useData } from '../../contexts/DataContext';
 import ReportConfiguration from '../admin/sections/ReportConfiguration';
 import apiService from '../../services/apiService';
 import { getTimezoneOptions } from '../../utils/timezoneUtils';
+import TimezoneSelector from '../common/TimezoneSelector';
 
 // Get countries from the library
 const COUNTRIES = Country.getAllCountries().sort((a, b) => a.name.localeCompare(b.name));
@@ -1938,28 +1939,14 @@ const SuperAdminDashboard: React.FC = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Timezone</InputLabel>
-                    <Select 
-                      label="Timezone"
-                      value={schoolForm.timezone}
-                      onChange={(e) => setSchoolForm({...schoolForm, timezone: e.target.value})}
-                      sx={{
-                        borderRadius: 2,
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          '&:hover': {
-                            borderColor: 'primary.main',
-                          },
-                        },
-                      }}
-                    >
-                      {timezoneOptions.map((tz: any) => (
-                        <MenuItem key={tz.value} value={tz.value}>
-                          {tz.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <TimezoneSelector
+                    value={schoolForm.timezone}
+                    onChange={(timezone) => setSchoolForm({...schoolForm, timezone})}
+                    label="Timezone *"
+                    placeholder="Search for a timezone..."
+                    required
+                    fullWidth
+                  />
                 </Grid>
               </Grid>
             </Box>
@@ -2419,28 +2406,14 @@ const SuperAdminDashboard: React.FC = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Timezone</InputLabel>
-                    <Select 
-                      label="Timezone"
-                      value={schoolForm.timezone}
-                      onChange={(e) => setSchoolForm({...schoolForm, timezone: e.target.value})}
-                      sx={{
-                        borderRadius: 2,
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          '&:hover': {
-                            borderColor: 'primary.main',
-                          },
-                        },
-                      }}
-                    >
-                      {timezoneOptions.map((tz: any) => (
-                        <MenuItem key={tz.value} value={tz.value}>
-                          {tz.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <TimezoneSelector
+                    value={schoolForm.timezone}
+                    onChange={(timezone) => setSchoolForm({...schoolForm, timezone})}
+                    label="Timezone *"
+                    placeholder="Search for a timezone..."
+                    required
+                    fullWidth
+                  />
                 </Grid>
               </Grid>
             </Box>

@@ -1,41 +1,59 @@
 {
-  "name": "barrana-ai-backend-railway",
+  "name": "barrana-ai-school-frontend",
   "version": "1.0.0",
-  "description": "Backend API for Barrana.ai School Management System - Railway Deployment",
-  "main": "railway-backend/debug-server.js",
+  "description": "AI-powered school management system frontend",
+  "private": true,
   "scripts": {
-    "start": "node railway-backend/debug-server.js",
-    "dev": "nodemon debug-server.js",
-    "start:minimal": "node minimal-server.js",
-    "start:full": "node server.js"
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
   },
   "dependencies": {
-    "axios": "^1.11.0",
-    "bcryptjs": "^3.0.2",
-    "compression": "^1.8.1",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
-    "express": "^4.21.2",
-    "express-rate-limit": "^8.0.1",
-    "express-slow-down": "^2.1.0",
-    "express-validator": "^7.2.1",
-    "form-data": "^4.0.4",
-    "helmet": "^8.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "moment-timezone": "^0.6.0",
-    "mongoose": "^8.17.0",
-    "morgan": "^1.10.1",
-    "multer": "^2.0.2",
-    "nodemailer": "^7.0.5",
-    "openai": "^5.12.0",
-    "stripe": "^18.4.0",
-    "winston": "^3.17.0"
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.14.19",
+    "@mui/material": "^5.14.20",
+    "@mui/x-charts": "^6.18.1",
+    "@mui/x-data-grid": "^6.18.1",
+    "@mui/x-date-pickers": "^6.18.1",
+    "@tanstack/react-query": "^4.36.1",
+    "axios": "^1.6.2",
+    "country-state-city": "^3.2.1",
+    "moment": "^2.29.4",
+    "moment-timezone": "^0.5.43",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.1",
+    "react-query": "^3.39.3",
+    "react-router-dom": "^6.8.1",
+    "react-scripts": "5.0.1",
+    "react-toastify": "^9.1.3",
+    "recharts": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "@types/react": "^18.2.42",
+    "@types/react-dom": "^18.2.17",
+    "typescript": "^4.9.5"
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
   },
-  "keywords": ["railway", "backend", "api", "school-management"],
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "keywords": ["react", "school-management", "ai", "reports"],
   "author": "Barrana AI",
   "license": "ISC"
 }
