@@ -3,9 +3,9 @@ const { logger } = require('../utils/logger');
 
 const connectDB = async () => {
   try {
-    const mongoURI = process.env.NODE_ENV === 'production' 
-      ? process.env.MONGODB_URI_PROD 
-      : process.env.MONGODB_URI || 'mongodb://localhost:27017/barrana_ai';
+      const mongoURI = process.env.NODE_ENV === 'production'
+    ? process.env.MONGODB_URI
+    : process.env.MONGODB_URI || 'mongodb://localhost:27017/barrana_ai';
 
     const conn = await mongoose.connect(mongoURI, {
       maxPoolSize: 10,
