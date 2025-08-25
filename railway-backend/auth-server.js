@@ -45,21 +45,28 @@ const connectDB = async () => {
 // Connect to database
 connectDB();
 
-// Simple User model for testing
-const UserSchema = new mongoose.Schema({
-  firstName: String,
-  lastName: String,
-  email: { type: String, unique: true, lowercase: true },
-  password: String,
-  role: { type: String, enum: ['super_admin', 'school_admin', 'teacher', 'parent'], default: 'teacher' },
-  isActive: { type: Boolean, default: true },
-}, { timestamps: true });
+// Simple User model for testing (only if MongoDB connects)
+let User = null;
 
-UserSchema.statics.findByEmail = function(email) {
-  return this.findOne({ email: email.toLowerCase() });
+const initUserModel = () => {
+  if (mongoose.connection.readyState === 1 && !User) {
+    const UserSchema = new mongoose.Schema({
+      firstName: String,
+      lastName: String,
+      email: { type: String, unique: true, lowercase: true },
+      password: String,
+      role: { type: String, enum: ['super_admin', 'school_admin', 'teacher', 'parent'], default: 'teacher' },
+      isActive: { type: Boolean, default: true },
+    }, { timestamps: true });
+
+    UserSchema.statics.findByEmail = function(email) {
+      return this.findOne({ email: email.toLowerCase() });
+    };
+
+    User = mongoose.model('User', UserSchema);
+    console.log('✅ User model initialized');
+  }
 };
-
-const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -89,6 +96,14 @@ app.get('/api/auth/debug/users', async (req, res) => {
       return res.status(500).json({
         success: false,
         message: 'Database not connected'
+      });
+    }
+    
+    initUserModel();
+    if (!User) {
+      return res.status(500).json({
+        success: false,
+        message: 'User model not initialized'
       });
     }
     
@@ -126,6 +141,14 @@ app.post('/api/auth/test-login', async (req, res) => {
       return res.status(500).json({
         success: false,
         message: 'Database not connected'
+      });
+    }
+    
+    initUserModel();
+    if (!User) {
+      return res.status(500).json({
+        success: false,
+        message: 'User model not initialized'
       });
     }
     
