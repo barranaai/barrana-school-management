@@ -28,7 +28,7 @@ router.post('/register', [
   authLimiter,
   body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
-  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
+  body('email').isEmail().withMessage('Please provide a valid email'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   body('role').isIn(['school_admin', 'teacher', 'parent']).withMessage('Invalid role'),
   body('schoolId').optional().isMongoId().withMessage('Invalid school ID')
@@ -132,7 +132,7 @@ router.post('/register', [
 // @access  Public
 router.post('/login', [
   authLimiter,
-  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
+  body('email').isEmail().withMessage('Please provide a valid email'),
   body('password').notEmpty().withMessage('Password is required')
 ], async (req, res) => {
   try {
@@ -249,7 +249,7 @@ router.get('/me', protect, async (req, res) => {
 // @access  Public
 router.post('/forgot-password', [
   authLimiter,
-  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email')
+  body('email').isEmail().withMessage('Please provide a valid email')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
