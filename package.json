@@ -2,9 +2,9 @@
   "name": "barrana-ai-backend-railway",
   "version": "1.0.0",
   "description": "Backend API for Barrana.ai School Management System - Railway Deployment",
-  "main": "railway-backend/basic-test-server.js",
+  "main": "railway-backend/debug-server.js",
   "scripts": {
-    "start": "node railway-backend/basic-test-server.js",
+    "start": "node railway-backend/debug-server.js",
     "dev": "nodemon server.js",
     "start:minimal": "node minimal-server.js"
   },
