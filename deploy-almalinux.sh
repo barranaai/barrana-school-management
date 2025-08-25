@@ -114,6 +114,13 @@ npm install --production
 
 print_status "Installing frontend dependencies..."
 cd /var/www/barrana/barrana-school
+
+# Restore frontend package.json if it exists
+if [ -f "package-frontend.json" ]; then
+    print_status "Restoring frontend package.json..."
+    cp package-frontend.json package.json
+fi
+
 npm install
 
 print_status "Creating environment files..."
