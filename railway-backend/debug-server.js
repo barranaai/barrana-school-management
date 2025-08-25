@@ -10,21 +10,121 @@ console.log('NODE_ENV:', process.env.NODE_ENV);
 const server = http.createServer((req, res) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   
-  res.writeHead(200, { 
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*'
-  });
+  // Handle CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Content-Type', 'application/json');
   
-  const response = {
-    message: 'Raw Node.js server working',
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    port: PORT,
-    url: req.url,
-    method: req.method
-  };
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
   
-  res.end(JSON.stringify(response, null, 2));
+  // Route handling
+  if (req.url === '/' && req.method === 'GET') {
+    const response = {
+      message: 'Enhanced Debug Server with Auth',
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      port: PORT,
+      features: ['health-check', 'auth-test']
+    };
+    res.writeHead(200);
+    res.end(JSON.stringify(response, null, 2));
+    
+  } else if (req.url === '/api/health' && req.method === 'GET') {
+    const response = {
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development',
+      database: 'not connected (debug mode)'
+    };
+    res.writeHead(200);
+    res.end(JSON.stringify(response, null, 2));
+    
+  } else if (req.url === '/api/auth/test' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        const response = {
+          success: true,
+          message: 'Auth test endpoint working',
+          received: {
+            email: data.email || 'not provided',
+            password: data.password ? 'provided' : 'not provided'
+          },
+          timestamp: new Date().toISOString(),
+          note: 'This is a test endpoint - database not connected'
+        };
+        res.writeHead(200);
+        res.end(JSON.stringify(response, null, 2));
+      } catch (error) {
+        const response = {
+          success: false,
+          message: 'Invalid JSON',
+          error: error.message
+        };
+        res.writeHead(400);
+        res.end(JSON.stringify(response, null, 2));
+      }
+    });
+    
+  } else if (req.url === '/api/auth/login' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        const response = {
+          success: false,
+          message: 'Database not connected - please insert user data first',
+          debug: {
+            email: data.email || 'not provided',
+            password: data.password ? 'provided' : 'not provided'
+          },
+          timestamp: new Date().toISOString(),
+          instructions: 'Please add the super admin user to MongoDB first'
+        };
+        res.writeHead(500);
+        res.end(JSON.stringify(response, null, 2));
+      } catch (error) {
+        const response = {
+          success: false,
+          message: 'Invalid JSON',
+          error: error.message
+        };
+        res.writeHead(400);
+        res.end(JSON.stringify(response, null, 2));
+      }
+    });
+    
+  } else {
+    // 404 for unknown routes
+    const response = {
+      success: false,
+      message: 'Route not found',
+      url: req.url,
+      method: req.method,
+      availableRoutes: [
+        'GET /',
+        'GET /api/health', 
+        'POST /api/auth/test',
+        'POST /api/auth/login'
+      ]
+    };
+    res.writeHead(404);
+    res.end(JSON.stringify(response, null, 2));
+  }
 });
 
 server.on('error', (err) => {
