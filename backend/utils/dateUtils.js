@@ -145,6 +145,49 @@ const getStartOfFrequencyPeriod = (frequency, schoolSettings, currentDate) => {
 };
 
 /**
+ * Get the end of the current frequency period
+ * @param {string} frequency - Report frequency  
+ * @param {moment.Moment} now - Current date
+ * @param {Object} schoolSettings - School settings object
+ * @returns {Date} End of period date
+ */
+const getEndOfFrequencyPeriod = (frequency, now, schoolSettings) => {
+  const moment = require('moment-timezone');
+  const timezone = schoolSettings.timezone || 'UTC';
+  const currentDate = moment.tz(now, timezone);
+  
+  switch (frequency) {
+    case 'Daily':
+      return currentDate.endOf('day').toDate();
+      
+    case 'Weekly':
+      return currentDate.endOf('week').toDate();
+      
+    case 'Bi-Weekly':
+      // For bi-weekly, calculate 2-week period from start of current period
+      const startOfBiWeekly = getStartOfFrequencyPeriod(frequency, now, schoolSettings);
+      return moment.tz(startOfBiWeekly, timezone).add(2, 'weeks').subtract(1, 'day').endOf('day').toDate();
+      
+    case 'Monthly':
+      return currentDate.endOf('month').toDate();
+      
+    case 'Bi-Monthly':
+      // For bi-monthly, calculate 2-month period from start of current period
+      const startOfBiMonthly = getStartOfFrequencyPeriod(frequency, now, schoolSettings);
+      return moment.tz(startOfBiMonthly, timezone).add(2, 'months').subtract(1, 'day').endOf('day').toDate();
+      
+    case 'Quarterly':
+      return currentDate.endOf('quarter').toDate();
+      
+    case 'Annually':
+      return currentDate.endOf('year').toDate();
+      
+    default:
+      return currentDate.endOf('day').toDate();
+  }
+};
+
+/**
  * Calculate due date for a specific frequency based on school configuration
  * @param {string} frequency - Report frequency
  * @param {Object} schoolSettings - School settings object
@@ -799,5 +842,6 @@ module.exports = {
   getNextDueDate,
   formatDateInSchoolTimezone,
   getAvailableTimezones,
-  getStartOfFrequencyPeriod
+  getStartOfFrequencyPeriod,
+  getEndOfFrequencyPeriod
 };

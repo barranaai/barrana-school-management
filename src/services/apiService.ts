@@ -500,6 +500,32 @@ class ApiService {
     return this.request<Report[]>('/reports');
   }
 
+  async getAvailableTemplatesForStudent(studentId: string): Promise<ApiResponse<{
+    student: { id: string; name: string; grade: string };
+    availableTemplates: Array<{
+      _id: string;
+      name: string;
+      reportFrequency: string;
+      grade: string;
+      isAvailable: boolean;
+      existingReport?: {
+        id: string;
+        createdAt: string;
+        teacherName: string;
+        status: string;
+      };
+      periodStart: string;
+      periodEnd: string;
+    }>;
+    totalTemplates: number;
+    availableCount: number;
+    unavailableCount: number;
+    timezone: string;
+    calculatedAt: string;
+  }>> {
+    return this.request<any>(`/reports/available-templates/${studentId}`);
+  }
+
   async getAllSchoolReports(schoolId: string): Promise<ApiResponse<Report[]>> {
     return this.request<Report[]>(`/schools/${schoolId}/reports`);
   }

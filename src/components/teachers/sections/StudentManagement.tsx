@@ -963,7 +963,7 @@ const StudentManagement: React.FC = () => {
   };
 
   // Auto-select template based on student's grade (only due templates)
-  const autoSelectTemplateForStudent = (student: any) => {
+  const autoSelectTemplateForStudent = async (student: any) => {
     console.log('🔍 autoSelectTemplateForStudent called:', { student: student?.name, grade: student?.grade });
     console.log('🔍 Available templates:', reportTemplates.length);
     
@@ -972,38 +972,54 @@ const StudentManagement: React.FC = () => {
       return;
     }
     
-    // Get templates that are actually due (not just available)
-    const dueTemplates = getDueTemplatesForStudent(student);
-    console.log('🔍 Due templates for student:', dueTemplates.length);
-    
-    if (dueTemplates.length > 0) {
-      // Set the first due template as selected by default
-      const defaultTemplate = dueTemplates[0];
-      console.log('🔍 Auto-selecting due template:', defaultTemplate.name);
-      setSelectedTemplate(defaultTemplate);
+    try {
+      // Get templates that are actually due (not just available) - uses cross-teacher filtering
+      const dueTemplates = await getDueTemplatesForStudent(student);
+      console.log('🔍 Due templates for student (cross-teacher filtered):', dueTemplates.length);
       
-      // Extract key points from the template content
-      const extractedKeyPoints = extractKeyPointsFromTemplate(defaultTemplate.content || '');
-      setKeyPoints(extractedKeyPoints);
-      console.log('🔍 Key points extracted:', extractedKeyPoints.length);
-      
-      toast.success(`Due template "${defaultTemplate.name}" (${defaultTemplate.reportFrequency}) selected for Grade ${student.grade}`);
-    } else {
-      console.log('🔍 No due templates for grade:', student.grade);
-      const availableTemplates = getAvailableTemplatesForStudent(student);
-      const existingReports = getExistingReportInfo(student) || [];
-      
-      if (availableTemplates.length > 0) {
-        // There are available templates but none are due yet
-        toast.success(`${availableTemplates.length} template(s) available for ${student.grade}, but none are due yet. You can still generate reports manually.`);
-      } else if (existingReports.length > 0) {
-        const reportDetails = existingReports.map(r => `${r.frequency}`).join(', ');
-        toast.success(`All ${reportDetails} reports already exist for ${student.grade}.`);
+      if (dueTemplates.length > 0) {
+        // Set the first due template as selected by default
+        const defaultTemplate = dueTemplates[0];
+        console.log('🔍 Auto-selecting due template:', defaultTemplate.name);
+        setSelectedTemplate(defaultTemplate);
+        
+        // Extract key points from the template content
+        const extractedKeyPoints = extractKeyPointsFromTemplate(defaultTemplate.content || '');
+        setKeyPoints(extractedKeyPoints);
+        console.log('🔍 Key points extracted:', extractedKeyPoints.length);
+        
+        toast.success(`Due template "${defaultTemplate.name}" (${defaultTemplate.reportFrequency}) selected for Grade ${student.grade}`);
       } else {
-        toast.error(`No active templates found for Grade ${student.grade}.`);
+        console.log('🔍 No due templates for grade:', student.grade);
+        const availableTemplates = await getAvailableTemplatesForStudent(student);
+        const existingReports = getExistingReportInfo(student) || [];
+        
+        if (availableTemplates.length > 0) {
+          // There are available templates but none are due yet
+          toast.success(`${availableTemplates.length} template(s) available for ${student.grade}, but none are due yet. You can still generate reports manually.`);
+        } else if (existingReports.length > 0) {
+          const reportDetails = existingReports.map(r => `${r.frequency}`).join(', ');
+          toast.success(`All ${reportDetails} reports already exist for ${student.grade}. Another teacher may have generated the reports for this period.`);
+        } else {
+          toast.error(`No active templates found for Grade ${student.grade}.`);
+        }
+        setSelectedTemplate(null);
+        setKeyPoints([]);
       }
-      setSelectedTemplate(null);
-      setKeyPoints([]);
+    } catch (error) {
+      console.error('🔍 Error in autoSelectTemplateForStudent:', error);
+      // Fallback to local template selection
+      const localDueTemplates = getLocalDueTemplatesForStudent(student);
+      if (localDueTemplates.length > 0) {
+        const defaultTemplate = localDueTemplates[0];
+        setSelectedTemplate(defaultTemplate);
+        const extractedKeyPoints = extractKeyPointsFromTemplate(defaultTemplate.content || '');
+        setKeyPoints(extractedKeyPoints);
+      } else {
+        setSelectedTemplate(null);
+        setKeyPoints([]);
+        toast.error('Error loading available templates. Please try again.');
+      }
     }
   };
 
@@ -1768,7 +1784,7 @@ const StudentManagement: React.FC = () => {
     setSelectedStudent(student);
     
     console.log('🔍 Auto-selecting template for student grade:', student.grade);
-    autoSelectTemplateForStudent(student);
+    await autoSelectTemplateForStudent(student);
     
     console.log('🔍 Generating temp report ID and opening dialog');
     // Generate a temporary report ID for media uploads
@@ -1821,8 +1837,37 @@ const StudentManagement: React.FC = () => {
     return existingReports !== null && existingReports.length > 0;
   };
 
-  // Get templates that don't have existing reports for current period
-  const getAvailableTemplatesForStudent = (student: any) => {
+  // Get templates that don't have existing reports for current period (cross-teacher check)
+  const getAvailableTemplatesForStudent = async (student: any) => {
+    if (!student) return [];
+    
+    try {
+      const response = await apiService.getAvailableTemplatesForStudent(student._id);
+      if (response.success && response.data) {
+        // Return only templates that are available (not already generated by any teacher)
+        return response.data.availableTemplates
+          .filter(template => template.isAvailable)
+          .map(template => ({
+            _id: template._id,
+            name: template.name,
+            reportFrequency: template.reportFrequency,
+            grade: template.grade,
+            isActive: true
+          }));
+      } else {
+        console.error('Failed to get available templates:', response.error);
+        // Fallback to local filtering if API fails
+        return getLocalAvailableTemplatesForStudent(student);
+      }
+    } catch (error) {
+      console.error('Error getting available templates:', error);
+      // Fallback to local filtering if API fails
+      return getLocalAvailableTemplatesForStudent(student);
+    }
+  };
+
+  // Fallback local filtering method (original logic)
+  const getLocalAvailableTemplatesForStudent = (student: any) => {
     if (!student || !reportTemplates.length) return [];
     
     const studentGrade = student.grade || '';
@@ -1830,7 +1875,7 @@ const StudentManagement: React.FC = () => {
       template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
     );
     
-    // Get existing reports for current period
+    // Get existing reports for current period (only current teacher's reports)
     const existingReports = getExistingReportInfo(student) || [];
     const existingFrequencies = existingReports.map(r => r.frequency);
     
@@ -1841,7 +1886,44 @@ const StudentManagement: React.FC = () => {
   };
 
   // Get templates that are actually due (not just available) for current period
-  const getDueTemplatesForStudent = (student: any) => {
+  const getDueTemplatesForStudent = async (student: any) => {
+    if (!student) return [];
+    
+    try {
+      const response = await apiService.getAvailableTemplatesForStudent(student._id);
+      if (response.success && response.data) {
+        // Get available templates from the cross-teacher check
+        const availableTemplates = response.data.availableTemplates
+          .filter(template => template.isAvailable)
+          .map(template => ({
+            _id: template._id,
+            name: template.name,
+            reportFrequency: template.reportFrequency,
+            grade: template.grade,
+            isActive: true
+          }));
+
+        // From the available templates, find which ones are actually due
+        const studentDueReports = getStudentDueReports(student._id);
+        const dueTemplateIds = studentDueReports.map(dr => dr.templateId);
+        
+        return availableTemplates.filter(template => 
+          dueTemplateIds.includes(template._id)
+        );
+      } else {
+        console.error('Failed to get available templates for due check:', response.error);
+        // Fallback to local filtering if API fails
+        return getLocalDueTemplatesForStudent(student);
+      }
+    } catch (error) {
+      console.error('Error getting due templates:', error);
+      // Fallback to local filtering if API fails
+      return getLocalDueTemplatesForStudent(student);
+    }
+  };
+
+  // Fallback local due templates method (original logic)
+  const getLocalDueTemplatesForStudent = (student: any) => {
     if (!student || !reportTemplates.length) return [];
     
     const studentGrade = student.grade || '';
@@ -1849,7 +1931,7 @@ const StudentManagement: React.FC = () => {
       template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
     );
     
-    // Get existing reports for current period
+    // Get existing reports for current period (only current teacher's reports)
     const existingReports = getExistingReportInfo(student) || [];
     const existingFrequencies = existingReports.map(r => r.frequency);
     
@@ -2600,22 +2682,9 @@ const StudentManagement: React.FC = () => {
                                   console.log('🔘 Generate Report button clicked for student:', student.name);
                                   openReportDialog(student);
                                 }}
-                                disabled={getAvailableTemplatesForStudent(student).length === 0} // Disable if no templates available
+                                disabled={false} // Template availability will be checked when dialog opens
                             sx={{
-                              background: (() => {
-                                const availableTemplates = getAvailableTemplatesForStudent(student);
-                                const dueTemplates = getDueTemplatesForStudent(student);
-                                
-                                if (availableTemplates.length === 0) {
-                                  return 'linear-gradient(135deg, #cccccc 0%, #999999 100%)';
-                                }
-                                
-                                if (dueTemplates.length === 0) {
-                                  return 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)'; // Orange for not due
-                                }
-                                
-                                return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'; // Blue for due
-                              })(),
+                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', // Generic style - availability checked when dialog opens
                               borderRadius: 2,
                               px: 2,
                               py: 0.5,
@@ -2647,52 +2716,13 @@ const StudentManagement: React.FC = () => {
                                 return '0 2px 8px rgba(102, 126, 234, 0.3)';
                               })(),
                               '&:hover': {
-                                background: (() => {
-                                  const availableTemplates = getAvailableTemplatesForStudent(student);
-                                  const dueTemplates = getDueTemplatesForStudent(student);
-                                  
-                                  if (availableTemplates.length === 0) {
-                                    return 'linear-gradient(135deg, #cccccc 0%, #999999 100%)';
-                                  }
-                                  
-                                  if (dueTemplates.length === 0) {
-                                    return 'linear-gradient(135deg, #f57c00 0%, #ef6c00 100%)';
-                                  }
-                                  
-                                  return 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)';
-                                })(),
-                                boxShadow: (() => {
-                                  const availableTemplates = getAvailableTemplatesForStudent(student);
-                                  const dueTemplates = getDueTemplatesForStudent(student);
-                                  
-                                  if (availableTemplates.length === 0) {
-                                    return '0 2px 8px rgba(0, 0, 0, 0.1)';
-                                  }
-                                  
-                                  if (dueTemplates.length === 0) {
-                                    return '0 4px 12px rgba(255, 152, 0, 0.4)';
-                                  }
-                                  
-                                  return '0 4px 12px rgba(102, 126, 234, 0.4)';
-                                })(),
-                                transform: getAvailableTemplatesForStudent(student).length === 0 ? 'none' : 'translateY(-1px)',
+                                background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)',
+                                transform: 'translateY(-1px)',
                               }
                             }}
                               >
-                                {(() => {
-                                  const availableTemplates = getAvailableTemplatesForStudent(student);
-                                  const dueTemplates = getDueTemplatesForStudent(student);
-                                  
-                                  if (availableTemplates.length === 0) {
-                                    return 'All Reports Complete';
-                                  }
-                                  
-                                  if (dueTemplates.length === 0) {
-                                    return 'Generate Report (Manual)';
-                                  }
-                                  
-                                  return `Generate Report (${dueTemplates.length} Due)`;
-                                })()}
+                                Generate Report
                               </Button>
                             </span>
                           </Tooltip>
