@@ -19,7 +19,8 @@ const { sendReportEmail } = require('../services/emailService');
 // Configure multer for file uploads with report ID
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = 'uploads/media';
+    // Use absolute path to ensure consistency with nginx configuration
+    const uploadDir = path.join(__dirname, '../uploads/media');
     // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -37,8 +38,9 @@ const storage = multer.diskStorage({
 // Configure multer for temporary file uploads (no report ID)
 const tempStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = 'uploads/media';
-    console.log('Temp storage destination:', uploadDir);
+    // Use absolute path to ensure consistency with nginx configuration
+    const uploadDir = path.join(__dirname, '../uploads/media');
+    console.log('Temp storage destination (absolute):', uploadDir);
     // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       console.log('Creating upload directory:', uploadDir);
