@@ -137,6 +137,9 @@ const StudentManagement: React.FC = () => {
     notes: '',
   });
 
+  // State for field-specific validation errors
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
   const { students, addStudent, updateStudent, deleteStudent, classes, teachers, school, isLoading, refreshData } = useData();
   
   console.log('StudentManagement - students from DataContext:', students);
@@ -449,6 +452,7 @@ const StudentManagement: React.FC = () => {
         academicLevel: 'beginner',
         notes: '',
       });
+      setFieldErrors({}); // Clear validation errors
       setSelectedStudentData(null);
     } else if (studentId) {
       const student = students.find(s => s.id === studentId);
@@ -496,6 +500,7 @@ const StudentManagement: React.FC = () => {
       academicLevel: 'beginner',
       notes: '',
     });
+    setFieldErrors({}); // Clear validation errors
     setSelectedStudentData(null);
   };
 
@@ -509,6 +514,15 @@ const StudentManagement: React.FC = () => {
       console.log('StudentManagement - Updated formData:', newData);
       return newData;
     });
+    
+    // Clear field error when user starts typing
+    if (fieldErrors[field]) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
     
     // Clear class selection when grade changes
     if (field === 'grade') {
@@ -597,18 +611,48 @@ const StudentManagement: React.FC = () => {
         // Refresh the students list to ensure the new student appears
         await refreshData();
       } else {
-        // Handle field-specific errors
-        if (result.field === 'email') {
-          toast.error(result.message || 'Email error occurred');
-          // You can add logic here to highlight the email field
-          // For example, set a state variable to show error styling
+        // Handle field-specific validation errors
+        if (result.errors && Array.isArray(result.errors)) {
+          // Parse express-validator errors
+          const newFieldErrors: Record<string, string> = {};
+          result.errors.forEach((error: any) => {
+            if (error.param && error.msg) {
+              // Map backend field names to frontend field names
+              const fieldMapping: Record<string, string> = {
+                'firstName': 'firstName',
+                'lastName': 'lastName',
+                'email': 'email',
+                'studentGrade': 'grade',
+                'parentName': 'parentName',
+                'parentEmail': 'parentEmail',
+                'parentPhone': 'parentPhone',
+                'dateOfBirth': 'dateOfBirth',
+                'enrollmentDate': 'enrollmentDate',
+                'academicLevel': 'academicLevel'
+              };
+              
+              const frontendField = fieldMapping[error.param] || error.param;
+              newFieldErrors[frontendField] = error.msg;
+            }
+          });
+          
+          setFieldErrors(newFieldErrors);
+          
+          // Show general error message
+          const errorCount = Object.keys(newFieldErrors).length;
+          toast.error(`Please fix ${errorCount} validation error${errorCount > 1 ? 's' : ''}`);
+        } else if (result.field) {
+          // Handle single field error (like duplicate email)
+          setFieldErrors({ [result.field]: result.message || 'Error occurred' });
+          toast.error(result.message || 'Validation error occurred');
         } else {
+          // Generic error
           toast.error(result.message || 'Failed to add student');
         }
         return; // Don't close dialog or reset form on error
       }
       
-      // Reset form data
+      // Reset form data and errors
       setFormData({
         firstName: '',
         lastName: '',
@@ -627,6 +671,7 @@ const StudentManagement: React.FC = () => {
         academicLevel: 'beginner',
         notes: '',
       });
+      setFieldErrors({}); // Clear validation errors
     } else if (dialogType === 'edit' && selectedStudentData) {
       // Map form data to backend expectations for update
       const updateData = {
@@ -1506,18 +1551,20 @@ const StudentManagement: React.FC = () => {
                   value={formData.firstName}
                   onChange={(e) => handleFormChange('firstName', e.target.value)}
                   required
+                  error={!!fieldErrors.firstName}
+                  helperText={fieldErrors.firstName}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: fieldErrors.firstName ? '#f44336' : 'rgba(102, 126, 234, 0.5)',
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: fieldErrors.firstName ? '#f44336' : '#667eea',
                       },
                     },
                     '& .MuiInputLabel-root.Mui-focused': {
-                      color: '#667eea',
+                      color: fieldErrors.firstName ? '#f44336' : '#667eea',
                     },
                   }}
                 />
@@ -1529,18 +1576,20 @@ const StudentManagement: React.FC = () => {
                   value={formData.lastName}
                   onChange={(e) => handleFormChange('lastName', e.target.value)}
                   required
+                  error={!!fieldErrors.lastName}
+                  helperText={fieldErrors.lastName}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: fieldErrors.lastName ? '#f44336' : 'rgba(102, 126, 234, 0.5)',
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: fieldErrors.lastName ? '#f44336' : '#667eea',
                       },
                     },
                     '& .MuiInputLabel-root.Mui-focused': {
-                      color: '#667eea',
+                      color: fieldErrors.lastName ? '#f44336' : '#667eea',
                     },
                   }}
                 />
@@ -1553,6 +1602,8 @@ const StudentManagement: React.FC = () => {
                   value={formData.email}
                   onChange={(e) => handleFormChange('email', e.target.value)}
                   placeholder="Optional"
+                  error={!!fieldErrors.email}
+                  helperText={fieldErrors.email}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1562,10 +1613,12 @@ const StudentManagement: React.FC = () => {
                   value={formData.parentName}
                   onChange={(e) => handleFormChange('parentName', e.target.value)}
                   required
+                  error={!!fieldErrors.parentName}
+                  helperText={fieldErrors.parentName}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth required>
+                <FormControl fullWidth required error={!!fieldErrors.grade}>
                   <InputLabel>Grade</InputLabel>
                   <Select
                     value={formData.grade}
@@ -1580,10 +1633,15 @@ const StudentManagement: React.FC = () => {
                       ))
                     )}
                   </Select>
+                  {fieldErrors.grade && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 2 }}>
+                      {fieldErrors.grade}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth required>
+                <FormControl fullWidth required error={!!fieldErrors.class}>
                   <InputLabel>Class</InputLabel>
                   <Select
                     value={formData.class}
@@ -1603,6 +1661,11 @@ const StudentManagement: React.FC = () => {
                       ))
                     )}
                   </Select>
+                  {fieldErrors.class && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 2 }}>
+                      {fieldErrors.class}
+                    </Typography>
+                  )}
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1629,6 +1692,8 @@ const StudentManagement: React.FC = () => {
                   value={formData.parentEmail}
                   onChange={(e) => handleFormChange('parentEmail', e.target.value)}
                   required
+                  error={!!fieldErrors.parentEmail}
+                  helperText={fieldErrors.parentEmail}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1638,6 +1703,8 @@ const StudentManagement: React.FC = () => {
                   value={formData.parentPhone}
                   onChange={(e) => handleFormChange('parentPhone', e.target.value)}
                   required
+                  error={!!fieldErrors.parentPhone}
+                  helperText={fieldErrors.parentPhone}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1648,6 +1715,8 @@ const StudentManagement: React.FC = () => {
                   value={formData.enrollmentDate}
                   onChange={(e) => handleFormChange('enrollmentDate', e.target.value)}
                   InputLabelProps={{ shrink: true }}
+                  error={!!fieldErrors.enrollmentDate}
+                  helperText={fieldErrors.enrollmentDate}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1658,6 +1727,8 @@ const StudentManagement: React.FC = () => {
                   value={formData.dateOfBirth}
                   onChange={(e) => handleFormChange('dateOfBirth', e.target.value)}
                   InputLabelProps={{ shrink: true }}
+                  error={!!fieldErrors.dateOfBirth}
+                  helperText={fieldErrors.dateOfBirth}
                 />
               </Grid>
               <Grid item xs={12}>
