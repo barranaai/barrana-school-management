@@ -774,7 +774,7 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
                     <TableCell sx={{ fontWeight: 600 }}>Audio</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Transcription</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Media</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>AI Generated</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Generated Report</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
                   </TableRow>
@@ -927,10 +927,10 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
                       
                       <TableCell>
                         {(typeof report.aiGenerated === 'boolean' ? report.aiGenerated : report.aiGenerated?.isAiGenerated) ? (
-                          <Tooltip title="Click to view and edit AI generated report">
+                          <Tooltip title="Click to view and edit generated report">
                             <Chip
                               icon={<AutoFixHigh />}
-                              label="AI Generated"
+                              label="Generated Report"
                               size="small"
                               color="primary"
                               variant="outlined"
@@ -1110,7 +1110,7 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
                           )}
                         </ListItemIcon>
                         <ListItemText
-                          primary="AI Generated"
+                          primary="Generated Report"
                           secondary={(typeof selectedReport.aiGenerated === 'boolean' ? selectedReport.aiGenerated : selectedReport.aiGenerated?.isAiGenerated) ? 'Yes' : 'No'}
                         />
                       </ListItem>
@@ -1562,7 +1562,7 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
             </Avatar>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                AI Generated Report
+                Generated Report
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 {selectedAIReport && getStudentName(selectedAIReport)}
@@ -1684,7 +1684,7 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
               
               <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
                 <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, color: 'text.secondary' }}>
-                  AI Generation Details:
+                  Report Generation Details:
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   • Generated from: {(typeof selectedAIReport.aiGenerated === 'object' ? selectedAIReport.aiGenerated?.originalTranscription : null) || 'Audio recordings'}

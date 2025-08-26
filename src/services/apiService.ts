@@ -496,8 +496,9 @@ class ApiService {
   }
 
   // Report endpoints
-  async getReports(): Promise<ApiResponse<Report[]>> {
-    return this.request<Report[]>('/reports');
+  async getReports(includeCrossTeacher: boolean = false): Promise<ApiResponse<Report[]>> {
+    const queryParam = includeCrossTeacher ? '?includeCrossTeacher=true' : '';
+    return this.request<Report[]>(`/reports${queryParam}`);
   }
 
   async getAvailableTemplatesForStudent(studentId: string): Promise<ApiResponse<{

@@ -377,9 +377,13 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher', 'pa
     if (studentId) query.studentId = studentId;
     if (status) query.status = status;
 
-    // If teacher role, only show their reports
+    // If teacher role, only show their reports (unless they need all reports for cross-teacher checking)
     if (req.user.role === 'teacher') {
-      query.teacherId = req.user._id;
+      // Check if this is a request for cross-teacher duplicate checking
+      const includeCrossTeacher = req.query.includeCrossTeacher === 'true';
+      if (!includeCrossTeacher) {
+        query.teacherId = req.user._id;
+      }
     }
 
     // If parent role, only show reports for their children

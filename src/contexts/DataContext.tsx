@@ -519,7 +519,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
          const [studentsResponse, teachersResponse, reportsResponse, classesResponse, schoolResponse] = await Promise.allSettled([
            apiService.getStudents(),
            apiService.getTeachers(),
-           apiService.getReports(),
+           apiService.getReports(true), // Include cross-teacher reports for due calculation
            classesApiCall,
            schoolId ? apiService.getSchool(schoolId) : Promise.resolve({ success: false, data: null })
          ]);

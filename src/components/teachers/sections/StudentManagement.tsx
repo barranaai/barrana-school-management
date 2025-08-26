@@ -690,6 +690,20 @@ const StudentManagement: React.FC = () => {
           return reportStudentId === student._id;
         });
         
+        console.log('🔍 Frontend: Debug reports for student', {
+          student: student.name,
+          template: template.name,
+          totalReports: reports.length,
+          allStudentReports: allStudentReports.length,
+          studentReportsData: allStudentReports.map(r => ({
+            id: r._id,
+            teacherId: typeof r.teacherId === 'string' ? r.teacherId : r.teacherId?._id,
+            teacherName: typeof r.teacherId === 'string' ? 'Unknown' : `${r.teacherId?.firstName} ${r.teacherId?.lastName}`,
+            createdAt: r.createdAt,
+            status: r.status
+          }))
+        });
+        
         // Check if there's a report for the current period based on frequency
         const currentPeriodReport = getReportForCurrentPeriod(allStudentReports, template.reportFrequency, now);
         
