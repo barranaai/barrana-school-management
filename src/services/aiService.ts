@@ -38,16 +38,10 @@ class AIService {
   private baseUrl: string = 'https://api.openai.com/v1';
 
   constructor() {
-    // Try to get API key from environment or localStorage
-    this.apiKey = process.env.REACT_APP_OPENAI_API_KEY || 
-                   localStorage.getItem('openai_api_key') || 
-                   null;
+    // Frontend uses backend API, no direct OpenAI key needed
+    this.apiKey = 'backend-api'; // Placeholder to indicate backend usage
     
-    // Debug logging
-    console.log('AIService constructor - Environment check:');
-    console.log('process.env.REACT_APP_OPENAI_API_KEY:', process.env.REACT_APP_OPENAI_API_KEY ? 'SET' : 'NOT SET');
-    console.log('localStorage openai_api_key:', localStorage.getItem('openai_api_key') ? 'SET' : 'NOT SET');
-    console.log('Final apiKey:', this.apiKey ? 'CONFIGURED' : 'NOT CONFIGURED');
+    console.log('AIService initialized - Using backend API for AI operations');
   }
 
   // Initialize with API key
@@ -57,21 +51,14 @@ class AIService {
     console.log('AIService initialized with API key');
   }
 
-  // Set API key manually (for testing)
+  // Set API key manually (not needed for backend API usage)
   setApiKey(apiKey: string) {
-    this.apiKey = apiKey;
-    localStorage.setItem('openai_api_key', apiKey);
-    console.log('AIService API key set manually and saved to localStorage');
+    console.log('AIService: Using backend API, direct API key not required');
   }
 
   // Voice to Text Transcription
   async transcribeAudio(request: TranscriptionRequest): Promise<AIResponse> {
-    if (!this.apiKey) {
-      return {
-        success: false,
-        error: 'API key not configured. Please add your OpenAI API key in settings.'
-      };
-    }
+    // Using backend API, no frontend API key check needed
 
     try {
       // Create FormData for file upload
