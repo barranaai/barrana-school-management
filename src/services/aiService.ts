@@ -58,34 +58,40 @@ class AIService {
 
   // Voice to Text Transcription
   async transcribeAudio(request: TranscriptionRequest): Promise<AIResponse> {
-    // Using backend API, no frontend API key check needed
-
     try {
-      // Create FormData for file upload
-      const formData = new FormData();
-      formData.append('file', request.audioBlob, 'recording.webm');
-      formData.append('model', 'whisper-1');
-      formData.append('language', request.language || 'en');
-      formData.append('prompt', `This is a teacher's voice note about student ${request.studentName}. Please transcribe it clearly.`);
+      console.log('🎤 Starting transcription via backend API...');
       
-      const response = await fetch(`${this.baseUrl}/audio/transcriptions`, {
+      // Create FormData for file upload to backend
+      const formData = new FormData();
+      formData.append('audio', request.audioBlob, 'recording.webm');
+      formData.append('language', request.language || 'en');
+      if (request.studentName) {
+        formData.append('studentName', request.studentName);
+      }
+      
+      // Use backend API endpoint instead of calling OpenAI directly
+      const response = await fetch('/api/ai/process-voice', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-        },
         body: formData
       });
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('Transcription API error:', errorText);
         throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
-      return {
-        success: true,
-        data: result.text
-      };
+      
+      if (result.success && result.data) {
+        console.log('✅ Transcription successful:', result.data.transcription);
+        return {
+          success: true,
+          data: result.data.transcription
+        };
+      } else {
+        throw new Error(result.message || 'Transcription failed');
+      }
     } catch (error) {
       console.error('Transcription error:', error);
       return {
