@@ -8,12 +8,18 @@ const { logger } = require('../utils/logger');
 const router = express.Router();
 
 // Get all students for a school
-router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), async (req, res) => {
+router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher', 'parent'), async (req, res) => {
   try {
-    const query = { role: 'parent' }; // Students are stored as 'parent' role
+    let query = { role: 'parent' }; // Students are stored as 'parent' role
     
     // Filter by school for school admins and teachers
     if (req.user.role === 'school_admin' || req.user.role === 'teacher') {
+      query.schoolId = req.user.schoolId;
+    }
+    
+    // For parent users, only return their own children
+    if (req.user.role === 'parent') {
+      query.parentId = req.user._id;
       query.schoolId = req.user.schoolId;
     }
     
@@ -220,12 +226,73 @@ router.post('/', [
 
     const student = await User.create(studentData);
 
-    logger.info(`Student account created: ${email} at school ${req.user.schoolId}`);
+    logger.info(`Student account created: ${student.firstName} ${student.lastName} at school ${req.user.schoolId}`);
+
+    // Create or update parent account for login access
+    let parentAccount = null;
+    try {
+      // Check if a parent account already exists with this email
+      parentAccount = await User.findOne({ 
+        email: parentEmail.toLowerCase(),
+        role: 'parent',
+        schoolId: typeof req.user.schoolId === 'string' ? req.user.schoolId : req.user.schoolId._id
+      });
+
+      if (!parentAccount) {
+        // Create new parent account
+        const nameParts = parentName.split(' ');
+        const parentFirstName = nameParts[0] || 'Parent';
+        const parentLastName = nameParts.slice(1).join(' ') || 'User';
+        
+        parentAccount = await User.create({
+          firstName: parentFirstName,
+          lastName: parentLastName,
+          email: parentEmail.toLowerCase(),
+          password: 'Parent123!', // Default password - should be changed on first login
+          role: 'parent',
+          schoolId: typeof req.user.schoolId === 'string' ? req.user.schoolId : req.user.schoolId._id,
+          phone: parentPhone,
+          isActive: true,
+          isEmailVerified: false,
+          avatar: `${parentFirstName[0]}${parentLastName[0]}`.toUpperCase(),
+          // Store parent-specific info
+          parentName: parentName,
+          parentEmail: parentEmail.toLowerCase(),
+          parentPhone: parentPhone
+        });
+
+        logger.info(`Parent account created: ${parentEmail} for student ${student.firstName} ${student.lastName}`);
+        
+        // TODO: Send welcome email to parent with login credentials
+        // await emailService.sendParentWelcomeEmail({
+        //   parentEmail: parentEmail,
+        //   parentName: parentName,
+        //   studentName: `${student.firstName} ${student.lastName}`,
+        //   schoolName: school.name,
+        //   defaultPassword: 'Parent123!'
+        // });
+      } else {
+        logger.info(`Parent account already exists: ${parentEmail} - student added to existing parent`);
+      }
+
+      // Link student to parent account
+      student.parentId = parentAccount._id;
+      await student.save();
+
+    } catch (parentError) {
+      logger.error('Error creating parent account:', parentError);
+      // Don't fail student creation if parent account creation fails
+      // The parent can be created manually later
+    }
 
     res.status(201).json({
       success: true,
       data: student,
-      message: 'Student created successfully'
+      message: 'Student created successfully',
+      parentAccount: parentAccount ? {
+        email: parentAccount.email,
+        hasAccount: true
+      } : null
     });
   } catch (error) {
     logger.error('Error creating student:', error);

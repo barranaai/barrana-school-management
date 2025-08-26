@@ -584,7 +584,14 @@ const StudentManagement: React.FC = () => {
       const result = await addStudent(studentData);
       
       if (result.success) {
-        toast.success('Student added successfully!');
+        let successMessage = 'Student added successfully!';
+        
+        // Show additional info about parent account creation
+        if (result.parentAccount?.hasAccount) {
+          successMessage += ` Parent account created for ${result.parentAccount.email}`;
+        }
+        
+        toast.success(successMessage, { duration: 5000 });
         setOpenDialog(false);
         
         // Refresh the students list to ensure the new student appears

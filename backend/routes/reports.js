@@ -357,8 +357,8 @@ router.post('/temp-media', protect, tempUploadWithErrorHandling, async (req, res
 
 // @desc    Get all reports for a school
 // @route   GET /api/reports
-// @access  Private (school_admin, super_admin, teacher)
-router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), async (req, res) => {
+// @access  Private (school_admin, super_admin, teacher, parent)
+router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher', 'parent'), async (req, res) => {
   try {
     const { schoolId, teacherId, studentId, status, limit = 50, page = 1 } = req.query;
     const query = {};
@@ -378,6 +378,19 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), as
     // If teacher role, only show their reports
     if (req.user.role === 'teacher') {
       query.teacherId = req.user._id;
+    }
+
+    // If parent role, only show reports for their children
+    if (req.user.role === 'parent') {
+      // Find all children of this parent
+      const children = await User.find({
+        role: 'parent', // Students are stored as 'parent' role
+        parentId: req.user._id,
+        schoolId: req.user.schoolId
+      });
+      
+      const childrenIds = children.map(child => child._id);
+      query.studentId = { $in: childrenIds };
     }
 
     const reports = await Report.find(query)
