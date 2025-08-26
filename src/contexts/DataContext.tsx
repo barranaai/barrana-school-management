@@ -191,6 +191,15 @@ type StudentOperationResult = {
   error?: string;
   field?: string;
   message?: string;
+  errors?: Array<{
+    msg: string;
+    param: string;
+    location: string;
+  }>;
+  parentAccount?: {
+    email: string;
+    hasAccount: boolean;
+  };
 };
 
 // Context interface
