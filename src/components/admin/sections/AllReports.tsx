@@ -647,7 +647,7 @@ const AllReports: React.FC = () => {
         } else if (response.error?.includes('400') || response.error?.includes('validation')) {
           errorMessage = 'Invalid report data. Please check your content and try again.';
         } else if (response.error || response.message) {
-          errorMessage = response.error || response.message;
+          errorMessage = (response.error || response.message) as string;
         }
         
         toast.error(errorMessage);
