@@ -2587,7 +2587,7 @@ const StudentManagement: React.FC = () => {
                             </Box>
                           </Tooltip>
                         </TableCell>
-                        <TableCell align="center">
+                        <TableCell>
                           {studentDueReports.length > 0 ? (
                             <Tooltip 
                               title={
@@ -2614,11 +2614,11 @@ const StudentManagement: React.FC = () => {
                                 </Box>
                               }
                             >
-                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'center' }}>
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                                 <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main' }}>
                                   {studentDueReports.length} Due
                                 </Typography>
-                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', maxWidth: 200, justifyContent: 'center' }}>
+                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', maxWidth: 200 }}>
                                   {studentDueReports.map((dueReport: DueReport, index: number) => {
                                     let chipColor: 'error' | 'warning' | 'info' = 'error';
                                     let chipLabel: string = dueReport.frequency;
@@ -2670,7 +2670,7 @@ const StudentManagement: React.FC = () => {
                               </Box>
                             </Tooltip>
                           ) : (
-                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                               <Chip
                                 label="Up to date"
                                 size="small"
