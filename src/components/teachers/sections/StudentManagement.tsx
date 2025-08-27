@@ -327,19 +327,29 @@ const StudentManagement: React.FC = () => {
           dueDate.setMilliseconds(0);
           break;
         case 'Weekly':
-          // Due on configured day of the week
-          const targetDay = frequencyConfig.dueDay - 1; // Convert to 0-6
+          // Due on configured day of the week (match backend logic exactly)
+          const targetDay = frequencyConfig.dueDay; // Backend uses 0=Sunday, 1=Monday, ..., 6=Saturday (same as JS getDay())
           const currentDay = now.getDay();
-          const daysToAdd = (targetDay - currentDay + 7) % 7;
+          let daysToAdd = (targetDay - currentDay + 7) % 7;
+          
+          // If it's the target day today, check if we've passed the due time (like backend)
+          if (daysToAdd === 0) {
+            const dueTime = frequencyConfig.dueTime || '17:00';
+            const [dueHours, dueMinutes] = dueTime.split(':').map(Number);
+            const currentHours = now.getHours();
+            const currentMinutes = now.getMinutes();
+            
+            // If current time is after due time, move to next week (match backend logic)
+            if (currentHours > dueHours || (currentHours === dueHours && currentMinutes > dueMinutes)) {
+              daysToAdd = 7;
+            }
+          }
           
           // Ensure we're working with a fresh date object
           dueDate = new Date(now);
           dueDate.setDate(now.getDate() + daysToAdd);
           const [weeklyHours, weeklyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
           dueDate.setHours(weeklyHours, weeklyMinutes, 0, 0);
-          
-          // Don't move to next week if due date has passed - keep it as today's due date
-          // This allows the report to be marked as overdue for today
           break;
         case 'Bi-Weekly':
           // Rule-based bi-weekly calculation (simplified for frontend)
