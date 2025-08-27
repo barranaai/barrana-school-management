@@ -19,7 +19,7 @@ export interface NotificationResponse {
 }
 
 class NotificationService {
-  private baseUrl = '/api/communication';
+  private baseUrl = '/communication';
 
   private getHeaders(): HeadersInit {
     const token = localStorage.getItem('token');
