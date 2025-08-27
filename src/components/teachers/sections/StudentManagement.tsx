@@ -3201,6 +3201,7 @@ const StudentManagement: React.FC = () => {
                     const extractedKeyPoints = extractKeyPointsFromTemplate(template.content || '');
                     setKeyPoints(extractedKeyPoints);
                     console.log('🔍 Template selected:', template.name, 'Key points extracted:', extractedKeyPoints);
+                    console.log('🔍 Template content:', template.content);
                   }
                 }}
                 label="Report Template"
@@ -3403,6 +3404,7 @@ const StudentManagement: React.FC = () => {
 
           <Stack spacing={3}>
             {/* Key Points Section */}
+            {console.log('🔍 Key Points Debug:', { selectedTemplate: selectedTemplate?.name, keyPointsLength: keyPoints.length, keyPoints })}
             {selectedTemplate && keyPoints.length > 0 && (
               <Paper sx={{ p: 3, bgcolor: 'primary.50', borderRadius: 2, border: '1px solid', borderColor: 'primary.200' }}>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
