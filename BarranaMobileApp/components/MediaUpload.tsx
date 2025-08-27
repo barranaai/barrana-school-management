@@ -169,38 +169,38 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
 
   // Upload files
   const uploadFiles = async () => {
-    if (!reportId || mediaFiles.length === 0) return;
+    if (mediaFiles.length === 0) {
+      Alert.alert('Info', 'No files selected to upload');
+      return;
+    }
 
     setIsUploading(true);
 
     try {
-      const formData = new FormData();
+      console.log('📱 Starting media upload...', { reportId, filesCount: mediaFiles.length });
       
-      for (let i = 0; i < mediaFiles.length; i++) {
-        const file = mediaFiles[i];
-        const response = await fetch(file.uri);
-        const blob = await response.blob();
-        
-        formData.append('media', blob, file.name);
-      }
-
-      const response = await apiService.uploadReportMedia(reportId, formData);
+      // Pass the media files directly to the API service
+      const response = await apiService.uploadReportMedia(reportId || 'temp_upload', mediaFiles);
 
       if (response.success) {
-        setUploadedMedia(prev => [...prev, ...response.data]);
+        console.log('📱 Upload successful:', response.data);
+        
+        // Update uploaded media state
+        setUploadedMedia(prev => [...prev, ...(response.data || [])]);
         setMediaFiles([]);
         
         if (onMediaUploaded) {
-          onMediaUploaded(response.data);
+          onMediaUploaded(response.data || []);
         }
 
-        Alert.alert('Success', `${mediaFiles.length} file(s) uploaded successfully!`);
+        Alert.alert('Success', response.message || `${mediaFiles.length} file(s) uploaded successfully!`);
       } else {
         throw new Error(response.message || 'Upload failed');
       }
     } catch (error) {
-      console.error('Upload error:', error);
-      Alert.alert('Error', 'Failed to upload files. Please try again.');
+      console.error('📱 Upload error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload files. Please try again.';
+      Alert.alert('Upload Error', errorMessage);
     } finally {
       setIsUploading(false);
     }

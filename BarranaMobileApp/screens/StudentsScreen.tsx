@@ -13,8 +13,9 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
-  Picker,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import apiService, { User } from '../apiService';
@@ -157,6 +158,15 @@ interface CreateReportData {
     originalTranscription?: string;
     generationModel?: string;
   };
+  attachments?: Array<{
+    filename: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    url: string;
+    uploadedAt: string;
+    isTemporary: boolean;
+  }>;
 }
 
 const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
@@ -195,27 +205,77 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
   
   // School data state
   const [schoolData, setSchoolData] = useState<any>(null);
+  const [teacherData, setTeacherData] = useState<any>(null);
+  
+  // Audio playback state
+  const [currentSound, setCurrentSound] = useState<Audio.Sound | null>(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
+  
+  // Debug state
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  
+  // Debug helper function
+  const addDebugLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = `[${timestamp}] ${message}`;
+    setDebugLogs(prev => [logEntry, ...prev].slice(0, 100)); // Keep last 100 logs
+    console.log(logEntry); // Also log to console
+  };
+
+  // Load teacher data when component mounts
+  React.useEffect(() => {
+    const initializeData = async () => {
+      try {
+        await Promise.all([
+          loadStudents(),
+          loadReportTemplates(), 
+          loadSchoolData(),
+          loadTeacherData()
+        ]);
+      } catch (error) {
+        addDebugLog(`❌ Error in initial data loading: ${error}`);
+      }
+    };
+    
+    initializeData();
+  }, []);
+
+  // Recalculate due reports when templates are loaded
+  React.useEffect(() => {
+    if (reportTemplates.length > 0 && students.length > 0 && reports.length > 0) {
+      addDebugLog('📱 Templates loaded, recalculating due reports with backend API...');
+      const calculateAsync = async () => {
+        try {
+          await calculateDueReports(students, reports);
+        } catch (error) {
+          addDebugLog(`📱 Error calculating due reports: ${error}`);
+        }
+      };
+      calculateAsync();
+    }
+  }, [reportTemplates.length, students.length, reports.length]);
 
   const loadStudents = async () => {
     setLoading(true);
     try {
       // Get students assigned to this teacher through their classes
       const studentsData = await apiService.getTeacherStudents(user.id);
-      console.log('📱 Students data received:', studentsData);
-      console.log('📱 Students data length:', studentsData?.length);
-      console.log('📱 First student sample:', studentsData?.[0]);
+      addDebugLog(`📱 Students data received: ${studentsData?.length || 0} students`);
+      addDebugLog(`📱 First student sample: ${studentsData?.[0] ? `${studentsData[0].firstName} ${studentsData[0].lastName} (Grade: ${studentsData[0].studentGrade || studentsData[0].grade})` : 'None'}`);
       
       // Validate and clean students data
       const validStudents = studentsData?.filter(student => 
         student && typeof student === 'object' && student._id
       ) || [];
       
-      console.log('📱 Valid students count:', validStudents.length);
+      addDebugLog(`📱 Valid students count: ${validStudents.length}`);
       setStudents(validStudents);
       
-      // Get reports for these students
-      const reportsData = await apiService.getTeacherReports(user.id);
-      console.log('📱 Reports data received:', reportsData);
+      // Get ALL reports for proper cross-teacher due calculation (like web app)
+      const reportsData = await apiService.getReports(true); // Include cross-teacher reports
+      addDebugLog(`📱 Reports data received (including cross-teacher): ${reportsData?.length || 0} reports`);
       setReports(reportsData || []);
       
       // Calculate due reports will be called after templates are loaded
@@ -230,26 +290,54 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
 
   const loadReportTemplates = async () => {
     try {
-      console.log('📋 Loading report templates...');
+      addDebugLog('📋 Loading report templates...');
       const templatesData = await apiService.getReportTemplates();
-      console.log('📋 Templates received:', templatesData);
+      addDebugLog(`📋 Templates received: ${templatesData?.length || 0} templates`);
+      if (templatesData?.length > 0) {
+        const templatesByGrade = templatesData.reduce((acc: any, template: any) => {
+          acc[template.grade] = (acc[template.grade] || 0) + 1;
+          return acc;
+        }, {});
+        addDebugLog(`📋 Templates by grade: ${JSON.stringify(templatesByGrade)}`);
+      }
       setReportTemplates(templatesData || []);
     } catch (error) {
-      console.error('Error loading report templates:', error);
+      addDebugLog(`❌ Error loading report templates: ${error}`);
     }
   };
 
   const loadSchoolData = async () => {
     try {
-      console.log('🏫 Loading school data...');
+      addDebugLog('🏫 Loading school data...');
       const schoolId = typeof user.schoolId === 'string' ? user.schoolId : user.schoolId?._id;
       if (schoolId) {
         const schoolData = await apiService.getSchool(schoolId);
-        console.log('🏫 School data received:', schoolData);
+        addDebugLog(`🏫 School data received: ${schoolData ? 'Success' : 'Failed'}`);
+        if (schoolData?.settings?.reportFrequencies) {
+          const frequencies = Object.keys(schoolData.settings.reportFrequencies);
+          addDebugLog(`🏫 School frequencies: ${frequencies.join(', ')}`);
+        }
         setSchoolData(schoolData);
+      } else {
+        addDebugLog('🏫 No school ID found');
       }
     } catch (error) {
-      console.error('Error loading school data:', error);
+      addDebugLog(`❌ Error loading school data: ${error}`);
+    }
+  };
+
+  const loadTeacherData = async () => {
+    try {
+      addDebugLog('👨‍🏫 Loading teacher permissions...');
+      const response = await apiService.getCurrentTeacher(user.id);
+      if (response.success && response.data) {
+        addDebugLog(`👨‍🏫 Teacher data loaded: canEmailReports=${response.data.canEmailReports}`);
+        setTeacherData(response.data);
+      } else {
+        addDebugLog(`👨‍🏫 Failed to load teacher data: ${response.error}`);
+      }
+    } catch (error) {
+      addDebugLog(`👨‍🏫 Error loading teacher data: ${error}`);
     }
   };
 
@@ -417,6 +505,78 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
     }
   };
 
+  // Audio playback functions
+  const playRecording = async (recording: VoiceRecording) => {
+    try {
+      // Stop any currently playing audio
+      if (currentSound) {
+        await currentSound.unloadAsync();
+        setCurrentSound(null);
+        setIsPlayingAudio(false);
+        setPlayingRecordingId(null);
+      }
+
+      console.log('🎵 Playing recording:', recording.id);
+      addDebugLog(`🎵 Playing recording: ${recording.id}`);
+      
+      if (!recording.uri) {
+        throw new Error('Recording URI is empty or null');
+      }
+      
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: recording.uri },
+        { shouldPlay: true }
+      );
+      
+      setCurrentSound(sound);
+      setIsPlayingAudio(true);
+      setPlayingRecordingId(recording.id);
+      
+      console.log('✅ Audio playback started successfully');
+      addDebugLog('✅ Audio playback started successfully');
+      
+      // Handle when audio finishes playing
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          console.log('🎵 Audio playback finished');
+          addDebugLog('🎵 Audio playback finished');
+          setIsPlayingAudio(false);
+          setPlayingRecordingId(null);
+          setCurrentSound(null);
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error playing audio:', error);
+      addDebugLog(`❌ Error playing audio: ${error}`);
+      Alert.alert('Playback Error', `Failed to play recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const stopAudioPlayback = async () => {
+    try {
+      if (currentSound) {
+        await currentSound.unloadAsync();
+        setCurrentSound(null);
+        setIsPlayingAudio(false);
+        setPlayingRecordingId(null);
+        console.log('🎵 Audio playback stopped');
+        addDebugLog('🎵 Audio playback stopped');
+      }
+    } catch (error) {
+      console.error('❌ Error stopping audio:', error);
+      addDebugLog(`❌ Error stopping audio: ${error}`);
+    }
+  };
+
+  // Cleanup audio on component unmount
+  React.useEffect(() => {
+    return () => {
+      if (currentSound) {
+        currentSound.unloadAsync();
+      }
+    };
+  }, [currentSound]);
+
   const generateReportFromTranscription = async () => {
     if (!selectedStudent || !selectedTemplate || !transcription.trim()) {
       Alert.alert('Error', 'Please transcribe audio first');
@@ -424,12 +584,13 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
     }
     
     setIsGeneratingReport(true);
+    addDebugLog('🤖 Starting AI report generation...');
     
     try {
-      console.log('📱 Generating report with AI...');
-      console.log('📱 Student:', getStudentFullName(selectedStudent));
-      console.log('📱 Template:', selectedTemplate.name);
-      console.log('📱 Transcription length:', transcription.length);
+      addDebugLog(`📱 Student: ${getStudentFullName(selectedStudent)}`);
+      addDebugLog(`📱 Template: ${selectedTemplate.name} (ID: ${selectedTemplate._id})`);
+      addDebugLog(`📱 Transcription length: ${transcription.length} characters`);
+      addDebugLog(`📱 Grade: ${selectedStudent.studentGrade || selectedStudent.grade || 'N/A'}`);
       
       const response = await apiService.generateReport({
         transcription,
@@ -439,20 +600,25 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
         templateId: selectedTemplate._id // Add templateId for dynamic keyword generation
       });
 
-      console.log('📱 AI Report generation response:', response);
+      addDebugLog(`📱 AI Report generation response: ${JSON.stringify(response)}`);
 
       if (response.success && response.data) {
         // The response.data should now be a formatted string, not JSON
         setReportContent(response.data);
+        addDebugLog(`✅ Report generated successfully! Content length: ${response.data.length} characters`);
         Alert.alert('Success', 'Report generated successfully! You can now review and edit the content.');
       } else {
+        addDebugLog(`❌ Report generation failed: ${response.error || 'Unknown error'}`);
         throw new Error(response.error || 'Report generation failed');
       }
     } catch (error) {
-      console.error('📱 Report generation error:', error);
-      Alert.alert('Error', `Report generation failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addDebugLog(`💥 Report generation error: ${errorMessage}`);
+      addDebugLog(`💥 Error details: ${JSON.stringify(error)}`);
+      Alert.alert('Report Generation Failed', `${errorMessage}. Please check debug logs for details.`);
     } finally {
       setIsGeneratingReport(false);
+      addDebugLog('🏁 Report generation process completed');
     }
   };
 
@@ -659,24 +825,83 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
     return targetDate;
   };
 
+  // Fallback function for when school data is not available
+  const getFallbackDueDate = (frequency: string, currentDate: Date): Date => {
+    const now = new Date(currentDate);
+    let dueDate = new Date(now);
+    
+    switch (frequency) {
+      case 'Daily':
+        // Due today at 5 PM
+        dueDate.setHours(17, 0, 0, 0);
+        break;
+      case 'Weekly':
+        // Due at end of current week (Sunday)
+        const daysUntilSunday = (7 - now.getDay()) % 7;
+        dueDate.setDate(now.getDate() + daysUntilSunday);
+        dueDate.setHours(17, 0, 0, 0);
+        break;
+      case 'Bi-Weekly':
+        // Due in 14 days
+        dueDate.setDate(now.getDate() + 14);
+        dueDate.setHours(17, 0, 0, 0);
+        break;
+      case 'Monthly':
+        // Due at end of current month
+        dueDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        dueDate.setHours(17, 0, 0, 0);
+        break;
+      case 'Bi-Monthly':
+        // Due in 2 months
+        dueDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+        dueDate.setHours(17, 0, 0, 0);
+        break;
+      case 'Quarterly':
+        // Due at end of current quarter
+        const currentQuarter = Math.floor(now.getMonth() / 3);
+        dueDate = new Date(now.getFullYear(), (currentQuarter + 1) * 3, 0);
+        dueDate.setHours(17, 0, 0, 0);
+        break;
+      case 'Annually':
+        // Due at end of current year
+        dueDate = new Date(now.getFullYear(), 11, 31);
+        dueDate.setHours(17, 0, 0, 0);
+        break;
+      default:
+        // Default to 30 days
+        dueDate.setDate(now.getDate() + 30);
+        dueDate.setHours(17, 0, 0, 0);
+        break;
+    }
+    
+    return dueDate;
+  };
+
   // Helper function to calculate due date for current period
   const calculateDueDateForFrequency = (frequency: string, currentDate: Date): Date => {
-    const now = new Date(currentDate);
+    try {
+      const now = new Date(currentDate);
+      
+      // Get school settings for frequency configuration (same as backend logic)
+      const schoolSettings = schoolData?.settings || {};
+      const frequencyConfig = schoolSettings.reportFrequencies?.[frequency];
+      const workingDays = schoolSettings.calendar?.workingDays || {};
+      const holidays = schoolSettings.calendar?.holidays || [];
+      
+      // Add null checks for safety
+      if (!schoolData || !schoolSettings) {
+        console.log('📱 No school data available, using fallback calculation');
+        return getFallbackDueDate(frequency, now);
+      }
     
-    // Get school settings for frequency configuration (same as backend logic)
-    const schoolSettings = schoolData?.settings || {};
-    const frequencyConfig = schoolSettings.reportFrequencies?.[frequency];
-    const workingDays = schoolSettings.calendar?.workingDays || {};
-    const holidays = schoolSettings.calendar?.holidays || [];
-    
-    console.log('📱 Mobile calculateDueDateForFrequency', {
-      frequency,
-      currentDate: currentDate.toISOString(),
-      frequencyConfig,
-      enabled: frequencyConfig?.enabled,
-      workingDays,
-      holidaysCount: holidays.length
-    });
+      console.log('📱 Mobile calculateDueDateForFrequency', {
+        frequency,
+        currentDate: currentDate.toISOString(),
+        frequencyConfig,
+        enabled: frequencyConfig?.enabled,
+        workingDays,
+        holidaysCount: holidays.length
+      });
     
     if (frequencyConfig?.enabled) {
       // Use school's frequency configuration (match backend logic exactly)
@@ -940,126 +1165,131 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
       default:
         return now;
     }
+    } catch (error) {
+      console.error('📱 Error in calculateDueDateForFrequency:', error);
+      // Return fallback calculation on error
+      return getFallbackDueDate(frequency, currentDate);
+    }
   };
 
-  const calculateDueReports = (studentsData: Student[], reportsData: StudentReport[]) => {
-    const due: DueReport[] = [];
-    
-    // Get current time in school timezone
-    const schoolSettings = schoolData?.settings || {};
-    const timezone = schoolSettings.timezone || 'UTC';
-    const now = new Date(new Date().toLocaleString("en-US", {timeZone: timezone}));
-    
-    console.log('📱 Calculating due reports for mobile...');
-    console.log('📱 Students count:', studentsData.length);
-    console.log('📱 Reports count:', reportsData.length);
-    console.log('📱 Templates count:', reportTemplates.length);
-    
-    studentsData.forEach(student => {
-      const studentReports = reportsData.filter(r => r.studentId === student._id);
-      console.log(`📱 Student ${getStudentFullName(student)}: ${studentReports.length} reports`);
+  const calculateDueReports = async (studentsData: Student[], reportsData: StudentReport[]) => {
+    try {
+      const dueReportsArray: DueReport[] = [];
       
-      // Find templates for this student's grade
-      const studentGrade = student.studentGrade || student.grade || '';
-      const gradeTemplates = reportTemplates.filter(template => 
-        template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
-      );
+      // Safety checks
+      if (!studentsData || !Array.isArray(studentsData)) {
+        console.log('📱 No valid students data for due reports calculation');
+        return [];
+      }
       
-      console.log(`📱 Student ${getStudentFullName(student)} (${studentGrade}): ${gradeTemplates.length} matching templates`);
+      if (!reportTemplates || !Array.isArray(reportTemplates)) {
+        console.log('📱 No report templates available for due reports calculation');
+        return [];
+      }
       
-      gradeTemplates.forEach(template => {
-        // Check if there's a report for the current period based on frequency
-        const currentPeriodReport = getReportForCurrentPeriod(studentReports, template.reportFrequency, now);
+      addDebugLog('📱 Starting backend API due status calculations...');
+      addDebugLog(`📱 Students count: ${studentsData.length}`);
+      addDebugLog(`📱 Templates count: ${reportTemplates.length}`);
+      addDebugLog(`📱 Current user: ${user?.firstName} ${user?.lastName} (ID: ${user?.id})`);
+      addDebugLog(`📱 School data available: ${schoolData ? 'Yes' : 'No'}`);
+      
+      // Use backend API to check due status for each student-template combination
+      for (const student of studentsData) {
+        const studentGrade = student.studentGrade || student.grade || '';
+        const gradeTemplates = reportTemplates.filter(template => 
+          template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
+        );
         
-        if (currentPeriodReport) {
-          // Report exists for current period - check if it's by another teacher
-          const currentTeacherId = user?._id;
-          const reportTeacherId = currentPeriodReport.teacherId;
-          
-          const isReportByAnotherTeacher = reportTeacherId && reportTeacherId !== currentTeacherId;
-          
-          if (isReportByAnotherTeacher) {
-            // Report already generated by another teacher for this period - not due for current teacher
-            console.log(`📱 ${getStudentFullName(student)} - ${template.name}: Report already generated by another teacher (${reportTeacherId})`);
-            return; // Skip this template for current teacher
-          }
-          
-          // Report exists for current period by current teacher - check status
-          if (currentPeriodReport.status === 'sent' || currentPeriodReport.status === 'approved') {
-            console.log(`✅ ${getStudentFullName(student)} - ${template.name}: Report sent for current period`);
-            // Not due - report is sent
-          } else {
-            // Report exists but not sent (draft, completed, review, archived)
-            // For any frequency, if report exists for the current period and was created today, don't show as due
-            const reportDate = new Date(currentPeriodReport.createdAt);
-            const today = new Date();
-            const isReportFromToday = reportDate.toDateString() === today.toDateString();
+        addDebugLog(`📱 Student ${getStudentFullName(student)} (${studentGrade}): ${gradeTemplates.length} matching templates`);
+        
+        for (const template of gradeTemplates) {
+          try {
+            addDebugLog(`📱 Checking due status for ${getStudentFullName(student)} - ${template.name} (${template.reportFrequency})`);
+            // Use backend API for accurate due status calculation
+            const dueStatusResponse = await apiService.checkDueStatus(student._id, template._id);
+            addDebugLog(`📱 Due status response for ${getStudentFullName(student)} - ${template.name}: ${JSON.stringify(dueStatusResponse)}`);
             
-            if (isReportFromToday) {
-              console.log(`✅ ${getStudentFullName(student)} - ${template.name}: ${template.reportFrequency} report exists for current period (created today)`);
-              // Don't add to due reports - report exists for current period
-              return;
-            }
-            
-            const daysSinceCreation = Math.floor((now.getTime() - new Date(currentPeriodReport.createdAt).getTime()) / (1000 * 60 * 60 * 24));
-            
-            // Map the status to our due report status
-            let reportStatus: 'draft' | 'completed' | 'sent' | 'missing';
-            if (currentPeriodReport.status === 'draft') {
-              reportStatus = 'draft';
-            } else if (currentPeriodReport.status === 'completed' || currentPeriodReport.status === 'review') {
-              reportStatus = 'completed';
+            if (dueStatusResponse.success && dueStatusResponse.data) {
+              const { due, hasExistingReportInPeriod, existingReportInPeriod, nextDueDate } = dueStatusResponse.data;
+              
+              addDebugLog(`📱 ${getStudentFullName(student)} - ${template.name}: due=${due}, hasExisting=${hasExistingReportInPeriod}, nextDue=${nextDueDate}`);
+              
+              // Check if report was generated by another teacher
+              if (hasExistingReportInPeriod && existingReportInPeriod) {
+                const currentTeacherId = user?.id;
+                const reportTeacherId = existingReportInPeriod.teacherName;
+                const currentTeacherName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+                
+                addDebugLog(`📱 ${getStudentFullName(student)} - ${template.name}: Existing report by ${reportTeacherId}, current teacher: ${currentTeacherName}`);
+                
+                if (reportTeacherId && reportTeacherId !== currentTeacherName) {
+                  addDebugLog(`📱 ${getStudentFullName(student)} - ${template.name}: Report exists by another teacher (${reportTeacherId})`);
+                  continue; // Skip - not due for current teacher
+                }
+              }
+              
+              if (due) {
+                // Calculate days overdue
+                const dueDate = nextDueDate ? new Date(nextDueDate) : new Date();
+                const now = new Date();
+                const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+                
+                // Determine report status
+                let reportStatus: 'draft' | 'completed' | 'sent' | 'missing' = 'missing';
+                if (hasExistingReportInPeriod && existingReportInPeriod) {
+                  if (existingReportInPeriod.status === 'draft') {
+                    reportStatus = 'draft';
+                  } else if (existingReportInPeriod.status === 'completed' || existingReportInPeriod.status === 'review') {
+                    reportStatus = 'completed';
+                  } else if (existingReportInPeriod.status === 'sent' || existingReportInPeriod.status === 'approved') {
+                    continue; // Skip sent/approved reports
+                  }
+                }
+                
+                dueReportsArray.push({
+                  studentId: student._id,
+                  studentName: getStudentFullName(student),
+                  templateName: template.name,
+                  frequency: template.reportFrequency,
+                  dueDate: dueDate.toISOString(),
+                  daysOverdue: Math.max(0, daysOverdue),
+                  templateId: template._id,
+                  reportStatus: reportStatus,
+                  reportId: existingReportInPeriod?.reportId || null
+                });
+                
+                addDebugLog(`⚠️ ${getStudentFullName(student)} - ${template.name}: Due (${Math.max(0, daysOverdue)} days overdue) - Status: ${reportStatus}`);
+              } else {
+                addDebugLog(`✅ ${getStudentFullName(student)} - ${template.name}: Not due yet`);
+              }
             } else {
-              reportStatus = 'draft'; // Default for other statuses
+              addDebugLog(`❌ ${getStudentFullName(student)} - ${template.name}: API call failed: ${JSON.stringify(dueStatusResponse)}`);
             }
-            
-            // Add draft reports even if created today, but only add other status reports if they're older than 0 days
-            if (currentPeriodReport.status === 'draft' || daysSinceCreation > 0) {
-              due.push({
-                studentId: student._id,
-                studentName: getStudentFullName(student),
-                templateName: template.name,
-                frequency: template.reportFrequency,
-                dueDate: new Date(currentPeriodReport.createdAt).toISOString(),
-                daysOverdue: daysSinceCreation,
-                templateId: template._id,
-                reportStatus: reportStatus,
-                reportId: currentPeriodReport._id
-              });
-              console.log(`⚠️ ${getStudentFullName(student)} - ${template.name}: Report exists but not sent (${currentPeriodReport.status}) - ${daysSinceCreation} days old`);
-            } else {
-              console.log(`📝 ${getStudentFullName(student)} - ${template.name}: Report created today, not overdue yet`);
-            }
-          }
-        } else {
-          // No report for current period - calculate due date
-          const dueDate = calculateDueDateForFrequency(template.reportFrequency, now);
-          const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-          
-          if (daysOverdue >= 0) {
-            due.push({
-              studentId: student._id,
-              studentName: getStudentFullName(student),
-              templateName: template.name,
-              frequency: template.reportFrequency,
-              dueDate: dueDate.toISOString(),
-              daysOverdue,
-              templateId: template._id,
-              reportStatus: 'missing',
-              reportId: null
-            });
-            console.log(`❌ ${getStudentFullName(student)} - ${template.name}: No report for current period (${daysOverdue} days overdue)`);
-          } else {
-            console.log(`⏰ ${getStudentFullName(student)} - ${template.name}: Not due yet (${Math.abs(daysOverdue)} days until due)`);
+          } catch (error) {
+            addDebugLog(`📱 Error checking due status for ${getStudentFullName(student)} - ${template.name}: ${error}`);
+            addDebugLog(`📱 Error details: ${JSON.stringify(error)}`);
+            // Continue with next template on error
           }
         }
-      });
-    });
+      }
     
-    // Sort by most overdue first
-    due.sort((a, b) => b.daysOverdue - a.daysOverdue);
-    setDueReports(due);
-    console.log(`📱 Final due reports count: ${due.length}`);
+      // Sort by most overdue first
+      dueReportsArray.sort((a, b) => b.daysOverdue - a.daysOverdue);
+      setDueReports(dueReportsArray);
+      addDebugLog(`📱 Final due reports count: ${dueReportsArray.length}`);
+      
+      if (dueReportsArray.length > 0) {
+        addDebugLog(`📱 Due reports details: ${dueReportsArray.map(d => `${d.studentName} - ${d.templateName} (${d.frequency})`).join(', ')}`);
+      } else {
+        addDebugLog(`📱 No due reports found - all students are up to date!`);
+      }
+      
+      return dueReportsArray;
+    } catch (error) {
+      addDebugLog(`📱 Error calculating due reports: ${error}`);
+      setDueReports([]);
+      return [];
+    }
   };
 
   const getStudentReports = (studentId: string) => {
@@ -1139,25 +1369,11 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
   const getDueTemplatesForStudent = (student: Student) => {
     if (!student || !reportTemplates.length) return [];
     
-    const studentGrade = student.studentGrade || student.grade || '';
-    const gradeTemplates = reportTemplates.filter(template => 
-      template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
-    );
-    
-    // Get existing reports for current period
-    const existingReports = getExistingReportInfo(student) || [];
-    const existingFrequencies = existingReports.map(r => r.frequency);
-    
-    // Filter out templates that already have reports
-    const availableTemplates = gradeTemplates.filter(template => 
-      !existingFrequencies.includes(template.reportFrequency)
-    );
-
-    // From the available templates, find which ones are actually due
+    // From the due reports calculated by backend API, find which templates are due for this student
     const studentDueReports = getStudentDueReports(student._id);
     const dueTemplateIds = studentDueReports.map(dr => dr.templateId);
     
-    return availableTemplates.filter(template => 
+    return reportTemplates.filter(template => 
       dueTemplateIds.includes(template._id)
     );
   };
@@ -1321,7 +1537,8 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
           mimeType: media.mimeType,
           size: media.size,
           url: media.url,
-          uploadedAt: media.uploadedAt
+          uploadedAt: media.uploadedAt || new Date().toISOString(),
+          isTemporary: media.isTemporary || false
         }))
       };
 
@@ -1424,7 +1641,8 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
           mimeType: media.mimeType,
           size: media.size,
           url: media.url,
-          uploadedAt: media.uploadedAt
+          uploadedAt: media.uploadedAt || new Date().toISOString(),
+          isTemporary: media.isTemporary || false
         }))
       };
 
@@ -1561,18 +1779,36 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
   };
 
   useEffect(() => {
-    loadStudents();
-    loadReportTemplates();
-    loadSchoolData();
+    const initializeData = async () => {
+      try {
+        await Promise.all([
+          loadStudents(),
+          loadReportTemplates(),
+          loadSchoolData()
+        ]);
+      } catch (error) {
+        console.error('📱 Error initializing student screen data:', error);
+        Alert.alert('Error', 'Failed to load application data. Please try again.');
+      }
+    };
+    
+    initializeData();
   }, []);
 
   // Recalculate due reports when templates are loaded
   useEffect(() => {
-    if (reportTemplates.length > 0 && students.length > 0 && reports.length > 0 && schoolData) {
-      console.log('📱 Templates and school data loaded, recalculating due reports...');
-      calculateDueReports(students, reports);
+    if (reportTemplates.length > 0 && students.length > 0 && reports.length > 0) {
+      addDebugLog('📱 Templates loaded, recalculating due reports with backend API...');
+      const calculateAsync = async () => {
+        try {
+          await calculateDueReports(students, reports);
+        } catch (error) {
+          addDebugLog(`📱 Error calculating due reports: ${error}`);
+        }
+      };
+      calculateAsync();
     }
-  }, [reportTemplates.length, students.length, reports.length, schoolData]);
+  }, [reportTemplates.length, students.length, reports.length]);
 
   if (loading) {
     return (
@@ -1591,7 +1827,17 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Students</Text>
-        <View style={styles.headerRight} />
+        <TouchableOpacity 
+          onPress={() => setShowDebugPanel(true)} 
+          style={styles.debugButton}
+        >
+          <Ionicons name="bug" size={24} color="#667eea" />
+          {debugLogs.length > 0 && (
+            <View style={styles.debugBadge}>
+              <Text style={styles.debugBadgeText}>{debugLogs.length}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView 
@@ -1669,36 +1915,61 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                         <Text style={styles.statusText}>{studentStatus.status}</Text>
                       </View>
                     )}
-                    {studentDueReports.length > 0 && (
+                    {/* Enhanced Due Reports Display - matching web app */}
+                    {studentDueReports.length > 0 ? (
                       <View style={styles.dueReportsContainer}>
-                        {studentDueReports.slice(0, 2).map((dueReport, index) => {
-                          let badgeColor = '#f44336'; // Default red for missing
-                          let iconName = 'warning';
-                          
-                          if (dueReport.reportStatus === 'draft') {
-                            badgeColor = '#ff9800'; // Orange for draft
-                            iconName = 'create';
-                          } else if (dueReport.reportStatus === 'completed') {
-                            badgeColor = '#2196f3'; // Blue for completed
-                            iconName = 'checkmark-circle';
-                          }
-                          
-                          return (
-                            <View key={dueReport.templateId} style={[styles.dueBadge, { backgroundColor: badgeColor }]}>
-                              <Ionicons name={iconName as any} size={10} color="white" />
-                              <Text style={styles.dueBadgeText}>
-                                {dueReport.reportStatus === 'draft' ? 'Draft' : 
-                                 dueReport.reportStatus === 'completed' ? 'Ready' : 
-                                 dueReport.daysOverdue > 0 ? `${dueReport.daysOverdue}d` : 'Due'}
-                              </Text>
-                            </View>
-                          );
-                        })}
-                        {studentDueReports.length > 2 && (
-                          <View style={[styles.dueBadge, { backgroundColor: '#f44336' }]}>
-                            <Text style={styles.dueBadgeText}>+{studentDueReports.length - 2}</Text>
-                          </View>
-                        )}
+                        <Text style={styles.dueReportsLabel}>
+                          {studentDueReports.length} Due Report{studentDueReports.length > 1 ? 's' : ''}
+                        </Text>
+                        <View style={styles.dueChipsWrapper}>
+                          {studentDueReports.map((dueReport, index) => {
+                            let chipColor = '#f44336'; // Default red for missing
+                            let iconName = 'warning';
+                            let chipLabel = dueReport.frequency;
+                            let chipBorderStyle = {};
+                            
+                            if (dueReport.reportStatus === 'draft') {
+                              chipColor = '#ff9800'; // Orange for draft
+                              iconName = 'create';
+                              chipLabel = `${dueReport.frequency} (Draft)`;
+                              chipBorderStyle = { borderWidth: 1, borderColor: '#ff9800', backgroundColor: '#fff3e0' };
+                            } else if (dueReport.reportStatus === 'completed') {
+                              chipColor = '#2196f3'; // Blue for completed
+                              iconName = 'checkmark-circle';
+                              chipLabel = `${dueReport.frequency} (Ready)`;
+                              chipBorderStyle = { borderWidth: 1, borderColor: '#2196f3', backgroundColor: '#e3f2fd' };
+                            } else {
+                              chipColor = '#f44336'; // Red for missing
+                              iconName = 'warning';
+                              chipLabel = `${dueReport.frequency} (${dueReport.daysOverdue}d)`;
+                              chipBorderStyle = { backgroundColor: chipColor };
+                            }
+                            
+                            return (
+                              <View key={dueReport.templateId} style={[styles.enhancedDueChip, chipBorderStyle]}>
+                                <Ionicons 
+                                  name={iconName as any} 
+                                  size={10} 
+                                  color={dueReport.reportStatus === 'draft' || dueReport.reportStatus === 'completed' ? chipColor : 'white'} 
+                                />
+                                <Text style={[
+                                  styles.enhancedDueChipText,
+                                  { color: dueReport.reportStatus === 'draft' || dueReport.reportStatus === 'completed' ? chipColor : 'white' }
+                                ]}>
+                                  {chipLabel}
+                                </Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.upToDateContainer}>
+                        <View style={styles.upToDateChip}>
+                          <Ionicons name="checkmark-circle" size={10} color="#4caf50" />
+                          <Text style={styles.upToDateText}>Up to date</Text>
+                        </View>
+                        <Text style={styles.noReportsDueText}>No reports due</Text>
                       </View>
                     )}
                   </View>
@@ -1732,63 +2003,100 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                 </View>
                 
                 <View style={styles.cardActions}>
+                  {/* Enhanced Generate Report Button - matching web app */}
                   <TouchableOpacity 
                     style={[
-                      styles.generateReportButton,
+                      styles.enhancedGenerateButton,
                       (() => {
                         const availableTemplates = getAvailableTemplatesForStudent(student);
                         const dueTemplates = getDueTemplatesForStudent(student);
+                        const hasCurrentReport = hasCurrentPeriodReport(student);
                         
-                        if (availableTemplates.length === 0) {
-                          return styles.generateReportButtonDisabled;
+                        if (availableTemplates.length === 0 || hasCurrentReport) {
+                          return styles.generateButtonComplete; // Gray for completed
                         }
                         
                         if (dueTemplates.length === 0) {
-                          return styles.generateReportButtonManual; // Orange for manual generation
+                          return styles.generateButtonManual; // Orange for manual
                         }
                         
-                        return styles.generateReportButtonDue; // Blue/purple for due reports
+                        return styles.generateButtonDue; // Gradient purple for due
                       })()
                     ]}
                     onPress={() => handleGenerateReport(student)}
-                    disabled={getAvailableTemplatesForStudent(student).length === 0}
+                    disabled={getAvailableTemplatesForStudent(student).length === 0 || hasCurrentPeriodReport(student)}
                   >
-                    <Ionicons 
-                      name={(() => {
-                        const availableTemplates = getAvailableTemplatesForStudent(student);
-                        const dueTemplates = getDueTemplatesForStudent(student);
-                        
-                        if (availableTemplates.length === 0) {
-                          return "checkmark-circle";
-                        }
-                        
-                        if (dueTemplates.length === 0) {
-                          return "create";
-                        }
-                        
-                        return "add-circle";
-                      })()} 
-                      size={16} 
-                      color="white" 
-                    />
-                    <Text style={styles.generateReportText}>
-                      {(() => {
-                        const availableTemplates = getAvailableTemplatesForStudent(student);
-                        const dueTemplates = getDueTemplatesForStudent(student);
-                        
-                        if (availableTemplates.length === 0) {
-                          return 'All Reports Complete';
-                        }
-                        
-                        if (dueTemplates.length === 0) {
-                          return 'Generate Report (Manual)';
-                        }
-                        
-                        return `Generate Report (${dueTemplates.length} Due)`;
-                      })()}
-                    </Text>
+                    <View style={styles.buttonIconContainer}>
+                      <Ionicons 
+                        name={(() => {
+                          const availableTemplates = getAvailableTemplatesForStudent(student);
+                          const dueTemplates = getDueTemplatesForStudent(student);
+                          const hasCurrentReport = hasCurrentPeriodReport(student);
+                          
+                          if (availableTemplates.length === 0 || hasCurrentReport) {
+                            return "checkmark-circle";
+                          }
+                          
+                          if (dueTemplates.length === 0) {
+                            return "create";
+                          }
+                          
+                          return "analytics";
+                        })()} 
+                        size={18} 
+                        color="white" 
+                      />
+                    </View>
+                    <View style={styles.buttonTextContainer}>
+                      <Text style={styles.enhancedGenerateButtonText}>
+                        {(() => {
+                          const availableTemplates = getAvailableTemplatesForStudent(student);
+                          const dueTemplates = getDueTemplatesForStudent(student);
+                          const hasCurrentReport = hasCurrentPeriodReport(student);
+                          const existingReports = getExistingReportInfo(student);
+                          
+                          if (hasCurrentReport && existingReports && existingReports.length > 0) {
+                            const firstReport = existingReports[0];
+                            return `Report Exists (${firstReport.teacher.split(' ')[0]})`;
+                          }
+                          
+                          if (availableTemplates.length === 0) {
+                            return 'All Reports Complete';
+                          }
+                          
+                          if (dueTemplates.length === 0) {
+                            return 'Generate Report (Manual)';
+                          }
+                          
+                          return `Generate Report (${dueTemplates.length} Due)`;
+                        })()}
+                      </Text>
+                      <Text style={styles.buttonSubtext}>
+                        {(() => {
+                          const availableTemplates = getAvailableTemplatesForStudent(student);
+                          const dueTemplates = getDueTemplatesForStudent(student);
+                          const hasCurrentReport = hasCurrentPeriodReport(student);
+                          
+                          if (hasCurrentReport) {
+                            return 'Current period covered';
+                          }
+                          
+                          if (availableTemplates.length === 0) {
+                            return 'Period requirements met';
+                          }
+                          
+                          if (dueTemplates.length === 0) {
+                            return `${availableTemplates.length} available templates`;
+                          }
+                          
+                          return 'Reports need attention';
+                        })()}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.viewDetailsButton}>
+                  
+                  {/* View Details Button */}
+                  <TouchableOpacity style={styles.enhancedViewDetailsButton}>
                     <Ionicons name="chevron-forward" size={20} color="#667eea" />
                   </TouchableOpacity>
                 </View>
@@ -1864,7 +2172,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                 <View style={styles.templateSelector}>
                   <Picker
                     selectedValue={selectedTemplate?._id || ''}
-                    onValueChange={(itemValue) => {
+                    onValueChange={(itemValue: string) => {
                       const template = reportTemplates.find(t => t._id === itemValue);
                       if (template) {
                         const isDue = isTemplateDueForStudent(selectedStudent, template);
@@ -2026,20 +2334,47 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                     </Text>
                     {recordings.map((recording, index) => (
                       <View key={recording.id} style={styles.recordingItem}>
-                        <Text style={styles.recordingInfo}>
-                          Recording {index + 1}: {formatTime(recording.duration)}
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.deleteRecordingButton}
-                          onPress={() => {
-                            setRecordings(prev => prev.filter(r => r.id !== recording.id));
-                            if (recordings.length === 1) {
-                              setTranscription('');
-                            }
-                          }}
-                        >
-                          <Ionicons name="trash" size={16} color="#f44336" />
-                        </TouchableOpacity>
+                        <View style={styles.recordingInfo}>
+                          <Text style={styles.recordingText}>
+                            Recording {index + 1}: {formatTime(recording.duration)}
+                          </Text>
+                          {playingRecordingId === recording.id && isPlayingAudio && (
+                            <Text style={styles.playingIndicator}>🎵 Playing...</Text>
+                          )}
+                        </View>
+                        <View style={styles.recordingActions}>
+                          <TouchableOpacity
+                            style={styles.playButton}
+                            onPress={() => {
+                              if (playingRecordingId === recording.id && isPlayingAudio) {
+                                stopAudioPlayback();
+                              } else {
+                                playRecording(recording);
+                              }
+                            }}
+                          >
+                            <Ionicons 
+                              name={playingRecordingId === recording.id && isPlayingAudio ? "stop" : "play"} 
+                              size={16} 
+                              color="#667eea" 
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.deleteRecordingButton}
+                            onPress={() => {
+                              // Stop playback if this recording is playing
+                              if (playingRecordingId === recording.id) {
+                                stopAudioPlayback();
+                              }
+                              setRecordings(prev => prev.filter(r => r.id !== recording.id));
+                              if (recordings.length === 1) {
+                                setTranscription('');
+                              }
+                            }}
+                          >
+                            <Ionicons name="trash" size={16} color="#f44336" />
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     ))}
                     
@@ -2114,19 +2449,19 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                     Upload photos and videos to enhance your report. You can add student work samples, classroom activities, or any relevant media.
                   </Text>
                   <MediaUpload
-                    reportId={currentReportId || tempReportId}
+                    reportId={currentReportId || tempReportId || 'temp_upload'}
                     onMediaUploaded={handleMediaUploaded}
                     onMediaDeleted={handleMediaDeleted}
                     maxFiles={10}
                     disabled={false}
                   />
-                  {!currentReportId && (
-                    <View style={styles.mediaTip}>
-                      <Text style={styles.tipText}>
-                        💡 Save your report as a draft first to enable media uploads.
-                      </Text>
-                    </View>
-                  )}
+                  <View style={styles.mediaTip}>
+                    <Text style={styles.tipText}>
+                      💡 {currentReportId 
+                        ? 'Media will be attached to this report.' 
+                        : 'Media will be uploaded temporarily. Save as draft to keep them with the report.'}
+                    </Text>
+                  </View>
                 </View>
               )}
 
@@ -2145,13 +2480,21 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.sendButton, styles.buttonDisabled]}
-                    onPress={() => {}} // Disabled functionality
-                    disabled={true}
+                    style={[
+                      styles.sendButton, 
+                      !teacherData?.canEmailReports && styles.buttonDisabled
+                    ]}
+                    onPress={teacherData?.canEmailReports ? () => {
+                      // TODO: Implement send to parents functionality
+                      Alert.alert('Send to Parents', 'This functionality will be implemented soon.');
+                    } : () => {}}
+                    disabled={!teacherData?.canEmailReports}
                   >
                     <Ionicons name="send" size={16} color="white" />
                     <Text style={styles.sendButtonText}>
-                      Send to Parents (Disabled)
+                      {teacherData?.canEmailReports 
+                        ? 'Send to Parents' 
+                        : 'Send to Parents (No Permission)'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -2159,6 +2502,94 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
             </ScrollView>
           )}
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Debug Panel Modal */}
+      <Modal
+        visible={showDebugPanel}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowDebugPanel(false)}
+      >
+        <View style={styles.debugModalContainer}>
+          {/* Debug Modal Header */}
+          <View style={styles.debugModalHeader}>
+            <TouchableOpacity onPress={() => setShowDebugPanel(false)} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.debugModalTitle}>Debug Logs</Text>
+            <TouchableOpacity onPress={() => setDebugLogs([])} style={styles.clearLogsButton}>
+              <Ionicons name="trash" size={20} color="#f44336" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.debugLogsContainer} showsVerticalScrollIndicator={true}>
+            {debugLogs.length === 0 ? (
+              <View style={styles.noLogsContainer}>
+                <Ionicons name="information-circle" size={48} color="#ccc" />
+                <Text style={styles.noLogsText}>No debug logs yet</Text>
+                <Text style={styles.noLogsSubtext}>Navigate to "My Students" to see debug information</Text>
+              </View>
+            ) : (
+              debugLogs.map((log, index) => (
+                <View key={index} style={[
+                  styles.debugLogItem,
+                  log.includes('❌') ? styles.debugLogError :
+                  log.includes('⚠️') ? styles.debugLogWarning :
+                  log.includes('✅') ? styles.debugLogSuccess : styles.debugLogInfo
+                ]}>
+                  <Text style={styles.debugLogText}>{log}</Text>
+                </View>
+              ))
+            )}
+          </ScrollView>
+
+          {/* Debug Actions */}
+          <View style={styles.debugActions}>
+            <TouchableOpacity 
+              style={styles.debugActionButton}
+              onPress={async () => {
+                try {
+                  const debugText = debugLogs.join('\n');
+                  await Clipboard.setStringAsync(debugText);
+                  Alert.alert(
+                    'Success', 
+                    `Copied ${debugLogs.length} debug logs to clipboard!`,
+                    [{ text: 'OK' }]
+                  );
+                } catch (error) {
+                  Alert.alert(
+                    'Error', 
+                    'Failed to copy logs to clipboard',
+                    [{ text: 'OK' }]
+                  );
+                  console.error('Copy error:', error);
+                }
+              }}
+            >
+              <Ionicons name="copy" size={16} color="white" />
+              <Text style={styles.debugActionText}>Copy Logs</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.debugActionButton, styles.refreshButton]}
+              onPress={() => {
+                setShowDebugPanel(false);
+                // Refresh data to generate new logs
+                const refreshData = async () => {
+                  addDebugLog('🔄 Manual refresh triggered');
+                  await loadStudents();
+                  await loadReportTemplates();
+                  await loadSchoolData();
+                };
+                refreshData();
+              }}
+            >
+              <Ionicons name="refresh" size={16} color="white" />
+              <Text style={styles.debugActionText}>Refresh Data</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -2571,8 +3002,31 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   recordingInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  recordingText: {
     fontSize: 14,
     color: '#333',
+    fontWeight: '500',
+  },
+  playingIndicator: {
+    fontSize: 12,
+    color: '#667eea',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  recordingActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  playButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   deleteRecordingButton: {
     padding: 4,
@@ -2798,6 +3252,236 @@ const styles = StyleSheet.create({
     color: '#2e7d32',
     lineHeight: 16,
     fontWeight: '600',
+  },
+  
+  // Enhanced Due Reports Chips Styles (matching web app)
+  dueReportsLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#f44336',
+    marginBottom: 4,
+  },
+  dueChipsWrapper: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    maxWidth: 200,
+  },
+  enhancedDueChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 12,
+    minWidth: 40,
+  },
+  enhancedDueChipText: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginLeft: 3,
+  },
+  upToDateContainer: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+  },
+  upToDateChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e8',
+    borderWidth: 1,
+    borderColor: '#4caf50',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginBottom: 2,
+  },
+  upToDateText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#4caf50',
+    marginLeft: 3,
+  },
+  noReportsDueText: {
+    fontSize: 9,
+    color: '#999',
+  },
+  
+  // Enhanced Generate Button Styles (matching web app)
+  enhancedGenerateButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  generateButtonComplete: {
+    backgroundColor: '#cccccc',
+  },
+  generateButtonManual: {
+    backgroundColor: '#ff9800',
+  },
+  generateButtonDue: {
+    backgroundColor: '#667eea', // Web app uses gradient, mobile uses solid color
+  },
+  buttonIconContainer: {
+    minWidth: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonTextContainer: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  enhancedGenerateButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
+    lineHeight: 14,
+  },
+  buttonSubtext: {
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 1,
+  },
+  enhancedViewDetailsButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+  },
+  
+  // Debug Panel Styles
+  debugButton: {
+    padding: 5,
+    position: 'relative',
+  },
+  debugBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#f44336',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  debugBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  debugModalContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  debugModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 15,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  debugModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  clearLogsButton: {
+    padding: 5,
+  },
+  debugLogsContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  noLogsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  noLogsText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  noLogsSubtext: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+  debugLogItem: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  debugLogInfo: {
+    borderLeftColor: '#2196f3',
+  },
+  debugLogSuccess: {
+    borderLeftColor: '#4caf50',
+  },
+  debugLogWarning: {
+    borderLeftColor: '#ff9800',
+  },
+  debugLogError: {
+    borderLeftColor: '#f44336',
+  },
+  debugLogText: {
+    fontSize: 12,
+    color: '#333',
+    fontFamily: 'monospace',
+    lineHeight: 16,
+  },
+  debugActions: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    gap: 10,
+  },
+  debugActionButton: {
+    flex: 1,
+    backgroundColor: '#667eea',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  refreshButton: {
+    backgroundColor: '#4caf50',
+  },
+  debugActionText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
   },
 });
 

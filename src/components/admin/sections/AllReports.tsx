@@ -154,6 +154,7 @@ const AllReports: React.FC = () => {
       
       // Debug: Log user and schoolId
       console.log('🔍 Debug - User:', user);
+      console.log('🔍 Debug - User Role:', user?.role);
       console.log('🔍 Debug - SchoolId:', user?.schoolId);
       console.log('🔍 Debug - SchoolId type:', typeof user?.schoolId);
       
@@ -399,7 +400,14 @@ const AllReports: React.FC = () => {
 
   const canEditReport = (report: ExtendedReport) => {
     // Only allow editing if report is not sent to parents
-    return report.status !== 'sent' && report.status !== 'approved';
+    const canEdit = report.status !== 'sent' && report.status !== 'approved';
+    console.log('🔍 Debug - canEditReport:', {
+      reportId: report._id,
+      status: report.status,
+      canEdit,
+      userRole: user?.role
+    });
+    return canEdit;
   };
 
   const getAudioRecordings = (report: ExtendedReport) => {
@@ -589,11 +597,19 @@ const AllReports: React.FC = () => {
       // Show loading toast
       const loadingToast = toast.loading('Saving report changes...');
       
+      console.log('🔍 Debug - Updating report:', {
+        reportId: editingReport._id,
+        contentLength: editContent.trim().length,
+        currentStatus: editingReport.status
+      });
+      
       // Call API to update report
       const response = await apiService.updateReport(editingReport._id, {
         content: editContent.trim(),
         status: 'completed' // Mark as completed after editing
       });
+      
+      console.log('🔍 Debug - Update response:', response);
       
       // Dismiss loading toast
       toast.dismiss(loadingToast);
@@ -607,11 +623,12 @@ const AllReports: React.FC = () => {
         // Close the edit dialog
         handleCloseEditDialog();
       } else {
-        toast.error(response.message || 'Failed to update report. Please try again.');
+        console.error('❌ Update failed:', response);
+        toast.error(response.error || response.message || 'Failed to update report. Please try again.');
       }
       
     } catch (error) {
-      console.error('Error updating report:', error);
+      console.error('❌ Error updating report:', error);
       toast.error('Failed to update report. Please try again.');
     } finally {
       setIsSaving(false);

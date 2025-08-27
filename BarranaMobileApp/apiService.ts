@@ -3,8 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 
 // API Configuration
 const API_BASE_URL = __DEV__ 
-  ? 'http://192.168.18.3:5050/api' 
-  : 'https://your-production-domain.com/api'; // Update with your production URL
+  ? 'http://191.101.233.56/api' 
+  : 'http://191.101.233.56/api'; // Production server
 
 // Token storage keys
 const TOKEN_KEY = 'auth_token';
@@ -199,8 +199,17 @@ class ApiService {
   // Authentication methods
   public async login(credentials: LoginRequest): Promise<LoginResponse> {
     try {
+      console.log('📱 ====== MOBILE LOGIN DEBUG ======');
+      console.log('📱 API Base URL:', API_BASE_URL);
+      console.log('📱 Login URL:', `${API_BASE_URL}/auth/login`);
       console.log('📱 Attempting login for:', credentials.email);
+      console.log('📱 Password length:', credentials.password.length);
+      
       const response: AxiosResponse<ApiResponse<LoginResponse>> = await this.api.post('/auth/login', credentials);
+      
+      console.log('📱 Raw response status:', response.status);
+      console.log('📱 Raw response headers:', JSON.stringify(response.headers, null, 2));
+      console.log('📱 Raw response data:', JSON.stringify(response.data, null, 2));
       
       console.log('📱 Login response:', {
         success: response.data.success,
@@ -211,8 +220,9 @@ class ApiService {
       if (response.data.success && response.data.data) {
         const { user, token } = response.data.data;
         
-        console.log('📱 Login successful, user data:', user);
+        console.log('📱 Login successful, user data:', JSON.stringify(user, null, 2));
         console.log('📱 Token received:', token ? 'YES' : 'NO');
+        console.log('📱 Token length:', token?.length || 0);
         
         // Store token and user data
         await this.storeToken(token);
@@ -220,16 +230,25 @@ class ApiService {
         
         return { user, token };
       } else {
+        console.error('📱 Login failed - response not successful');
+        console.error('📱 Response message:', response.data.message);
         throw new Error(response.data.message || 'Login failed');
       }
     } catch (error: any) {
-      console.error('📱 Login error:', error);
-      console.error('📱 Error response:', error.response?.data);
+      console.error('📱 ====== LOGIN ERROR DEBUG ======');
+      console.error('📱 Error type:', error.constructor.name);
+      console.error('📱 Error message:', error.message);
+      console.error('📱 Error code:', error.code);
+      console.error('📱 Network error:', error.isAxiosError);
+      console.error('📱 Request config:', error.config);
+      console.error('📱 Response status:', error.response?.status);
+      console.error('📱 Response data:', JSON.stringify(error.response?.data, null, 2));
+      console.error('📱 Full error object:', JSON.stringify(error, null, 2));
       
       if (error.response?.data?.message) {
         throw new Error(error.response.data.message);
       }
-      throw new Error(error.message || 'Network error');
+      throw new Error(error.message || 'Network error - Check console for details');
     }
   }
 
@@ -391,9 +410,10 @@ class ApiService {
 
   // This method is replaced by the more comprehensive createReport method below
 
-  public async getReports(): Promise<any[]> {
+  public async getReports(includeCrossTeacher: boolean = false): Promise<any[]> {
     try {
-      const response: AxiosResponse<ApiResponse<any[]>> = await this.api.get('/reports');
+      const queryParam = includeCrossTeacher ? '?includeCrossTeacher=true' : '';
+      const response: AxiosResponse<ApiResponse<any[]>> = await this.api.get(`/reports${queryParam}`);
       return response.data.data || [];
     } catch (error: any) {
       // For now, return mock data until backend endpoints are ready
@@ -440,6 +460,17 @@ class ApiService {
           },
         },
       ];
+    }
+  }
+
+  // Due status API method
+  public async checkDueStatus(studentId: string, templateId: string): Promise<any> {
+    try {
+      const response: AxiosResponse<ApiResponse<any>> = await this.api.get(`/reports/due-status?studentId=${studentId}&templateId=${templateId}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error checking due status:', error);
+      throw this.handleError(error, 'Failed to check due status');
     }
   }
 
@@ -611,17 +642,45 @@ class ApiService {
   }): Promise<{ success: boolean; data?: string; error?: string }> {
     try {
       console.log('📱 Generating report with params:', params);
+      console.log('📱 API Base URL:', this.api.defaults.baseURL);
+      console.log('📱 Full URL would be:', `${this.api.defaults.baseURL}/ai/generate-report`);
       
-      const response = await this.api.post('/ai/generate-report', {
+      const requestData = {
         transcription: params.transcription,
         studentName: params.studentName,
         grade: params.grade,
         template: params.template,
         templateId: params.templateId, // Pass templateId for dynamic prompts
         timestamp: new Date().toISOString()
+      };
+      
+      console.log('📱 Request data:', requestData);
+      
+      // Ensure we have a token
+      if (!this.token) {
+        this.token = await this.getStoredToken();
+      }
+      
+      console.log('📱 Token available:', !!this.token);
+      console.log('📱 Token length:', this.token?.length || 0);
+      
+      // Create a custom axios instance with longer timeout for AI generation
+      const aiApi = axios.create({
+        baseURL: this.api.defaults.baseURL,
+        timeout: 60000, // 60 seconds for AI processing
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.token && { 'Authorization': `Bearer ${this.token}` }),
+        },
       });
       
+      console.log('📱 AI API headers:', aiApi.defaults.headers);
+      
+      const response = await aiApi.post('/ai/generate-report', requestData);
+      
       console.log('📱 Report generation response:', response.data);
+      console.log('📱 Response status:', response.status);
+      console.log('📱 Response headers:', response.headers);
       
       if (response.data.success && response.data.data) {
         // Extract the report content from the response
@@ -632,9 +691,34 @@ class ApiService {
       }
     } catch (error: any) {
       console.error('📱 Error generating report:', error);
+      console.error('📱 Error details:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          baseURL: error.config?.baseURL
+        }
+      });
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to generate report';
+      if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+        errorMessage = 'Network Error: Unable to connect to server. Please check your internet connection.';
+      } else if (error.response?.status === 500) {
+        errorMessage = 'Server Error: The server encountered an error while generating the report.';
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Authentication Error: Please login again.';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
       return { 
         success: false, 
-        error: error.response?.data?.message || error.message || 'Failed to generate report' 
+        error: errorMessage
       };
     }
   }
@@ -690,34 +774,73 @@ class ApiService {
   }
 
   // Media upload methods
-  public async uploadReportMedia(reportId: string, formData: FormData): Promise<{ success: boolean; data?: any; message?: string }> {
+  public async uploadReportMedia(reportId: string, mediaFiles: any[]): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
       console.log('📱 Uploading media for report:', reportId);
+      console.log('📱 Media files to upload:', mediaFiles.length);
       
-      // Create a new axios instance for multipart/form-data
+      // Ensure we have a token
+      if (!this.token) {
+        this.token = await this.getStoredToken();
+      }
+      
+      // Create FormData
+      const formData = new FormData();
+      
+      for (let i = 0; i < mediaFiles.length; i++) {
+        const file = mediaFiles[i];
+        console.log(`📱 Processing file ${i + 1}:`, file.name, file.type);
+        
+        // Create proper file object for React Native
+        const fileObject = {
+          uri: file.uri,
+          type: file.type === 'image' ? 'image/jpeg' : 'video/mp4', // Default mime types
+          name: file.name,
+        } as any;
+        
+        formData.append('media', fileObject);
+      }
+      
+      // Create axios instance without Content-Type (let it set boundary automatically)
       const uploadApi = axios.create({
         baseURL: API_BASE_URL,
-        timeout: 60000, // Longer timeout for file uploads
+        timeout: 120000, // 2 minutes for file uploads
         headers: {
-          'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${this.token}`,
         },
       });
-
-      // Use temporary upload endpoint if reportId starts with 'temp_'
-      const endpoint = reportId.startsWith('temp_') ? '/temp-media' : `/${reportId}/media`;
-      const response = await uploadApi.post(`/reports${endpoint}`, formData);
+      
+      // Determine endpoint
+      const isTemporary = !reportId || reportId.startsWith('temp_');
+      const endpoint = isTemporary ? '/reports/temp-media' : `/reports/${reportId}/media`;
+      
+      console.log('📱 Upload endpoint:', endpoint);
+      console.log('📱 Is temporary upload:', isTemporary);
+      
+      const response = await uploadApi.post(endpoint, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
       console.log('📱 Media upload response:', response.data);
       
       return { 
         success: true, 
-        data: response.data.data 
+        data: response.data.data,
+        message: response.data.message
       };
     } catch (error: any) {
       console.error('📱 Error uploading media:', error);
+      console.error('📱 Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Failed to upload media' 
+        message: error.response?.data?.message || error.message || 'Failed to upload media' 
       };
     }
   }
@@ -753,6 +876,33 @@ class ApiService {
       return { 
         success: false, 
         message: error.response?.data?.message || 'Failed to delete media' 
+      };
+    }
+  }
+
+  // Get current teacher data with permissions
+  public async getCurrentTeacher(userId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const response: AxiosResponse<ApiResponse<any[]>> = await this.api.get('/teachers');
+      
+      if (response.data.success && response.data.data) {
+        // Find the current teacher based on user ID
+        const currentTeacher = response.data.data.find((teacher: any) => 
+          teacher._id === userId || teacher.id === userId
+        );
+        
+        return { 
+          success: true, 
+          data: currentTeacher || null 
+        };
+      } else {
+        throw new Error('Failed to fetch teacher data');
+      }
+    } catch (error: any) {
+      console.error('Error fetching current teacher:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.message || error.message || 'Failed to fetch teacher data' 
       };
     }
   }

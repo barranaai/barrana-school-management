@@ -246,7 +246,10 @@ class ApiService {
       const url = `${API_BASE_URL}${endpoint}`;
       const response = await fetch(url, {
         ...options,
-        headers: this.getHeaders(),
+        headers: {
+          ...this.getHeaders(),
+          ...options.headers,
+        },
       });
 
       const data = await response.json();

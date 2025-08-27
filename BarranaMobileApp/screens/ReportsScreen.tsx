@@ -214,9 +214,11 @@ const ReportsScreen: React.FC<ReportsScreenProps> = ({ user, onBack }) => {
       if (url.startsWith('http')) {
         return url;
       } else {
-        // Convert relative URL to full server URL
+        // Convert relative URL to full server URL using the same base as API service
         const serverUrl = url.startsWith('/') ? url : '/' + url;
-        return `http://192.168.18.3:5050${serverUrl}`;
+        // Remove /api from base URL since media URLs don't include /api prefix
+        const baseUrl = apiService.getBaseUrl().replace('/api', '');
+        return `${baseUrl}${serverUrl}`;
       }
     }
     
@@ -232,9 +234,11 @@ const ReportsScreen: React.FC<ReportsScreenProps> = ({ user, onBack }) => {
       return url; // Already a full URL
     }
     
-    // Convert relative URL to full server URL
+    // Convert relative URL to full server URL using the same base as API service
     const serverUrl = url.startsWith('/') ? url : '/' + url;
-    return `http://192.168.18.3:5050${serverUrl}`;
+    // Remove /api from base URL since media URLs don't include /api prefix
+    const baseUrl = apiService.getBaseUrl().replace('/api', '');
+    return `${baseUrl}${serverUrl}`;
   };
 
   const getAudioRecordings = (report: Report) => {
