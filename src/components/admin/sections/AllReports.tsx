@@ -618,8 +618,8 @@ const AllReports: React.FC = () => {
       
       // Call API to update report
       const response = await apiService.updateReport(editingReport._id, {
-        content: editContent.trim(),
-        status: 'completed' // Mark as completed after editing
+        content: editContent.trim()
+        // Note: Not updating status since we're only editing content
       });
       
       console.log('🔍 Debug - Update response:', response);
