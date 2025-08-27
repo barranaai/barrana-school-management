@@ -2587,7 +2587,7 @@ const StudentManagement: React.FC = () => {
                             </Box>
                           </Tooltip>
                         </TableCell>
-                        <TableCell>
+                        <TableCell align="center">
                           {studentDueReports.length > 0 ? (
                             <Tooltip 
                               title={
@@ -2614,11 +2614,11 @@ const StudentManagement: React.FC = () => {
                                 </Box>
                               }
                             >
-                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'center' }}>
                                 <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main' }}>
                                   {studentDueReports.length} Due
                                 </Typography>
-                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', maxWidth: 200 }}>
+                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', maxWidth: 200, justifyContent: 'center' }}>
                                   {studentDueReports.map((dueReport: DueReport, index: number) => {
                                     let chipColor: 'error' | 'warning' | 'info' = 'error';
                                     let chipLabel: string = dueReport.frequency;
