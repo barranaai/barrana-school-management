@@ -587,25 +587,84 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
   const calculateDueDateForFrequency = (frequency: string, currentDate: Date): Date => {
     const now = new Date(currentDate);
     
+    // Get school settings for frequency configuration (same as frontend logic)
+    const schoolSettings = schoolData?.settings || {};
+    const frequencyConfig = schoolSettings.reportFrequencies?.[frequency];
+    
+    console.log('📱 Mobile calculateDueDateForFrequency', {
+      frequency,
+      currentDate: currentDate.toISOString(),
+      frequencyConfig,
+      enabled: frequencyConfig?.enabled
+    });
+    
+    if (frequencyConfig?.enabled) {
+      // Use school's frequency configuration (match frontend/backend logic)
+      let dueDate = new Date(now);
+      
+      switch (frequency) {
+        case 'Daily':
+          // Check if today is a working day
+          const workingDays = frequencyConfig.workingDays || [1, 2, 3, 4, 5]; // Default to Mon-Fri
+          const currentDayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+          const isWorkingDay = workingDays.includes(currentDayOfWeek);
+          
+          if (!isWorkingDay) {
+            // Find the next working day
+            let nextWorkingDay = new Date(now);
+            do {
+              nextWorkingDay.setDate(nextWorkingDay.getDate() + 1);
+            } while (!workingDays.includes(nextWorkingDay.getDay()));
+            dueDate = nextWorkingDay;
+          } else {
+            dueDate = new Date(now);
+          }
+          
+          // Set the configured time
+          const [dailyHours, dailyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
+          dueDate.setHours(dailyHours, dailyMinutes, 0, 0);
+          dueDate.setMilliseconds(0);
+          break;
+        case 'Weekly':
+          // Due on configured day of the week (match frontend/backend logic exactly)
+          const targetDay = frequencyConfig.dueDay; // Backend uses 0=Sunday, 1=Monday, ..., 6=Saturday
+          const currentDay = now.getDay();
+          let daysToAdd = (targetDay - currentDay + 7) % 7;
+          
+          // If it's the target day today, check if we've passed the due time (like backend)
+          if (daysToAdd === 0) {
+            const dueTime = frequencyConfig.dueTime || '17:00';
+            const [dueHours, dueMinutes] = dueTime.split(':').map(Number);
+            const currentHours = now.getHours();
+            const currentMinutes = now.getMinutes();
+            
+            // If current time is after due time, move to next week (match backend logic)
+            if (currentHours > dueHours || (currentHours === dueHours && currentMinutes > dueMinutes)) {
+              daysToAdd = 7;
+            }
+          }
+          
+          // Ensure we're working with a fresh date object
+          dueDate = new Date(now);
+          dueDate.setDate(now.getDate() + daysToAdd);
+          const [weeklyHours, weeklyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
+          dueDate.setHours(weeklyHours, weeklyMinutes, 0, 0);
+          return dueDate;
+        default:
+          // For other frequencies, use school time if configured
+          const [hours, minutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
+          dueDate.setHours(hours, minutes, 0, 0);
+          return dueDate;
+      }
+    }
+    
+    // Fallback logic if frequency config is not enabled or missing (maintain backward compatibility)
+    console.log('📱 Mobile: Using fallback logic for', frequency);
     switch (frequency) {
       case 'Daily':
-        // Check if today is a working day
-        const workingDays = schoolData?.settings?.reportFrequencies?.Daily?.workingDays || [1, 2, 3, 4, 5]; // Default to Mon-Fri
-        const currentDayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-        const isWorkingDay = workingDays.includes(currentDayOfWeek);
-        
-        if (!isWorkingDay) {
-          // Find the next working day
-          let nextWorkingDay = new Date(now);
-          do {
-            nextWorkingDay.setDate(nextWorkingDay.getDate() + 1);
-          } while (!workingDays.includes(nextWorkingDay.getDay()));
-          return nextWorkingDay;
-        } else {
-          return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        }
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0, 0, 0);
       case 'Weekly':
-        // Due by end of current week (Sunday)
+        // Due by end of current week (Sunday) - fallback only
         const weekEnd = new Date(now);
         weekEnd.setDate(now.getDate() + (7 - now.getDay()));
         weekEnd.setHours(23, 59, 59, 999);

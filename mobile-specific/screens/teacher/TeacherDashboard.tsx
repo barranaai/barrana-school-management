@@ -49,6 +49,34 @@ const TeacherDashboard: React.FC = () => {
     loadReportTemplates();
   }, []);
 
+  // Helper function to calculate due date (simplified version, matches main mobile app)
+  const calculateDueDateForFrequency = (frequency: string, currentDate: Date): Date => {
+    const now = new Date(currentDate);
+    
+    // Simple fallback logic for mobile dashboard
+    switch (frequency) {
+      case 'Daily':
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0, 0, 0);
+      case 'Weekly':
+        // Due at end of current week (Sunday)
+        const weekEnd = new Date(now);
+        weekEnd.setDate(now.getDate() + (7 - now.getDay()));
+        weekEnd.setHours(17, 0, 0, 0);
+        return weekEnd;
+      case 'Monthly':
+        // Due at end of current month
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        monthEnd.setHours(17, 0, 0, 0);
+        return monthEnd;
+      default:
+        // Default to 30 days for other frequencies
+        const defaultDue = new Date(now);
+        defaultDue.setDate(defaultDue.getDate() + 30);
+        defaultDue.setHours(17, 0, 0, 0);
+        return defaultDue;
+    }
+  };
+
   // Calculate due reports
   useEffect(() => {
     const calculateDueReports = () => {
@@ -62,24 +90,18 @@ const TeacherDashboard: React.FC = () => {
         );
 
         gradeTemplates.forEach(template => {
-          const lastReport = myReports
-            .filter(r => r.studentId === student._id)
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-
-          let dueDate: Date;
-
-          if (lastReport) {
-            // Calculate next due date based on last report
-            dueDate = new Date(lastReport.createdAt);
-            dueDate.setDate(dueDate.getDate() + 30); // Monthly frequency
-          } else {
-            // No previous report, due date is based on template creation
-            dueDate = new Date(template.createdAt || new Date());
-            dueDate.setDate(dueDate.getDate() + 30);
-          }
-
+          // Calculate due date using proper school configuration (match main mobile app logic)
+          const dueDate = calculateDueDateForFrequency(template.reportFrequency, now);
+          
+          // Check if there's an existing report for this period
+          const existingReports = myReports.filter(r => 
+            r.studentId === student._id && 
+            r.templateId === template._id
+          );
+          
+          // For mobile dashboard, show if due today or overdue
           const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-
+          
           // Only include if overdue or due within 7 days
           if (daysOverdue >= 0 || daysOverdue >= -7) {
             due.push({
