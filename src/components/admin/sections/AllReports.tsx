@@ -551,8 +551,12 @@ const AllReports: React.FC = () => {
         return;
       }
       
+      // Get media attachment count for user feedback
+      const mediaCount = getMediaCount(report);
+      const mediaText = mediaCount > 0 ? ` with ${mediaCount} attachment(s)` : '';
+      
       // Show loading toast
-      const loadingToast = toast.loading(`Sending report email for ${studentName}...`);
+      const loadingToast = toast.loading(`Sending report email for ${studentName}${mediaText}...`);
       
       // Call the actual API
       const response = await apiService.sendReportEmail(report._id, parentEmail);
@@ -561,7 +565,10 @@ const AllReports: React.FC = () => {
       toast.dismiss(loadingToast);
       
       if (response.success) {
-        toast.success(`Report sent successfully to ${parentEmail} for ${studentName}!`);
+        const successMessage = mediaCount > 0 
+          ? `Report with ${mediaCount} attachment(s) sent successfully to ${parentEmail} for ${studentName}!`
+          : `Report sent successfully to ${parentEmail} for ${studentName}!`;
+        toast.success(successMessage);
         
         // Refresh the reports list to update the status
         await loadReports();

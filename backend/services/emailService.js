@@ -608,6 +608,17 @@ const sendReportEmail = async (emailData) => {
       text: emailTemplate.text
     };
 
+    // Add media attachments if provided
+    if (emailData.mediaAttachments && emailData.mediaAttachments.length > 0) {
+      mailOptions.attachments = emailData.mediaAttachments.map(media => ({
+        filename: media.originalName || media.filename,
+        path: media.path || `./uploads/media/${media.filename}`,
+        contentType: media.mimeType
+      }));
+      
+      logger.info(`Adding ${emailData.mediaAttachments.length} media attachments to email`);
+    }
+
     const result = await transporter.sendMail(mailOptions);
     
     logger.info(`Email sent successfully to ${parentEmail} for student ${studentName}`);

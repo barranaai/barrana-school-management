@@ -1448,6 +1448,25 @@ router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'su
     const teacherName = `${report.teacherId.firstName} ${report.teacherId.lastName}`;
     const schoolName = report.schoolId?.name || 'Barrana.ai School';
 
+    // Prepare media attachments with full file paths
+    const mediaAttachments = [];
+    if (report.attachments && report.attachments.length > 0) {
+      for (const attachment of report.attachments) {
+        const filePath = path.join(__dirname, '../uploads/media', attachment.filename);
+        if (fs.existsSync(filePath)) {
+          mediaAttachments.push({
+            filename: attachment.filename,
+            originalName: attachment.originalName,
+            mimeType: attachment.mimeType,
+            path: filePath,
+            size: attachment.size
+          });
+        } else {
+          console.warn(`Media file not found: ${filePath}`);
+        }
+      }
+    }
+
     // Prepare email data
     const emailData = {
       parentEmail,
@@ -1461,8 +1480,20 @@ router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'su
         day: 'numeric'
       }),
       schoolName,
-      schoolId: report.schoolId._id.toString()
+      schoolId: report.schoolId._id.toString(),
+      mediaAttachments: mediaAttachments
     };
+
+    // Log email attempt with media info
+    logger.info(`Sending report email to ${parentEmail}`, {
+      service: 'reports',
+      user: req.user._id,
+      reportId: req.params.id,
+      studentName,
+      teacherName,
+      mediaAttachmentCount: mediaAttachments.length,
+      hasMediaAttachments: mediaAttachments.length > 0
+    });
 
     // Send the email
     const emailResult = await sendReportEmail(emailData);
