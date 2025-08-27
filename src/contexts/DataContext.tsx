@@ -471,14 +471,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const updateStudent = async (id: string, updates: Partial<Student>) => {
     try {
+      console.log('DataContext - updateStudent called with:', { id, updates });
       const response = await apiService.updateStudent(id, updates);
+      console.log('DataContext - updateStudent API response:', response);
+      
       if (response.success && response.data) {
         setStudents(prev => prev.map(student => 
           student._id === id ? convertApiStudent(response.data!) : student
         ));
+        console.log('✅ DataContext - Student updated successfully in state');
+      } else {
+        const errorMessage = response.error || response.message || 'Failed to update student';
+        console.error('❌ DataContext - Update failed:', errorMessage);
+        setError(errorMessage);
+        throw new Error(errorMessage);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update student');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update student';
+      console.error('❌ DataContext - Update error:', err);
+      setError(errorMessage);
+      throw err; // Re-throw to allow component to handle
     }
   };
 

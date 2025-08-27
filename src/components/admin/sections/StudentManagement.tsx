@@ -673,28 +673,48 @@ const StudentManagement: React.FC = () => {
       });
       setFieldErrors({}); // Clear validation errors
     } else if (dialogType === 'edit' && selectedStudentData) {
-      // Map form data to backend expectations for update
-      const updateData = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        studentGrade: formData.grade, // Backend expects studentGrade
-        parentName: formData.parentName,
-        parentEmail: formData.parentEmail,
-        parentPhone: formData.parentPhone,
-        studentClass: formData.class, // Backend expects studentClass
-        enrollmentDate: formData.enrollmentDate,
-        ...(formData.dateOfBirth && { dateOfBirth: formData.dateOfBirth }),
-        address: formData.address,
-        emergencyContact: formData.emergencyContact,
-        medicalInfo: formData.medicalInfo,
-        academicLevel: formData.academicLevel,
-        notes: formData.notes,
-        isActive: formData.status === 'active', // Convert status to isActive boolean
-      };
+      try {
+        // Map form data to backend expectations for update
+        const updateData = {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          // Only include email if it's not empty
+          ...(formData.email && formData.email.trim() && { email: formData.email.trim() }),
+          studentGrade: formData.grade, // Backend expects studentGrade
+          parentName: formData.parentName,
+          parentEmail: formData.parentEmail,
+          parentPhone: formData.parentPhone,
+          studentClass: formData.class, // Backend expects studentClass
+          enrollmentDate: formData.enrollmentDate,
+          ...(formData.dateOfBirth && { dateOfBirth: formData.dateOfBirth }),
+          address: formData.address,
+          emergencyContact: formData.emergencyContact,
+          medicalInfo: formData.medicalInfo,
+          academicLevel: formData.academicLevel,
+          notes: formData.notes,
+          isActive: formData.status === 'active', // Convert status to isActive boolean
+        };
 
-      updateStudent(selectedStudentData.id, updateData);
-      toast.success('Student updated successfully!');
+        console.log('StudentManagement - About to update student with:', {
+          studentId: selectedStudentData._id || selectedStudentData.id,
+          updateData,
+          originalStudentData: selectedStudentData
+        });
+
+        // Use _id with fallback to id for consistent ID handling
+        const studentId = selectedStudentData._id || selectedStudentData.id;
+        await updateStudent(studentId, updateData);
+        
+        toast.success('Student updated successfully!');
+        
+        // Refresh the students list to ensure the updated data appears
+        await refreshData();
+        
+      } catch (error) {
+        console.error('❌ Error updating student:', error);
+        toast.error('Failed to update student. Please try again.');
+        return; // Don't close dialog on error
+      }
     }
     
     handleCloseDialog();
