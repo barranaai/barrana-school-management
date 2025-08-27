@@ -1003,22 +1003,11 @@ const StudentManagement: React.FC = () => {
       console.log('🔍 Due templates for student (cross-teacher filtered):', dueTemplates.length);
       
       if (dueTemplates.length > 0) {
-        // Set the first due template as selected by default
-        const defaultTemplate = dueTemplates[0] as ReportTemplate;
-        console.log('🔍 Auto-selecting due template:', defaultTemplate.name);
-        setSelectedTemplate(defaultTemplate);
-        
-        // Extract key points from the template content
-        const extractedKeyPoints = extractKeyPointsFromTemplate(defaultTemplate.content || '');
-        setKeyPoints(extractedKeyPoints);
-        console.log('🔍 Auto-selected template:', defaultTemplate.name);
-        console.log('🔍 Template content length:', defaultTemplate.content?.length || 0);
-        console.log('🔍 Template content preview:', defaultTemplate.content?.substring(0, 200) || 'NO CONTENT');
-        console.log('🔍 Key points extracted:', extractedKeyPoints.length);
-        console.log('🔍 Extracted key points:', extractedKeyPoints);
-        console.log('🔍 Full template object:', defaultTemplate);
-        
-        toast.success(`Due template "${defaultTemplate.name}" (${defaultTemplate.reportFrequency}) selected for Grade ${student.grade}`);
+        // Don't auto-select template - let user choose manually for proper key points extraction
+        console.log('🔍 Due templates available:', dueTemplates.map(t => t.name));
+        setSelectedTemplate(null);
+        setKeyPoints([]);
+        toast.success(`${dueTemplates.length} due template(s) available for Grade ${student.grade}. Please select one to continue.`);
       } else {
         console.log('🔍 No due templates for grade:', student.grade);
         const availableTemplates = await getAvailableTemplatesForStudent(student);
@@ -1038,17 +1027,17 @@ const StudentManagement: React.FC = () => {
       }
     } catch (error) {
       console.error('🔍 Error in autoSelectTemplateForStudent:', error);
-      // Fallback to local template selection
+      // Fallback to local template selection (also no auto-selection)
       const localDueTemplates = getLocalDueTemplatesForStudent(student);
       if (localDueTemplates.length > 0) {
-        const defaultTemplate = localDueTemplates[0];
-        setSelectedTemplate(defaultTemplate);
-        const extractedKeyPoints = extractKeyPointsFromTemplate(defaultTemplate.content || '');
-        setKeyPoints(extractedKeyPoints);
+        console.log('🔍 Local due templates available:', localDueTemplates.map(t => t.name));
+        setSelectedTemplate(null);
+        setKeyPoints([]);
+        toast.success(`${localDueTemplates.length} template(s) available. Please select one to continue.`);
       } else {
         setSelectedTemplate(null);
         setKeyPoints([]);
-        toast.error('Error loading available templates. Please try again.');
+        toast.error('No templates available for this grade.');
       }
     }
   };
@@ -3409,8 +3398,7 @@ const StudentManagement: React.FC = () => {
 
           <Stack spacing={3}>
             {/* Key Points Section */}
-            {(() => { console.log('🔍 Key Points Debug:', { selectedTemplate: selectedTemplate?.name, keyPointsLength: keyPoints.length, keyPoints, templateContent: selectedTemplate?.content?.substring(0, 100) }); return null; })()}
-            {selectedTemplate && (
+            {selectedTemplate ? (
               <Paper sx={{ p: 3, bgcolor: 'primary.50', borderRadius: 2, border: '1px solid', borderColor: 'primary.200' }}>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
                   <Star />
@@ -3495,6 +3483,16 @@ const StudentManagement: React.FC = () => {
                     Try to address each area for a comprehensive report.
                   </Typography>
                 </Alert>
+              </Paper>
+            ) : (
+              <Paper sx={{ p: 3, bgcolor: 'grey.100', borderRadius: 2, border: '1px dashed', borderColor: 'grey.300' }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
+                  <Star />
+                  Key Points to Observe & Discuss
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  Please select a report template above to see the key areas you should observe and discuss.
+                </Typography>
               </Paper>
             )}
             {/* Voice Recording Section */}
