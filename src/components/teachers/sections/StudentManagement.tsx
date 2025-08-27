@@ -1016,6 +1016,7 @@ const StudentManagement: React.FC = () => {
         console.log('🔍 Template content preview:', defaultTemplate.content?.substring(0, 200) || 'NO CONTENT');
         console.log('🔍 Key points extracted:', extractedKeyPoints.length);
         console.log('🔍 Extracted key points:', extractedKeyPoints);
+        console.log('🔍 Full template object:', defaultTemplate);
         
         toast.success(`Due template "${defaultTemplate.name}" (${defaultTemplate.reportFrequency}) selected for Grade ${student.grade}`);
       } else {
@@ -3408,8 +3409,8 @@ const StudentManagement: React.FC = () => {
 
           <Stack spacing={3}>
             {/* Key Points Section */}
-            {(() => { console.log('🔍 Key Points Debug:', { selectedTemplate: selectedTemplate?.name, keyPointsLength: keyPoints.length, keyPoints }); return null; })()}
-            {selectedTemplate && keyPoints.length > 0 && (
+            {(() => { console.log('🔍 Key Points Debug:', { selectedTemplate: selectedTemplate?.name, keyPointsLength: keyPoints.length, keyPoints, templateContent: selectedTemplate?.content?.substring(0, 100) }); return null; })()}
+            {selectedTemplate && (
               <Paper sx={{ p: 3, bgcolor: 'primary.50', borderRadius: 2, border: '1px solid', borderColor: 'primary.200' }}>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
                   <Star />
@@ -3419,7 +3420,7 @@ const StudentManagement: React.FC = () => {
                   Based on the selected template "{selectedTemplate.name}", here are the key areas you should observe and talk about:
                 </Typography>
                 <Box sx={{ pl: 1 }}>
-                  {keyPoints.map((keyPoint, index) => (
+                  {keyPoints.length > 0 ? keyPoints.map((keyPoint, index) => (
                     <Box key={index} sx={{ mb: 2 }}>
                       {/* Main heading */}
                       <FormControlLabel
@@ -3482,7 +3483,11 @@ const StudentManagement: React.FC = () => {
                         </Box>
                       )}
                     </Box>
-                  ))}
+                  )) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', py: 2 }}>
+                      No specific key points found in this template. Use your professional judgment to observe and report on the student's development.
+                    </Typography>
+                  )}
                 </Box>
                 <Alert severity="info" sx={{ mt: 2, fontSize: '0.8rem' }}>
                   <Typography variant="caption">
