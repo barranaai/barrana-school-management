@@ -172,8 +172,21 @@ const AllReports: React.FC = () => {
       console.log('🔍 Debug - Final schoolId:', schoolId);
       
       // Fetch all reports for the school
-      const response = await apiService.getAllSchoolReports(schoolId);
+      console.log('🔍 Debug - About to call getAllSchoolReports with schoolId:', schoolId);
+      console.log('🔍 Debug - User role and permissions:', user?.role);
+      
+      let response = await apiService.getAllSchoolReports(schoolId);
       console.log('🔍 Debug - API Response:', response);
+      console.log('🔍 Debug - Response success:', response?.success);
+      console.log('🔍 Debug - Response error:', response?.error);
+      
+      // If the school-specific endpoint fails (e.g., permission denied for teachers), 
+      // fallback to the general reports endpoint with schoolId filter
+      if (!response.success && (response.error?.includes('403') || response.error?.includes('denied') || response.error?.includes('Forbidden'))) {
+        console.log('🔍 Debug - School endpoint failed, trying general reports endpoint...');
+        response = await apiService.getReports(true); // Get all school reports
+        console.log('🔍 Debug - Fallback response:', response);
+      }
       
       if (response.success) {
         // Convert API reports to ExtendedReport format
@@ -624,7 +637,20 @@ const AllReports: React.FC = () => {
         handleCloseEditDialog();
       } else {
         console.error('❌ Update failed:', response);
-        toast.error(response.error || response.message || 'Failed to update report. Please try again.');
+        
+        // More specific error messages
+        let errorMessage = 'Failed to update report. Please try again.';
+        if (response.error?.includes('403') || response.error?.includes('authorized') || response.error?.includes('permission')) {
+          errorMessage = 'You do not have permission to edit this report. Only the report author, school admin, or super admin can edit reports.';
+        } else if (response.error?.includes('404') || response.error?.includes('not found')) {
+          errorMessage = 'Report not found. It may have been deleted or you may not have access to it.';
+        } else if (response.error?.includes('400') || response.error?.includes('validation')) {
+          errorMessage = 'Invalid report data. Please check your content and try again.';
+        } else if (response.error || response.message) {
+          errorMessage = response.error || response.message;
+        }
+        
+        toast.error(errorMessage);
       }
       
     } catch (error) {
