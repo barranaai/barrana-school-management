@@ -325,6 +325,30 @@ const AllReports: React.FC = () => {
     });
   };
 
+  // Helper function to format report content exactly like in emails
+  const formatReportContent = (content: string) => {
+    if (!content) return '';
+    
+    let formattedContent = content;
+    
+    // Convert lines starting with ## to sub-headers (medium size, bold)
+    formattedContent = formattedContent.replace(/^##\s+(.+)$/gm, '<h4 style="font-size: 1.1em; font-weight: bold; color: #4a5568; margin: 12px 0 8px 0; border-left: 3px solid #764ba2; padding-left: 10px;">$1</h4>');
+    
+    // Convert lines starting with # to main headers (larger size, bold, with bottom border)
+    formattedContent = formattedContent.replace(/^#\s+(.+)$/gm, '<h3 style="font-size: 1.3em; font-weight: bold; color: #2d3748; margin: 18px 0 12px 0; border-bottom: 2px solid #667eea; padding-bottom: 8px;">$1</h3>');
+    
+    // Convert **text** to <strong>text</strong> for bold formatting
+    formattedContent = formattedContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Convert *text* to <em>text</em> for italic formatting
+    formattedContent = formattedContent.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    
+    // Convert line breaks to HTML
+    formattedContent = formattedContent.replace(/\n/g, '<br>');
+    
+    return formattedContent;
+  };
+
   const hasAudioRecording = (report: ExtendedReport) => {
     return !!(
       report.voiceRecording?.hasRecording ||
@@ -1358,10 +1382,10 @@ const AllReports: React.FC = () => {
                         <Description sx={{ mr: 2, fontSize: 28, color: '#667eea' }} />
                         <Box>
                           <Typography variant="h6" fontWeight={700} sx={{ color: '#667eea' }}>
-                            Report Content
+                            Report Content (Email Preview)
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
-                            Full Report Details
+                            How this report appears in the email sent to parents
                           </Typography>
                         </Box>
                       </Box>
@@ -1371,9 +1395,13 @@ const AllReports: React.FC = () => {
                           maxHeight: 500,
                           overflow: 'auto',
                           p: 3,
-                          background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+                          background: 'white',
                           borderRadius: 2,
-                          border: '1px solid rgba(102, 126, 234, 0.1)',
+                          border: '4px solid #667eea',
+                          borderLeft: '4px solid #667eea',
+                          fontFamily: 'Arial, sans-serif',
+                          lineHeight: 1.6,
+                          color: '#333',
                           '&::-webkit-scrollbar': {
                             width: '8px',
                           },
@@ -1388,21 +1416,43 @@ const AllReports: React.FC = () => {
                           '&::-webkit-scrollbar-thumb:hover': {
                             background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
                           },
+                          // Email-like styling
+                          '& strong': {
+                            color: '#2d3748',
+                            fontWeight: 700,
+                          },
+                          '& em': {
+                            color: '#4a5568',
+                            fontStyle: 'italic',
+                          },
+                          '& h3': {
+                            fontSize: '1.3em',
+                            fontWeight: 'bold',
+                            color: '#2d3748',
+                            margin: '18px 0 12px 0',
+                            borderBottom: '2px solid #667eea',
+                            paddingBottom: '8px',
+                          },
+                          '& h4': {
+                            fontSize: '1.1em',
+                            fontWeight: 'bold',
+                            color: '#4a5568',
+                            margin: '12px 0 8px 0',
+                            borderLeft: '3px solid #764ba2',
+                            paddingLeft: '10px',
+                          },
                         }}
                       >
-                        <Typography 
-                          variant="body1" 
-                          component="pre" 
-                          sx={{ 
-                            whiteSpace: 'pre-wrap', 
-                            fontFamily: 'inherit',
-                            lineHeight: 1.6,
-                            color: '#2d3748',
-                            fontWeight: 400,
+                        <Box
+                          dangerouslySetInnerHTML={{
+                            __html: formatReportContent(selectedReport.content)
                           }}
-                        >
-                          {selectedReport.content}
-                        </Typography>
+                          sx={{
+                            '& br': {
+                              lineHeight: 1.6,
+                            }
+                          }}
+                        />
                       </Box>
                     </CardContent>
                   </Card>
