@@ -22,6 +22,7 @@
     "country-state-city": "^3.2.1",
     "moment": "^2.29.4",
     "moment-timezone": "^0.5.43",
+    "nodemailer": "^7.0.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.1",
@@ -53,7 +54,12 @@
       "last 1 safari version"
     ]
   },
-  "keywords": ["react", "school-management", "ai", "reports"],
+  "keywords": [
+    "react",
+    "school-management",
+    "ai",
+    "reports"
+  ],
   "author": "Barrana AI",
   "license": "ISC"
 }

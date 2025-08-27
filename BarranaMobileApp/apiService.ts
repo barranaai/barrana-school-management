@@ -759,10 +759,17 @@ class ApiService {
   public async sendReportToParents(reportId: string, emails: string[]): Promise<{ success: boolean; message?: string }> {
     try {
       console.log('📱 Sending report to parents:', reportId, emails);
-      const response: AxiosResponse<ApiResponse> = await this.api.post(`/reports/${reportId}/send`, {
-        emails
-      });
-      console.log('📱 Report send response:', response.data);
+      
+      // Send email to each parent using the correct endpoint
+      const results = [];
+      for (const email of emails) {
+        const response: AxiosResponse<ApiResponse> = await this.api.post(`/reports/${reportId}/send-email`, {
+          parentEmail: email
+        });
+        console.log('📱 Report send response for', email, ':', response.data);
+        results.push(response.data);
+      }
+      
       return { success: true };
     } catch (error: any) {
       console.error('📱 Error sending report to parents:', error);
