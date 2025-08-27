@@ -1011,7 +1011,11 @@ const StudentManagement: React.FC = () => {
         // Extract key points from the template content
         const extractedKeyPoints = extractKeyPointsFromTemplate(defaultTemplate.content || '');
         setKeyPoints(extractedKeyPoints);
+        console.log('🔍 Auto-selected template:', defaultTemplate.name);
+        console.log('🔍 Template content length:', defaultTemplate.content?.length || 0);
+        console.log('🔍 Template content preview:', defaultTemplate.content?.substring(0, 200) || 'NO CONTENT');
         console.log('🔍 Key points extracted:', extractedKeyPoints.length);
+        console.log('🔍 Extracted key points:', extractedKeyPoints);
         
         toast.success(`Due template "${defaultTemplate.name}" (${defaultTemplate.reportFrequency}) selected for Grade ${student.grade}`);
       } else {
