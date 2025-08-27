@@ -583,50 +583,126 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
     });
   };
 
+  // Helper functions for mobile due date calculation (simplified versions of backend logic)
+  const isWeekend = (date: Date, workingDays: any): boolean => {
+    const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    
+    if (dayOfWeek === 0) return !workingDays.sunday;
+    if (dayOfWeek === 6) return !workingDays.saturday;
+    
+    return false;
+  };
+
+  const isHoliday = (date: Date, holidays: any[]): boolean => {
+    const dateString = date.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    return holidays.some((holiday: any) => {
+      const holidayDate = new Date(holiday.date);
+      const holidayString = holidayDate.toISOString().split('T')[0];
+      
+      if (holiday.isRecurring) {
+        // For recurring holidays, check month and day only
+        return date.getMonth() === holidayDate.getMonth() && date.getDate() === holidayDate.getDate();
+      } else {
+        // For non-recurring holidays, check exact date
+        return dateString === holidayString;
+      }
+    });
+  };
+
+  const getNextWorkingDay = (date: Date, workingDays: any, holidays: any[]): Date => {
+    let nextDay = new Date(date);
+    
+    do {
+      nextDay.setDate(nextDay.getDate() + 1);
+    } while (isWeekend(nextDay, workingDays) || isHoliday(nextDay, holidays));
+    
+    return nextDay;
+  };
+
+  const hasTimePassedToday = (now: Date, dueTime: string): boolean => {
+    const [dueHours, dueMinutes] = (dueTime || '17:00').split(':').map(Number);
+    const currentHours = now.getHours();
+    const currentMinutes = now.getMinutes();
+    
+    return currentHours > dueHours || (currentHours === dueHours && currentMinutes > dueMinutes);
+  };
+
+  const calculateMonthlyDueDate = (baseDate: Date, rule: string, frequencyConfig: any, workingDays: any): Date => {
+    let targetDate: Date;
+    
+    switch (rule) {
+      case 'specificDate':
+        const specificDay = frequencyConfig.specificDay || 28;
+        targetDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), specificDay);
+        
+        // If day exceeds month length, use last day of month
+        if (targetDate.getMonth() !== baseDate.getMonth()) {
+          targetDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
+        }
+        break;
+        
+      case 'lastDay':
+        targetDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
+        break;
+        
+      case 'lastWorkingDay':
+      default:
+        targetDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
+        // Find the last working day of the month (simplified)
+        while (isWeekend(targetDate, workingDays)) {
+          targetDate.setDate(targetDate.getDate() - 1);
+        }
+        break;
+    }
+    
+    return targetDate;
+  };
+
   // Helper function to calculate due date for current period
   const calculateDueDateForFrequency = (frequency: string, currentDate: Date): Date => {
     const now = new Date(currentDate);
     
-    // Get school settings for frequency configuration (same as frontend logic)
+    // Get school settings for frequency configuration (same as backend logic)
     const schoolSettings = schoolData?.settings || {};
     const frequencyConfig = schoolSettings.reportFrequencies?.[frequency];
+    const workingDays = schoolSettings.calendar?.workingDays || {};
+    const holidays = schoolSettings.calendar?.holidays || [];
     
     console.log('📱 Mobile calculateDueDateForFrequency', {
       frequency,
       currentDate: currentDate.toISOString(),
       frequencyConfig,
-      enabled: frequencyConfig?.enabled
+      enabled: frequencyConfig?.enabled,
+      workingDays,
+      holidaysCount: holidays.length
     });
     
     if (frequencyConfig?.enabled) {
-      // Use school's frequency configuration (match frontend/backend logic)
+      // Use school's frequency configuration (match backend logic exactly)
       let dueDate = new Date(now);
       
       switch (frequency) {
         case 'Daily':
-          // Check if today is a working day
-          const workingDays = frequencyConfig.workingDays || [1, 2, 3, 4, 5]; // Default to Mon-Fri
+          // Check if today is a working day (match backend logic)
+          const dailyWorkingDays = frequencyConfig.workingDays || [1, 2, 3, 4, 5]; // Default to Mon-Fri
           const currentDayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-          const isWorkingDay = workingDays.includes(currentDayOfWeek);
+          const isDailyWorkingDay = dailyWorkingDays.includes(currentDayOfWeek);
           
-          if (!isWorkingDay) {
-            // Find the next working day
+          if (!isDailyWorkingDay) {
+            // If today is not a working day, find the next working day
             let nextWorkingDay = new Date(now);
             do {
               nextWorkingDay.setDate(nextWorkingDay.getDate() + 1);
-            } while (!workingDays.includes(nextWorkingDay.getDay()));
+            } while (!dailyWorkingDays.includes(nextWorkingDay.getDay()) || 
+                     (frequencyConfig.skipHolidays && isHoliday(nextWorkingDay, holidays)));
             dueDate = nextWorkingDay;
-          } else {
-            dueDate = new Date(now);
           }
-          
-          // Set the configured time
-          const [dailyHours, dailyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-          dueDate.setHours(dailyHours, dailyMinutes, 0, 0);
-          dueDate.setMilliseconds(0);
+          // If it's a working day, the report is due TODAY
           break;
+          
         case 'Weekly':
-          // Due on configured day of the week (match frontend/backend logic exactly)
+          // Due on configured day of the week (match backend logic exactly)
           const targetDay = frequencyConfig.dueDay; // Backend uses 0=Sunday, 1=Monday, ..., 6=Saturday
           const currentDay = now.getDay();
           let daysToAdd = (targetDay - currentDay + 7) % 7;
@@ -644,18 +720,184 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
             }
           }
           
-          // Ensure we're working with a fresh date object
-          dueDate = new Date(now);
           dueDate.setDate(now.getDate() + daysToAdd);
-          const [weeklyHours, weeklyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-          dueDate.setHours(weeklyHours, weeklyMinutes, 0, 0);
-          return dueDate;
+          break;
+          
+        case 'Bi-Weekly':
+          // Rule-based bi-weekly calculation (simplified for mobile)
+          const biWeeklyRule = frequencyConfig.rule || 'alternateWeeks';
+          const biWeeklyDueDay = frequencyConfig.dueDay || 5; // Friday
+          
+          if (biWeeklyRule === 'alternateWeeks') {
+            const currentWeek = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+            const startWeek = frequencyConfig.startWeek || 1;
+            const isTargetWeek = (currentWeek - startWeek) % 2 === 0;
+            
+            // Set to the configured day of the week
+            const targetDayBiWeekly = biWeeklyDueDay; // Already 0-6
+            const currentDayBiWeekly = now.getDay();
+            let daysToAddBiWeekly = (targetDayBiWeekly - currentDayBiWeekly + 7) % 7;
+            
+            if (!isTargetWeek || (daysToAddBiWeekly === 0 && hasTimePassedToday(now, frequencyConfig.dueTime))) {
+              daysToAddBiWeekly += 7; // Move to next occurrence
+            }
+            
+            dueDate.setDate(now.getDate() + daysToAddBiWeekly);
+          } else {
+            // Fallback for other bi-weekly rules - use next occurrence of due day
+            const targetDayFallback = biWeeklyDueDay;
+            const currentDayFallback = now.getDay();
+            const daysToAddFallback = (targetDayFallback - currentDayFallback + 7) % 7;
+            dueDate.setDate(now.getDate() + (daysToAddFallback || 14)); // If 0, add 2 weeks
+          }
+          break;
+          
+        case 'Monthly':
+          // Rule-based monthly calculation (simplified for mobile)
+          const monthlyRule = frequencyConfig.rule || 'lastWorkingDay';
+          
+          switch (monthlyRule) {
+            case 'specificDate':
+              const specificDay = frequencyConfig.specificDay || 28;
+              dueDate = new Date(now.getFullYear(), now.getMonth(), specificDay);
+              
+              // If day exceeds month length, use last day of month
+              if (dueDate.getMonth() !== now.getMonth()) {
+                dueDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+              }
+              
+              // If date has passed, move to next month
+              if (dueDate <= now) {
+                dueDate = new Date(now.getFullYear(), now.getMonth() + 1, specificDay);
+                if (dueDate.getMonth() !== (now.getMonth() + 1) % 12) {
+                  dueDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+                }
+              }
+              break;
+              
+            case 'lastDay':
+              dueDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+              if (dueDate <= now) {
+                dueDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+              }
+              break;
+              
+            case 'lastWorkingDay':
+            default:
+              dueDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+              // Find the last working day of the month (simplified)
+              while (isWeekend(dueDate, workingDays)) {
+                dueDate.setDate(dueDate.getDate() - 1);
+              }
+              
+              if (dueDate <= now) {
+                dueDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+                while (isWeekend(dueDate, workingDays)) {
+                  dueDate.setDate(dueDate.getDate() - 1);
+                }
+              }
+              break;
+          }
+          break;
+          
+        case 'Bi-Monthly':
+          // Bi-monthly calculation (simplified for mobile)
+          const biMonthlyRule = frequencyConfig.rule || 'lastWorkingDay';
+          const startMonth = frequencyConfig.startMonth || 9; // September
+          const currentMonth = now.getMonth(); // 0-11
+          const monthsSinceStart = (currentMonth - (startMonth - 1) + 12) % 12;
+          const isTargetMonth = monthsSinceStart % 2 === 0;
+          
+          if (isTargetMonth) {
+            // Use current month
+            dueDate = calculateMonthlyDueDate(now, biMonthlyRule, frequencyConfig, workingDays);
+          } else {
+            // Move to next bi-monthly period
+            const nextBiMonthlyMonth = now.getMonth() + (2 - (monthsSinceStart % 2));
+            dueDate = new Date(now.getFullYear(), nextBiMonthlyMonth, 1);
+            dueDate = calculateMonthlyDueDate(dueDate, biMonthlyRule, frequencyConfig, workingDays);
+          }
+          break;
+          
+        case 'Quarterly':
+          // Quarterly calculation based on enabled quarters
+          const quarters = frequencyConfig.quarters || {
+            q1: { enabled: true, month: 10, day: 30 }, // October 30
+            q2: { enabled: true, month: 1, day: 15 },  // January 15
+            q3: { enabled: true, month: 3, day: 30 },  // March 30
+            q4: { enabled: true, month: 6, day: 10 }   // June 10
+          };
+          
+          const currentQuarterMonth = now.getMonth() + 1; // 1-based month
+          let nextQuarterDate = null;
+          
+          // Find the next enabled quarter
+          const quarterOrder = ['q1', 'q2', 'q3', 'q4'];
+          for (const quarterKey of quarterOrder) {
+            const quarter = quarters[quarterKey];
+            if (quarter && quarter.enabled) {
+              const quarterMonth = quarter.month;
+              const quarterDay = quarter.day;
+              
+              // Create date for this quarter in current year
+              let quarterDate = new Date(now.getFullYear(), quarterMonth - 1, quarterDay);
+              
+              // If this quarter has passed, try next year
+              if (quarterDate <= now) {
+                quarterDate = new Date(now.getFullYear() + 1, quarterMonth - 1, quarterDay);
+              }
+              
+              // If this is the first valid quarter or it's earlier than our current best
+              if (!nextQuarterDate || quarterDate < nextQuarterDate) {
+                nextQuarterDate = quarterDate;
+              }
+            }
+          }
+          
+          dueDate = nextQuarterDate || new Date(now.getFullYear() + 1, 5, 10); // Fallback: June 10 next year
+          break;
+          
+        case 'Annually':
+          // Set to the configured month and day (format: MMDD, e.g., 615 = June 15th)
+          const yearTargetDay = frequencyConfig.dueDay || 615;
+          const yearTargetMonth = Math.floor(yearTargetDay / 100) - 1; // Convert to 0-based month index
+          const yearTargetDate = yearTargetDay % 100;
+          
+          dueDate = new Date(now.getFullYear(), yearTargetMonth, yearTargetDate);
+          
+          // If the target date has passed this year, move to next year
+          if (dueDate <= now) {
+            dueDate = new Date(now.getFullYear() + 1, yearTargetMonth, yearTargetDate);
+          }
+          break;
+          
         default:
-          // For other frequencies, use school time if configured
-          const [hours, minutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-          dueDate.setHours(hours, minutes, 0, 0);
-          return dueDate;
+          // For unknown frequencies, use current date with configured time
+          dueDate = new Date(now);
       }
+      
+      // Set the configured time (except for frequencies that set their own time)
+      if (frequency !== 'Quarterly' && frequency !== 'Annually') {
+        const [hours, minutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
+        dueDate.setHours(hours, minutes, 0, 0);
+      } else if (frequency === 'Annually') {
+        const [annualHours, annualMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
+        dueDate.setHours(annualHours, annualMinutes, 0, 0);
+      } else {
+        // Quarterly uses default time
+        dueDate.setHours(17, 0, 0, 0);
+      }
+      
+      // Apply weekend/holiday adjustments if configured (simplified for mobile)
+      if (frequencyConfig.skipWeekends && isWeekend(dueDate, workingDays)) {
+        dueDate = getNextWorkingDay(dueDate, workingDays, holidays);
+      }
+      
+      if (frequencyConfig.skipHolidays && isHoliday(dueDate, holidays)) {
+        dueDate = getNextWorkingDay(dueDate, workingDays, holidays);
+      }
+      
+      return dueDate;
     }
     
     // Fallback logic if frequency config is not enabled or missing (maintain backward compatibility)

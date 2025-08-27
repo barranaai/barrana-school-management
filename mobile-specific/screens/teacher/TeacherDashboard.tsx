@@ -49,32 +49,146 @@ const TeacherDashboard: React.FC = () => {
     loadReportTemplates();
   }, []);
 
-  // Helper function to calculate due date (simplified version, matches main mobile app)
+  // Helper function to calculate due date (dynamic configuration aware)
   const calculateDueDateForFrequency = (frequency: string, currentDate: Date): Date => {
     const now = new Date(currentDate);
     
-    // Simple fallback logic for mobile dashboard
+    // TODO: Get school settings from context/props when available
+    // For now, use simplified logic with common defaults that match school configuration patterns
+    const defaultConfig = {
+      Daily: { enabled: true, workingDays: [1, 2, 3, 4, 5], dueTime: '17:00' },
+      Weekly: { enabled: true, dueDay: 5, dueTime: '17:00' }, // Friday
+      Monthly: { enabled: true, rule: 'lastWorkingDay', dueTime: '17:00' },
+      'Bi-Weekly': { enabled: true, dueDay: 5, dueTime: '17:00', rule: 'alternateWeeks' },
+      'Bi-Monthly': { enabled: true, rule: 'lastWorkingDay', dueTime: '17:00' },
+      Quarterly: { enabled: true, dueTime: '17:00' },
+      Annually: { enabled: true, dueDay: 615, dueTime: '17:00' } // June 15th
+    };
+    
+    const config = defaultConfig[frequency as keyof typeof defaultConfig];
+    if (!config?.enabled) {
+      // Fallback for unknown frequencies
+      const defaultDue = new Date(now);
+      defaultDue.setDate(defaultDue.getDate() + 30);
+      defaultDue.setHours(17, 0, 0, 0);
+      return defaultDue;
+    }
+    
+    let dueDate = new Date(now);
+    const [hours, minutes] = (config.dueTime || '17:00').split(':').map(Number);
+    
     switch (frequency) {
       case 'Daily':
-        return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0, 0, 0);
+        // Check if today is a working day
+        const workingDays = config.workingDays || [1, 2, 3, 4, 5];
+        const currentDayOfWeek = now.getDay();
+        const isWorkingDay = workingDays.includes(currentDayOfWeek);
+        
+        if (!isWorkingDay) {
+          // Find the next working day
+          let nextWorkingDay = new Date(now);
+          do {
+            nextWorkingDay.setDate(nextWorkingDay.getDate() + 1);
+          } while (!workingDays.includes(nextWorkingDay.getDay()));
+          dueDate = nextWorkingDay;
+        }
+        break;
+        
       case 'Weekly':
-        // Due at end of current week (Sunday)
-        const weekEnd = new Date(now);
-        weekEnd.setDate(now.getDate() + (7 - now.getDay()));
-        weekEnd.setHours(17, 0, 0, 0);
-        return weekEnd;
+        // Due on configured day of the week
+        const targetDay = config.dueDay || 5; // Friday
+        const currentDay = now.getDay();
+        let daysToAdd = (targetDay - currentDay + 7) % 7;
+        
+        // If it's the target day today, check if we've passed the due time
+        if (daysToAdd === 0) {
+          const currentHours = now.getHours();
+          const currentMinutes = now.getMinutes();
+          
+          // If current time is after due time, move to next week
+          if (currentHours > hours || (currentHours === hours && currentMinutes > minutes)) {
+            daysToAdd = 7;
+          }
+        }
+        
+        dueDate.setDate(now.getDate() + daysToAdd);
+        break;
+        
       case 'Monthly':
-        // Due at end of current month
-        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        monthEnd.setHours(17, 0, 0, 0);
-        return monthEnd;
+        // Due at end of current month (simplified)
+        dueDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        if (dueDate <= now) {
+          dueDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+        }
+        break;
+        
+      case 'Bi-Weekly':
+        // Simplified bi-weekly: every other Friday
+        const biWeeklyTargetDay = config.dueDay || 5; // Friday
+        const biWeeklyCurrentDay = now.getDay();
+        let biWeeklyDaysToAdd = (biWeeklyTargetDay - biWeeklyCurrentDay + 7) % 7;
+        
+        // Simple alternating week logic
+        const weekNumber = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+        if (weekNumber % 2 !== 0) { // If odd week, move to next even week
+          biWeeklyDaysToAdd += 7;
+        }
+        
+        if (biWeeklyDaysToAdd === 0) {
+          biWeeklyDaysToAdd = 14; // Move to next bi-weekly occurrence
+        }
+        
+        dueDate.setDate(now.getDate() + biWeeklyDaysToAdd);
+        break;
+        
+      case 'Bi-Monthly':
+        // Every 2 months, last working day (simplified)
+        const currentMonth = now.getMonth();
+        const isTargetMonth = currentMonth % 2 === 0; // Even months
+        
+        if (isTargetMonth) {
+          dueDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else {
+          dueDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+        }
+        
+        if (dueDate <= now) {
+          dueDate = new Date(now.getFullYear(), now.getMonth() + 3, 0);
+        }
+        break;
+        
+      case 'Quarterly':
+        // Next quarter end (simplified)
+        const quarter = Math.floor(now.getMonth() / 3);
+        const nextQuarterEndMonth = (quarter + 1) * 3;
+        dueDate = new Date(now.getFullYear(), nextQuarterEndMonth, 0);
+        
+        if (dueDate <= now) {
+          dueDate = new Date(now.getFullYear() + 1, 3, 0); // Next year Q1
+        }
+        break;
+        
+      case 'Annually':
+        // June 15th by default
+        const yearTargetDay = config.dueDay || 615;
+        const yearTargetMonth = Math.floor(yearTargetDay / 100) - 1;
+        const yearTargetDate = yearTargetDay % 100;
+        
+        dueDate = new Date(now.getFullYear(), yearTargetMonth, yearTargetDate);
+        
+        if (dueDate <= now) {
+          dueDate = new Date(now.getFullYear() + 1, yearTargetMonth, yearTargetDate);
+        }
+        break;
+        
       default:
         // Default to 30 days for other frequencies
-        const defaultDue = new Date(now);
-        defaultDue.setDate(defaultDue.getDate() + 30);
-        defaultDue.setHours(17, 0, 0, 0);
-        return defaultDue;
+        dueDate.setDate(dueDate.getDate() + 30);
     }
+    
+    // Set the configured time
+    dueDate.setHours(hours, minutes, 0, 0);
+    return dueDate;
   };
 
   // Calculate due reports
