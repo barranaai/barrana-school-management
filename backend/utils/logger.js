@@ -2,56 +2,36 @@ const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
 
-// Create logs directory if it doesn't exist
-const logsDir = path.join(__dirname, '..', 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+// Production deployment - use console logging
+// Create logs directory in development for file logging
+let fileTransports = [];
+if (process.env.NODE_ENV === 'development') {
+  try {
+    const logsDir = path.join(__dirname, '..', 'logs');
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+    
+    // Only create file transports in development
+    const rotatingFileTransport = new winston.transports.File({
+      filename: path.join(logsDir, 'app.log'),
+      maxsize: 10 * 1024 * 1024, // 10MB
+      maxFiles: 5, // Keep 5 files
+      tailable: true,
+      format: winston.format.combine(
+        winston.format.timestamp({
+          format: 'YYYY-MM-DD HH:mm:ss.SSS'
+        }),
+        winston.format.errors({ stack: true }),
+        winston.format.json()
+      )
+    });
+    
+    fileTransports.push(rotatingFileTransport);
+  } catch (error) {
+    console.warn('Could not create file logging, using console only:', error.message);
+  }
 }
-
-// Create a rotating file transport for persistent logging
-const rotatingFileTransport = new winston.transports.File({
-  filename: path.join(logsDir, 'app.log'),
-  maxsize: 10 * 1024 * 1024, // 10MB
-  maxFiles: 5, // Keep 5 files
-  tailable: true,
-  format: winston.format.combine(
-    winston.format.timestamp({
-      format: 'YYYY-MM-DD HH:mm:ss.SSS'
-    }),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  )
-});
-
-// Create a specific transport for due date calculation debugging
-const dueDateDebugTransport = new winston.transports.File({
-  filename: path.join(logsDir, 'due-date-debug.log'),
-  maxsize: 5 * 1024 * 1024, // 5MB
-  maxFiles: 3, // Keep 3 files
-  tailable: true,
-  format: winston.format.combine(
-    winston.format.timestamp({
-      format: 'YYYY-MM-DD HH:mm:ss.SSS'
-    }),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  )
-});
-
-// Create a specific transport for report creation debugging
-const reportCreationTransport = new winston.transports.File({
-  filename: path.join(logsDir, 'report-creation.log'),
-  maxsize: 5 * 1024 * 1024, // 5MB
-  maxFiles: 3, // Keep 3 files
-  tailable: true,
-  format: winston.format.combine(
-    winston.format.timestamp({
-      format: 'YYYY-MM-DD HH:mm:ss.SSS'
-    }),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  )
-});
 
 // Create the main logger
 const logger = winston.createLogger({
@@ -65,14 +45,14 @@ const logger = winston.createLogger({
   ),
   defaultMeta: { service: 'barrana-backend' },
   transports: [
-    // Console transport for development
+    // Console transport - always available
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.simple()
       )
     }),
-    rotatingFileTransport
+    ...fileTransports // Add file transports only if available
   ]
 });
 
@@ -88,7 +68,6 @@ const dueDateLogger = winston.createLogger({
   ),
   defaultMeta: { service: 'due-date-calculation' },
   transports: [
-    dueDateDebugTransport,
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
@@ -109,7 +88,6 @@ const reportCreationLogger = winston.createLogger({
   ),
   defaultMeta: { service: 'report-creation' },
   transports: [
-    reportCreationTransport,
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),

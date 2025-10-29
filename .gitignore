@@ -56,4 +56,21 @@ backend/uploads/logos/*
 !backend/uploads/audio/.gitkeep
 !backend/uploads/media/.gitkeep
 !backend/uploads/logos/.gitkeep
-.vercel
+
+# Mobile APK builds
+*.apk
+
+# Test and debug scripts
+test_*.js
+check_*.js
+debug_*.js
+
+# Firebase credentials (NEVER COMMIT)
+backend/config/firebase-service-account.json
+firebase-service-account*.json
+google-services.json
+GoogleService-Info.plist
+
+# Temporary documentation files
+*.md
+!README.md

@@ -26,8 +26,8 @@ const upload = multer({
     fileSize: 25 * 1024 * 1024, // 25MB limit
   },
   fileFilter: (req, file, cb) => {
-    // Accept audio files
-    if (file.mimetype.startsWith('audio/')) {
+    // Accept audio files and webm files (MediaRecorder often uses video/webm for audio recordings)
+    if (file.mimetype.startsWith('audio/') || file.mimetype === 'video/webm') {
       cb(null, true);
     } else {
       cb(new Error('Only audio files are allowed'), false);
@@ -35,14 +35,30 @@ const upload = multer({
   }
 });
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI (gracefully handle missing API key)
+let openai = null;
+try {
+  if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.trim() !== '') {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  } else {
+    console.log('OpenAI API key not provided - AI features disabled');
+  }
+} catch (error) {
+  console.log('OpenAI initialization failed - AI features disabled:', error.message);
+}
 
 // AI Report Generation
 router.post('/generate-report', async (req, res) => {
   try {
+    if (!openai) {
+      return res.status(503).json({
+        success: false,
+        message: 'AI service is not available. Please configure OpenAI API key.'
+      });
+    }
+    
     console.log('🤖 AI Report Generation Request:', req.body);
     
     const { transcription, studentName, grade, template, templateId, timestamp } = req.body;
@@ -104,6 +120,13 @@ router.post('/generate-report', async (req, res) => {
 // Audio Upload Endpoint
 router.post('/upload-audio', upload.single('audio'), async (req, res) => {
   try {
+    if (!openai) {
+      return res.status(503).json({
+        success: false,
+        message: 'AI service is not available. Please configure OpenAI API key.'
+      });
+    }
+    
     console.log('🎤 Audio Upload Request');
     
     if (!req.file) {
@@ -171,6 +194,13 @@ router.post('/upload-audio', upload.single('audio'), async (req, res) => {
 // Voice Processing with actual transcription
 router.post('/process-voice', upload.single('audio'), async (req, res) => {
   try {
+    if (!openai) {
+      return res.status(503).json({
+        success: false,
+        message: 'AI service is not available. Please configure OpenAI API key.'
+      });
+    }
+    
     console.log('🎤 Voice Processing Request');
     
     if (!req.file) {
@@ -492,6 +522,9 @@ Please generate a comprehensive, well-structured report that:
 
 Template Name: ${templateData.name}`;
 
+    console.log('🤖 Calling OpenAI with system prompt length:', systemPrompt.length);
+    console.log('🤖 User prompt:', userPrompt.substring(0, 200) + '...');
+    
     const completion = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
@@ -503,6 +536,14 @@ Template Name: ${templateData.name}`;
     });
 
     const aiGeneratedReport = completion.choices[0].message.content;
+    console.log('✅ AI Generated Report length:', aiGeneratedReport?.length || 0);
+    console.log('📄 AI Generated Report preview:', aiGeneratedReport?.substring(0, 300));
+    
+    // Check if AI generated content is empty
+    if (!aiGeneratedReport || aiGeneratedReport.trim().length === 0) {
+      console.error('❌ AI generated empty report!');
+      throw new Error('AI generated empty report content');
+    }
     
     // Add header information
     const report = `# Student Progress Report
@@ -512,12 +553,16 @@ Template Name: ${templateData.name}`;
 **Template:** ${templateData.name}  
 **Date:** ${new Date().toLocaleDateString()}
 
-${aiGeneratedReport}
+---
+
+*This report was generated using intelligent AI analysis of teacher observations.*
+*Template: ${templateData.name}*
 
 ---
 
-*This report was generated using AI analysis of teacher observations following the "${templateData.name}" template.*`;
+${aiGeneratedReport}`;
 
+    console.log('📝 Final report length:', report.length);
     return report.trim();
   } catch (error) {
     console.error('Error generating AI report with template structure:', error);
@@ -528,57 +573,60 @@ ${aiGeneratedReport}
 
 function parseTemplateStructure(templateContent) {
   console.log('🔧 Parsing template structure...');
+  console.log('📋 Template content preview:', templateContent.substring(0, 200));
   const sections = [];
   const lines = templateContent.split('\n');
   
   let currentSection = null;
-  let currentSubsection = null;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     
-    // Detect main sections (usually ending with colon and no indentation)
-    if (line.endsWith(':') && !line.startsWith(' ') && !line.startsWith('\t')) {
+    // Check if line starts with "Heading:" - this is a main section
+    if (/^Heading:\s*/i.test(line)) {
       // Save previous section if exists
       if (currentSection) {
         sections.push(currentSection);
       }
       
+      // Extract the heading content (remove "Heading:" prefix)
+      const sectionTitle = line.replace(/^Heading:\s*/i, '').trim();
+      
       // Start new section
       currentSection = {
-        title: line.replace(':', '').trim(),
+        title: sectionTitle,
         subsections: [],
         type: 'section'
       };
-      currentSubsection = null;
+      console.log('📌 Found heading:', sectionTitle);
     }
-    // Detect subsections (usually have specific format like "Feeding: Write the details...")
-    else if (line.includes(':') && line.toLowerCase().includes('write the details')) {
-      const colonIndex = line.indexOf(':');
-      const subsectionTitle = line.substring(0, colonIndex).trim();
-      const description = line.substring(colonIndex + 1).trim();
+    // Check if line starts with "Subheading:" - this is a subsection
+    else if (/^Subheading:\s*/i.test(line)) {
+      // Extract the subheading content (remove "Subheading:" prefix)
+      const subsectionTitle = line.replace(/^Subheading:\s*/i, '').trim();
       
       if (currentSection) {
         currentSection.subsections.push({
           title: subsectionTitle,
-          description: description,
+          description: '',
           type: 'subsection',
           content: null // Will be filled by AI
         });
-      }
-    }
-    // Handle multi-line descriptions that start with "Write the details about"
-    else if (line.toLowerCase().startsWith('write the details about')) {
-      if (currentSection && currentSection.subsections.length === 0) {
-        // This is a section-level description
-        currentSection.description = line;
-        currentSection.subsections.push({
-          title: currentSection.title,
-          description: line,
-          type: 'subsection',
-          content: null
-        });
+        console.log('  ↳ Found subheading:', subsectionTitle);
+      } else {
+        // If we have a subheading without a section, create a default section
+        console.log('⚠️ Found subheading without section:', subsectionTitle);
+        currentSection = {
+          title: 'General',
+          subsections: [{
+            title: subsectionTitle,
+            description: '',
+            type: 'subsection',
+            content: null
+          }],
+          type: 'section'
+        };
       }
     }
   }
@@ -588,7 +636,7 @@ function parseTemplateStructure(templateContent) {
     sections.push(currentSection);
   }
   
-  console.log('✅ Template parsing complete. Found sections:', sections.map(s => s.title));
+  console.log('✅ Template parsing complete. Found sections:', sections.map(s => `${s.title} (${s.subsections.length} subsections)`));
   return sections;
 }
 
@@ -947,43 +995,71 @@ function formatIntelligentReport(mappedContent, studentName, grade, templateData
   return report.trim();
 }
 
-function generateSimplePromptReport(transcription, studentName, grade, templateData) {
-  // Fallback to original simple prompt replacement
-  let customPrompt = templateData.aiPrompt || '';
+async function generateSimplePromptReport(transcription, studentName, grade, templateData) {
+  console.log('📝 Using simple prompt report generation (fallback)');
   
-  // Replace common template variables
-  customPrompt = customPrompt.replace(/\{studentName\}/g, studentName);
-  customPrompt = customPrompt.replace(/\{grade\}/g, grade);
-  customPrompt = customPrompt.replace(/\{transcription\}/g, transcription);
-  customPrompt = customPrompt.replace(/\{date\}/g, new Date().toLocaleDateString());
-  customPrompt = customPrompt.replace(/\{templateName\}/g, templateData.name);
-  
-  // If no custom prompt is provided, create a basic one using the transcription
-  if (!customPrompt || customPrompt.trim() === '') {
-    customPrompt = `Based on the teacher's observations: "${transcription}", please provide a comprehensive assessment of the student's progress, including academic performance, social development, and areas for growth.`;
-  }
-  
-  const report = `
-# Student Progress Report
+  // Try to use OpenAI if available
+  if (openai) {
+    try {
+      console.log('🤖 Attempting AI generation in fallback...');
+      const systemPrompt = `You are an educational report assistant. Create a student progress report based on teacher observations.`;
+      const userPrompt = `Create a progress report for ${studentName} (Grade ${grade}) based on these observations:\n\n"${transcription}"\n\nTemplate: ${templateData.name}\nTemplate Structure:\n${templateData.content || 'General progress report'}`;
+      
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000
+      });
+
+      const aiContent = completion.choices[0].message.content;
+      
+      if (aiContent && aiContent.trim().length > 0) {
+        console.log('✅ Fallback AI generation successful');
+        return `# Student Progress Report
 
 **Student Name:** ${studentName}  
 **Grade:** ${grade}  
 **Template:** ${templateData.name}  
 **Date:** ${new Date().toLocaleDateString()}
 
-## Teacher Observations
+---
 
-${transcription}
-
-## AI-Generated Assessment
-
-${customPrompt}
+${aiContent}
 
 ---
 
 *This report was generated using AI analysis of teacher observations.*
-*Template: ${templateData.name}*
-  `;
+*Template: ${templateData.name}*`;
+      }
+    } catch (error) {
+      console.error('❌ Fallback AI generation failed:', error.message);
+    }
+  }
+  
+  // Final fallback - include transcription with template structure
+  console.log('📋 Using template structure with transcription (final fallback)');
+  
+  const report = `# Student Progress Report
+
+**Student Name:** ${studentName}  
+**Grade:** ${grade}  
+**Template:** ${templateData.name}  
+**Date:** ${new Date().toLocaleDateString()}
+
+---
+
+## Teacher Observations
+
+${transcription}
+
+---
+
+*This report includes the teacher's direct observations.*
+*Template: ${templateData.name}*`;
   
   return report.trim();
 }

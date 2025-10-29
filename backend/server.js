@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -6,10 +7,11 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: './config.env' });
 
 const connectDB = require('./config/database');
 const { logger } = require('./utils/logger');
+const socketService = require('./services/socketService');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -24,73 +26,61 @@ const billingRoutes = require('./routes/billing');
 const superAdminRoutes = require('./routes/superAdmin');
 const aiRoutes = require('./routes/ai');
 const communicationRoutes = require('./routes/communication');
-const debugRoutes = require('./routes/debug');
+const eventRoutes = require('./routes/events');
+const parentGroupRoutes = require('./routes/parentGroups');
+const messageRoutes = require('./routes/messages');
+
+// Import reminder scheduler
+const { initializeReminderScheduler, initializePDFCleanup } = require('./services/reminderScheduler');
 
 const app = express();
-const PORT = process.env.PORT || 5050;
+const server = http.createServer(app);
+const PORT = process.env.PORT || 3001;
+
+// Initialize Socket.io
+socketService.initialize(server);
+
+// Debug port configuration
+console.log('🔧 Environment variables:');
+console.log('  PORT:', process.env.PORT);
+console.log('  NODE_ENV:', process.env.NODE_ENV);
+console.log('  Final PORT:', PORT);
 
 // Connect to MongoDB
 connectDB();
 
-// Static file serving for media files with proper headers (before helmet)
-app.use('/uploads/media', express.static(path.join(__dirname, 'uploads/media'), {
-  setHeaders: (res, filePath) => {
-    const ext = path.extname(filePath).toLowerCase();
-    
-    // Set appropriate content type based on file extension
-    if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext)) {
-      res.setHeader('Content-Type', `image/${ext.slice(1)}`);
-    } else if (['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm'].includes(ext)) {
-      res.setHeader('Content-Type', `video/${ext.slice(1)}`);
-    }
-    
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  }
-}));
+// Serve static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Security middleware
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:", "blob:"],
-      mediaSrc: ["'self'", "data:", "https:", "blob:"],
-    },
-  },
+  contentSecurityPolicy: false // Allow inline scripts for development
 }));
 
-// Rate limiting - Temporarily disabled for testing
-// const limiter = rateLimit({
-//   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-//   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
-//   message: {
-//     error: 'Too many requests from this IP, please try again later.',
-//   },
-//   standardHeaders: true,
-//   legacyHeaders: false,
-// });
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || (process.env.NODE_ENV === 'development' ? 1000 : 100), // More lenient in development
+  message: {
+    error: 'Too many requests from this IP, please try again later.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env.NODE_ENV === 'development' && req.ip === '::1' || req.ip === '127.0.0.1', // Skip rate limit for localhost in dev
+});
 
-// const speedLimiter = slowDown({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   delayAfter: 50, // allow 50 requests per 15 minutes, then...
-//   delayMs: () => 500 // begin adding 500ms of delay per request above 50
-// });
+const speedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  delayAfter: 50, // allow 50 requests per 15 minutes, then...
+  delayMs: () => 500 // begin adding 500ms of delay per request above 50
+});
 
-// app.use('/api/', limiter);
-// app.use('/api/', speedLimiter);
+app.use('/api/', limiter);
+app.use('/api/', speedLimiter);
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com'] 
-    : ['http://localhost:3000', 'http://localhost:8081', 'http://localhost:19006'],
+  origin: true, // Allow all origins for now
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -110,6 +100,16 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
+// Root endpoint for testing
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'Barrana AI School Management API',
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+  });
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -119,9 +119,6 @@ app.get('/api/health', (req, res) => {
     environment: process.env.NODE_ENV,
   });
 });
-
-// Static file serving for uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -136,16 +133,12 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/communication', communicationRoutes);
-app.use('/api/debug', debugRoutes);
-
-// Static file serving for uploaded audio files
-app.use('/uploads/audio', express.static(path.join(__dirname, 'uploads/audio'), {
-  setHeaders: (res, path) => {
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', 'inline');
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-  }
-}));
+app.use('/api/events', eventRoutes);
+app.use('/api/parent-groups', parentGroupRoutes);
+app.use('/api/whatsapp', require('./routes/whatsapp'));
+app.use('/api/notification-logs', require('./routes/notificationLogs'));
+app.use('/api/parents', require('./routes/parents'));
+app.use('/api/messages', messageRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -171,10 +164,18 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   logger.info(`🚀 Barrana.ai Backend Server running on port ${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV}`);
   logger.info(`🔗 Health Check: http://localhost:${PORT}/api/health`);
+  logger.info(`🌐 Server listening on 0.0.0.0:${PORT}`);
+  logger.info(`💬 Socket.io ready for real-time messaging`);
+  
+  // Initialize reminder scheduler
+  initializeReminderScheduler();
+  
+  // Initialize PDF cleanup scheduler
+  initializePDFCleanup();
 });
 
 // Graceful shutdown

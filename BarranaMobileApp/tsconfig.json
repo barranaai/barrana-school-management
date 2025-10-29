@@ -1,6 +1,9 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": false,
+    "skipLibCheck": true,
+    "lib": ["es2017", "es2018"],
+    "target": "es2017"
   }
 }

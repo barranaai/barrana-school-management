@@ -60,6 +60,12 @@ import { apiService, Report } from '../../../services/apiService';
 import { mediaService } from '../../../services/mediaService';
 import { useAuth } from '../../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { themeColors } from '../../../theme/adminTheme';
+import NotificationIcon from '../../common/NotificationIcon';
+
+interface AllReportsProps {
+  schoolBranding?: any;
+}
 
 // Extended interface for the component's specific needs
 interface ExtendedReport {
@@ -116,7 +122,7 @@ interface ExtendedReport {
   }>;
 }
 
-const AllReports: React.FC = () => {
+const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
   const [reports, setReports] = useState<ExtendedReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -283,6 +289,10 @@ const AllReports: React.FC = () => {
 
   const getStudentName = (report: ExtendedReport) => {
     const student = report.studentId;
+    // Check if student exists (null/undefined check)
+    if (!student) {
+      return 'Unknown Student';
+    }
     if (student.firstName && student.lastName) {
       return `${student.firstName} ${student.lastName}`;
     } else if (student.firstName) {
@@ -295,6 +305,10 @@ const AllReports: React.FC = () => {
 
   const getTeacherName = (report: ExtendedReport) => {
     const teacher = report.teacherId;
+    // Check if teacher exists (null/undefined check)
+    if (!teacher) {
+      return 'Unknown Teacher';
+    }
     if (teacher.firstName && teacher.lastName) {
       return `${teacher.firstName} ${teacher.lastName}`;
     } else if (teacher.firstName) {
@@ -308,12 +322,66 @@ const AllReports: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed': return 'success';
-      case 'sent': return 'success';
+      case 'sent': return 'info';
       case 'approved': return 'success';
       case 'draft': return 'warning';
       case 'review': return 'info';
       case 'archived': return 'default';
       default: return 'default';
+    }
+  };
+
+  const getStatusChipProps = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return {
+          borderColor: '#ff9800',
+          color: '#ff9800',
+          iconColor: '#ff9800',
+          hoverColor: '#f57c00',
+          activeColor: '#ef6c00',
+        };
+      case 'review':
+        return {
+          borderColor: '#2196f3',
+          color: '#2196f3',
+          iconColor: '#2196f3',
+          hoverColor: '#1976d2',
+          activeColor: '#1565c0',
+        };
+      case 'approved':
+      case 'completed':
+        return {
+          borderColor: '#4caf50',
+          color: '#4caf50',
+          iconColor: '#4caf50',
+          hoverColor: '#388e3c',
+          activeColor: '#2e7d32',
+        };
+      case 'sent':
+        return {
+          borderColor: '#00bcd4',
+          color: '#00bcd4',
+          iconColor: '#00bcd4',
+          hoverColor: '#00acc1',
+          activeColor: '#0097a7',
+        };
+      case 'archived':
+        return {
+          borderColor: '#9e9e9e',
+          color: '#9e9e9e',
+          iconColor: '#9e9e9e',
+          hoverColor: '#757575',
+          activeColor: '#616161',
+        };
+      default:
+        return {
+          borderColor: '#9e9e9e',
+          color: '#9e9e9e',
+          iconColor: '#9e9e9e',
+          hoverColor: '#757575',
+          activeColor: '#616161',
+        };
     }
   };
 
@@ -678,17 +746,101 @@ const AllReports: React.FC = () => {
     );
   }
 
+  const getRandomCardColor = (index: number) => {
+    return themeColors.cardColors[index % themeColors.cardColors.length];
+  };
+
   return (
     <Container maxWidth="xl">
-      {/* Header */}
-      <Fade in timeout={800}>
-        <Box sx={{ mb: 4 }}>
+      {schoolBranding && (
+        <Fade in timeout={600}>
+          <Paper
+            elevation={0}
+            sx={{
+              background: `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#273890'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#7f0f4a'} 100%)`,
+              borderRadius: 4,
+              p: 3,
+              mb: 4,
+              mt: 0,
+              color: 'white',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={9}>
+                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                  {schoolBranding.name || 'School Name'}
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+                  {schoolBranding.established && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📅 Est. {schoolBranding.established}
+                    </Typography>
+                  )}
+                {schoolBranding.address && (
+                  <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                    📍 {typeof schoolBranding.address === 'string' 
+                      ? schoolBranding.address 
+                      : `${schoolBranding.address.street}, ${schoolBranding.address.city}, ${schoolBranding.address.state}`}
+                  </Typography>
+                )}
+                  {schoolBranding.email && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      ✉️ {schoolBranding.email}
+                    </Typography>
+                  )}
+                  {schoolBranding.phone && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📞 {schoolBranding.phone}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                {(schoolBranding.logo || schoolBranding.branding?.logo) && (() => {
+                  const logoPath = schoolBranding.logo || schoolBranding.branding?.logo || '';
+                  const logoUrl = logoPath.startsWith('http://') || logoPath.startsWith('https://') 
+                    ? logoPath 
+                    : `${(process.env.REACT_APP_API_URL || 'http://localhost:5050').replace('/api', '')}${logoPath.startsWith('/') ? logoPath : '/' + logoPath}`;
+                  return (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Box sx={{
+                        bgcolor: 'rgba(255,255,255,0.95)',
+                        borderRadius: 3,
+                        p: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <img 
+                          src={logoUrl} 
+                          alt={schoolBranding.name}
+                          style={{ 
+                            maxWidth: '120px',
+                            maxHeight: '120px',
+                            objectFit: 'contain'
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })()}
+              </Grid>
+            </Grid>
+          </Paper>
+        </Fade>
+      )}
+
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Fade in timeout={800}>
           <Typography 
             variant="h4" 
-            gutterBottom
-            sx={{
+            sx={{ 
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: schoolBranding 
+                ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -697,25 +849,16 @@ const AllReports: React.FC = () => {
           >
             All School Reports
           </Typography>
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              color: 'text.secondary',
-              opacity: 0.8,
-              fontWeight: 500,
-            }}
-          >
-            View and manage all generated reports across the school
-          </Typography>
-        </Box>
-      </Fade>
+        </Fade>
+        <NotificationIcon />
+      </Box>
 
       {/* Search and Actions */}
       <Grow in timeout={1000}>
         <Paper
           elevation={0}
           sx={{
-            background: 'rgba(255,255,255,0.8)',
+            background: getRandomCardColor(0),
             borderRadius: 4,
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255,255,255,0.3)',
@@ -894,7 +1037,7 @@ const AllReports: React.FC = () => {
         <Paper
           elevation={0}
           sx={{
-            background: 'rgba(255,255,255,0.8)',
+            background: getRandomCardColor(0),
             borderRadius: 4,
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255,255,255,0.3)',
@@ -1005,15 +1148,33 @@ const AllReports: React.FC = () => {
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={getStatusDisplayName(report.status)}
-                          color={getStatusColor(report.status) as any}
-                          size="small"
-                          sx={{
-                            fontWeight: 600,
-                            borderRadius: 2,
-                          }}
-                        />
+                        {(() => {
+                          const chipProps = getStatusChipProps(report.status);
+                          return (
+                            <Chip
+                              label={getStatusDisplayName(report.status)}
+                              size="small"
+                              variant="outlined"
+                              sx={{
+                                fontWeight: 600,
+                                borderRadius: 2,
+                                borderColor: chipProps.borderColor,
+                                color: chipProps.color,
+                                '&:hover': {
+                                  backgroundColor: `${chipProps.borderColor}15`,
+                                  borderColor: chipProps.hoverColor,
+                                  color: chipProps.hoverColor,
+                                },
+                                '&:active': {
+                                  backgroundColor: `${chipProps.borderColor}25`,
+                                  borderColor: chipProps.activeColor,
+                                  color: chipProps.activeColor,
+                                },
+                                transition: 'all 0.2s ease'
+                              }}
+                            />
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         {hasAudioRecording(report) ? (
@@ -1089,11 +1250,31 @@ const AllReports: React.FC = () => {
                             icon={<TextFields />}
                             label="Available"
                             size="small"
-                            color="success"
                             variant="outlined"
                             sx={{
                               borderRadius: 2,
                               fontWeight: 600,
+                              borderColor: '#ff9800',
+                              color: '#ff9800',
+                              '& .MuiChip-icon': {
+                                color: '#ff9800 !important',
+                              },
+                              '&:hover': {
+                                backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                                borderColor: '#f57c00',
+                                color: '#f57c00',
+                                '& .MuiChip-icon': {
+                                  color: '#f57c00 !important',
+                                },
+                              },
+                              '&:active': {
+                                backgroundColor: 'rgba(255, 152, 0, 0.2)',
+                                borderColor: '#ef6c00',
+                                color: '#ef6c00',
+                                '& .MuiChip-icon': {
+                                  color: '#ef6c00 !important',
+                                },
+                              },
                             }}
                           />
                         ) : (
@@ -1114,11 +1295,31 @@ const AllReports: React.FC = () => {
                             icon={<SmartToy />}
                             label="Final Report"
                             size="small"
-                            color="primary"
                             variant="outlined"
                             sx={{
                               borderRadius: 2,
                               fontWeight: 600,
+                              borderColor: '#4caf50',
+                              color: '#4caf50',
+                              '& .MuiChip-icon': {
+                                color: '#4caf50 !important',
+                              },
+                              '&:hover': {
+                                backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                                borderColor: '#388e3c',
+                                color: '#388e3c',
+                                '& .MuiChip-icon': {
+                                  color: '#388e3c !important',
+                                },
+                              },
+                              '&:active': {
+                                backgroundColor: 'rgba(76, 175, 80, 0.2)',
+                                borderColor: '#2e7d32',
+                                color: '#2e7d32',
+                                '& .MuiChip-icon': {
+                                  color: '#2e7d32 !important',
+                                },
+                              },
                             }}
                           />
                         ) : (
@@ -1242,18 +1443,37 @@ const AllReports: React.FC = () => {
                 Report Details
               </Typography>
             </Box>
-            <Chip
-              label={getStatusDisplayName(selectedReport?.status || 'draft')}
-              color={getStatusColor(selectedReport?.status || 'draft') as any}
-              size="small"
-              sx={{
-                fontWeight: 600,
-                borderRadius: 2,
-                background: 'rgba(255,255,255,0.2)',
-                color: 'white',
-                '& .MuiChip-label': { color: 'white' },
-              }}
-            />
+            {(() => {
+              const chipProps = getStatusChipProps(selectedReport?.status || 'draft');
+              return (
+                <Chip
+                  label={getStatusDisplayName(selectedReport?.status || 'draft')}
+                  size="small"
+                  variant="outlined"
+                  sx={{
+                    fontWeight: 600,
+                    borderRadius: 2,
+                    background: 'rgba(255,255,255,0.2)',
+                    borderColor: chipProps.borderColor,
+                    color: chipProps.color,
+                    '& .MuiChip-label': { color: chipProps.color },
+                    '&:hover': {
+                      backgroundColor: `${chipProps.borderColor}15`,
+                      borderColor: chipProps.hoverColor,
+                      color: chipProps.hoverColor,
+                      '& .MuiChip-label': { color: chipProps.hoverColor },
+                    },
+                    '&:active': {
+                      backgroundColor: `${chipProps.borderColor}25`,
+                      borderColor: chipProps.activeColor,
+                      color: chipProps.activeColor,
+                      '& .MuiChip-label': { color: chipProps.activeColor },
+                    },
+                    transition: 'all 0.2s ease'
+                  }}
+                />
+              );
+            })()}
           </Box>
         </DialogTitle>
         <DialogContent sx={{ p: 4, pt: 6 }}>
@@ -1520,12 +1740,18 @@ const AllReports: React.FC = () => {
               px: 4,
               py: 1.5,
               fontWeight: 600,
-              borderColor: 'rgba(102, 126, 234, 0.3)',
-              color: '#667eea',
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
               '&:hover': {
-                borderColor: '#667eea',
-                background: 'rgba(102, 126, 234, 0.05)',
+                borderColor: '#b71c1c',
+                background: 'rgba(211, 47, 47, 0.05)',
+                color: '#b71c1c',
                 transform: 'translateY(-2px)',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                background: 'rgba(198, 40, 40, 0.1)',
+                color: '#c62828',
               },
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             }}

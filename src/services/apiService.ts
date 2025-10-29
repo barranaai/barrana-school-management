@@ -20,7 +20,7 @@ export interface User {
   firstName: string;
   lastName: string;
   email: string;
-  role: 'teacher' | 'parent' | 'school_admin' | 'super_admin';
+  role: 'teacher' | 'parent' | 'student' | 'school_admin' | 'super_admin';
   schoolId?: string | { _id: string; name: string; [key: string]: any };
   isEmailVerified: boolean;
   preferences?: {
@@ -88,6 +88,7 @@ export interface Student {
   name: string;
   age: number;
   grade: string;
+  studentId?: string; // Student ID field
   schoolId: string;
   teacherId?: string;
   parentId?: string;
@@ -237,8 +238,8 @@ class ApiService {
     return headers;
   }
 
-  // Generic API request method
-  private async request<T>(
+  // Generic API request method (internal)
+  private async _request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
@@ -286,14 +287,14 @@ class ApiService {
 
   // Authentication endpoints
   async login(credentials: LoginCredentials): Promise<ApiResponse<{ user: User; token: string }>> {
-    return this.request<{ user: User; token: string }>('/auth/login', {
+    return this._request<{ user: User; token: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
   }
 
   async register(userData: Partial<User> & { password: string }): Promise<ApiResponse<{ user: User; token: string }>> {
-    return this.request<{ user: User; token: string }>('/auth/register', {
+    return this._request<{ user: User; token: string }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(userData),
     });
@@ -308,40 +309,40 @@ class ApiService {
   }
 
   async getCurrentUser(): Promise<ApiResponse<User>> {
-    return this.request<User>('/auth/me');
+    return this._request<User>('/auth/me');
   }
 
   // School endpoints
   async getSchools(): Promise<ApiResponse<School[]>> {
-    return this.request<School[]>('/schools');
+    return this._request<School[]>('/schools');
   }
 
   async getSchool(id: string): Promise<ApiResponse<School>> {
-    return this.request<School>(`/schools/${id}`);
+    return this._request<School>(`/schools/${id}`);
   }
 
   async createSchool(schoolData: Partial<School>): Promise<ApiResponse<CreateSchoolResponse>> {
-    return this.request<CreateSchoolResponse>('/schools', {
+    return this._request<CreateSchoolResponse>('/schools', {
       method: 'POST',
       body: JSON.stringify(schoolData),
     });
   }
 
   async updateSchool(id: string, schoolData: Partial<School>): Promise<ApiResponse<School>> {
-    return this.request<School>(`/schools/${id}`, {
+    return this._request<School>(`/schools/${id}`, {
       method: 'PUT',
       body: JSON.stringify(schoolData),
     });
   }
 
   async deleteSchool(id: string): Promise<ApiResponse<void>> {
-    return this.request<void>(`/schools/${id}`, {
+    return this._request<void>(`/schools/${id}`, {
       method: 'DELETE',
     });
   }
 
   async updateSchoolSettings(id: string, settings: any): Promise<ApiResponse<School>> {
-    return this.request<School>(`/schools/${id}/settings`, {
+    return this._request<School>(`/schools/${id}/settings`, {
       method: 'PUT',
       body: JSON.stringify(settings),
     });
@@ -349,133 +350,133 @@ class ApiService {
 
   // User endpoints
   async getUsers(): Promise<ApiResponse<User[]>> {
-    return this.request<User[]>('/users');
+    return this._request<User[]>('/users');
   }
 
   async getUser(id: string): Promise<ApiResponse<User>> {
-    return this.request<User>(`/users/${id}`);
+    return this._request<User>(`/users/${id}`);
   }
 
   async createUser(userData: Partial<User> & { password: string }): Promise<ApiResponse<User>> {
-    return this.request<User>('/users', {
+    return this._request<User>('/users', {
       method: 'POST',
       body: JSON.stringify(userData),
     });
   }
 
   async updateUser(id: string, userData: Partial<User>): Promise<ApiResponse<User>> {
-    return this.request<User>(`/users/${id}`, {
+    return this._request<User>(`/users/${id}`, {
       method: 'PUT',
       body: JSON.stringify(userData),
     });
   }
 
   async deleteUser(id: string): Promise<ApiResponse<void>> {
-    return this.request<void>(`/users/${id}`, {
+    return this._request<void>(`/users/${id}`, {
       method: 'DELETE',
     });
   }
 
   // Student endpoints
   async getStudents(): Promise<ApiResponse<Student[]>> {
-    return this.request<Student[]>('/students');
+    return this._request<Student[]>('/students');
   }
 
   async getStudent(id: string): Promise<ApiResponse<Student>> {
-    return this.request<Student>(`/students/${id}`);
+    return this._request<Student>(`/students/${id}`);
   }
 
   async createStudent(studentData: Partial<Student>): Promise<ApiResponse<Student>> {
-    return this.request<Student>('/students', {
+    return this._request<Student>('/students', {
       method: 'POST',
       body: JSON.stringify(studentData),
     });
   }
 
   async updateStudent(id: string, studentData: Partial<Student>): Promise<ApiResponse<Student>> {
-    return this.request<Student>(`/students/${id}`, {
+    return this._request<Student>(`/students/${id}`, {
       method: 'PUT',
       body: JSON.stringify(studentData),
     });
   }
 
   async deleteStudent(id: string): Promise<ApiResponse<void>> {
-    return this.request<void>(`/students/${id}`, {
+    return this._request<void>(`/students/${id}`, {
       method: 'DELETE',
     });
   }
 
   // Teacher endpoints
   async getTeachers(): Promise<ApiResponse<Teacher[]>> {
-    return this.request<Teacher[]>('/teachers');
+    return this._request<Teacher[]>('/teachers');
   }
 
   async getTeacher(id: string): Promise<ApiResponse<Teacher>> {
-    return this.request<Teacher>(`/teachers/${id}`);
+    return this._request<Teacher>(`/teachers/${id}`);
   }
 
   async createTeacher(teacherData: Partial<Teacher>): Promise<ApiResponse<Teacher>> {
-    return this.request<Teacher>('/teachers', {
+    return this._request<Teacher>('/teachers', {
       method: 'POST',
       body: JSON.stringify(teacherData),
     });
   }
 
   async updateTeacher(id: string, teacherData: Partial<Teacher>): Promise<ApiResponse<Teacher>> {
-    return this.request<Teacher>(`/teachers/${id}`, {
+    return this._request<Teacher>(`/teachers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(teacherData),
     });
   }
 
   async deleteTeacher(id: string): Promise<ApiResponse<void>> {
-    return this.request<void>(`/teachers/${id}`, {
+    return this._request<void>(`/teachers/${id}`, {
       method: 'DELETE',
     });
   }
 
   // Class endpoints
   async getClasses(): Promise<ApiResponse<Class[]>> {
-    return this.request<Class[]>('/classes');
+    return this._request<Class[]>('/classes');
   }
 
   async getTeacherAssignedClasses(): Promise<ApiResponse<Class[]>> {
-    return this.request<Class[]>('/classes/teacher/assigned');
+    return this._request<Class[]>('/classes/teacher/assigned');
   }
 
   async getClass(id: string): Promise<ApiResponse<Class>> {
-    return this.request<Class>(`/classes/${id}`);
+    return this._request<Class>(`/classes/${id}`);
   }
 
   async createClass(classData: CreateClassData): Promise<ApiResponse<Class>> {
-    return this.request<Class>('/classes', {
+    return this._request<Class>('/classes', {
       method: 'POST',
       body: JSON.stringify(classData),
     });
   }
 
   async updateClass(id: string, classData: Partial<CreateClassData>): Promise<ApiResponse<Class>> {
-    return this.request<Class>(`/classes/${id}`, {
+    return this._request<Class>(`/classes/${id}`, {
       method: 'PUT',
       body: JSON.stringify(classData),
     });
   }
 
   async deleteClass(id: string): Promise<ApiResponse<void>> {
-    return this.request<void>(`/classes/${id}`, {
+    return this._request<void>(`/classes/${id}`, {
       method: 'DELETE',
     });
   }
 
   async assignTeacherToClass(classId: string, teacherId: string, role: 'primary' | 'secondary' | 'assistant' = 'primary'): Promise<ApiResponse<Class>> {
-    return this.request<Class>(`/classes/${classId}/teachers`, {
+    return this._request<Class>(`/classes/${classId}/teachers`, {
       method: 'POST',
       body: JSON.stringify({ teacherId, role }),
     });
   }
 
   async removeTeacherFromClass(classId: string, teacherId: string): Promise<ApiResponse<Class>> {
-    return this.request<Class>(`/classes/${classId}/teachers/${teacherId}`, {
+    return this._request<Class>(`/classes/${classId}/teachers/${teacherId}`, {
       method: 'DELETE',
     });
   }
@@ -488,7 +489,7 @@ class ApiService {
     avgEfficiency: number;
     avgTimePerReport: number;
   }>> {
-    return this.request<{
+    return this._request<{
       totalTeachers: number;
       activeTeachers: number;
       totalReports: number;
@@ -501,7 +502,7 @@ class ApiService {
   // Report endpoints
   async getReports(includeCrossTeacher: boolean = false): Promise<ApiResponse<Report[]>> {
     const queryParam = includeCrossTeacher ? '?includeCrossTeacher=true' : '';
-    return this.request<Report[]>(`/reports${queryParam}`);
+    return this._request<Report[]>(`/reports${queryParam}`);
   }
 
   async getAvailableTemplatesForStudent(studentId: string): Promise<ApiResponse<{
@@ -527,39 +528,39 @@ class ApiService {
     timezone: string;
     calculatedAt: string;
   }>> {
-    return this.request<any>(`/reports/available-templates/${studentId}`);
+    return this._request<any>(`/reports/available-templates/${studentId}`);
   }
 
   async getAllSchoolReports(schoolId: string): Promise<ApiResponse<Report[]>> {
-    return this.request<Report[]>(`/schools/${schoolId}/reports`);
+    return this._request<Report[]>(`/schools/${schoolId}/reports`);
   }
 
   async getReport(id: string): Promise<ApiResponse<Report>> {
-    return this.request<Report>(`/reports/${id}`);
+    return this._request<Report>(`/reports/${id}`);
   }
 
   async createReport(reportData: Partial<Report>): Promise<ApiResponse<Report>> {
-    return this.request<Report>('/reports', {
+    return this._request<Report>('/reports', {
       method: 'POST',
       body: JSON.stringify(reportData),
     });
   }
 
   async updateReport(id: string, reportData: Partial<Report>): Promise<ApiResponse<Report>> {
-    return this.request<Report>(`/reports/${id}`, {
+    return this._request<Report>(`/reports/${id}`, {
       method: 'PUT',
       body: JSON.stringify(reportData),
     });
   }
 
   async deleteReport(id: string): Promise<ApiResponse<void>> {
-    return this.request<void>(`/reports/${id}`, {
+    return this._request<void>(`/reports/${id}`, {
       method: 'DELETE',
     });
   }
 
   async sendReportEmail(reportId: string, parentEmail: string): Promise<ApiResponse<{ reportId: string; emailResult: any }>> {
-    return this.request<{ reportId: string; emailResult: any }>(`/reports/${reportId}/send-email`, {
+    return this._request<{ reportId: string; emailResult: any }>(`/reports/${reportId}/send-email`, {
       method: 'POST',
       body: JSON.stringify({ parentEmail }),
       headers: {
@@ -570,12 +571,32 @@ class ApiService {
 
   // Health check
   async healthCheck(): Promise<ApiResponse<{ status: string; timestamp: string }>> {
-    return this.request<{ status: string; timestamp: string }>('/health');
+    return this._request<{ status: string; timestamp: string }>('/health');
   }
 
   // Generic request method for debug and other endpoints
   async makeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, options);
+    return this._request<T>(endpoint, options);
+  }
+
+  // Convenient request method with HTTP method and body
+  async request<T = any>(
+    endpoint: string,
+    method: string = 'GET',
+    body?: any
+  ): Promise<ApiResponse<T>> {
+    const options: RequestInit = {
+      method: method.toUpperCase(),
+    };
+
+    if (body && method.toUpperCase() !== 'GET') {
+      options.body = JSON.stringify(body);
+      options.headers = {
+        'Content-Type': 'application/json',
+      };
+    }
+
+    return this.makeRequest<T>(endpoint, options);
   }
 }
 

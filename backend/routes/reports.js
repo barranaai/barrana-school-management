@@ -12,20 +12,40 @@ const { protect, authorize } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const sharp = require('sharp');
-const ffmpeg = require('fluent-ffmpeg');
+// Sharp is optional - may not be available in all environments
+let sharp = null;
+try {
+  sharp = require('sharp');
+} catch (error) {
+  console.log('Sharp not available in reports route - image processing disabled');
+}
 const { sendReportEmail } = require('../services/emailService');
+const firebaseService = require('../services/firebaseService');
+
+// Check if ffmpeg is available
+let ffmpeg = null;
+
+try {
+  ffmpeg = require('fluent-ffmpeg');
+} catch (error) {
+  console.log('FFmpeg not available in reports route - audio/video processing disabled');
+}
 
 // Configure multer for file uploads with report ID
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Use absolute path to ensure consistency with nginx configuration
-    const uploadDir = path.join(__dirname, '../uploads/media');
+    const uploadDir = 'uploads/media';
     // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    } catch (error) {
+      console.warn('Could not create upload directory:', error.message);
+      // Use temp directory as fallback
+      cb(null, '/tmp');
     }
-    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     // Generate unique filename
@@ -38,15 +58,20 @@ const storage = multer.diskStorage({
 // Configure multer for temporary file uploads (no report ID)
 const tempStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Use absolute path to ensure consistency with nginx configuration
-    const uploadDir = path.join(__dirname, '../uploads/media');
-    console.log('Temp storage destination (absolute):', uploadDir);
+    const uploadDir = 'uploads/media';
+    console.log('Temp storage destination:', uploadDir);
     // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      console.log('Creating upload directory:', uploadDir);
-      fs.mkdirSync(uploadDir, { recursive: true });
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        console.log('Creating upload directory:', uploadDir);
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    } catch (error) {
+      console.warn('Could not create temp upload directory:', error.message);
+      // Use temp directory as fallback
+      cb(null, '/tmp');
     }
-    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     // Generate unique filename for temporary uploads
@@ -108,11 +133,11 @@ const tempUploadWithErrorHandling = (req, res, next) => {
   });
 };
 
-// Set ffmpeg path for production
-if (process.env.NODE_ENV === 'production') {
-  const ffmpegPath = require('ffmpeg-static');
-  ffmpeg.setFfmpegPath(ffmpegPath);
-}
+// FFmpeg configuration - optional
+// if (process.env.NODE_ENV === 'production') {
+//   const ffmpegPath = require('ffmpeg-static');
+//   ffmpeg.setFfmpegPath(ffmpegPath);
+// }
 
 // Optimization functions
 const optimizeImage = async (inputPath, outputPath, options = {}) => {
@@ -359,8 +384,8 @@ router.post('/temp-media', protect, tempUploadWithErrorHandling, async (req, res
 
 // @desc    Get all reports for a school
 // @route   GET /api/reports
-// @access  Private (school_admin, super_admin, teacher, parent)
-router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher', 'parent'), async (req, res) => {
+// @access  Private (school_admin, super_admin, teacher)
+router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), async (req, res) => {
   try {
     const { schoolId, teacherId, studentId, status, limit = 50, page = 1 } = req.query;
     const query = {};
@@ -377,26 +402,9 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher', 'pa
     if (studentId) query.studentId = studentId;
     if (status) query.status = status;
 
-    // If teacher role, only show their reports (unless they need all reports for cross-teacher checking)
+    // If teacher role, only show their reports
     if (req.user.role === 'teacher') {
-      // Check if this is a request for cross-teacher duplicate checking
-      const includeCrossTeacher = req.query.includeCrossTeacher === 'true';
-      if (!includeCrossTeacher) {
-        query.teacherId = req.user._id;
-      }
-    }
-
-    // If parent role, only show reports for their children
-    if (req.user.role === 'parent') {
-      // Find all children of this parent
-      const children = await User.find({
-        role: 'parent', // Students are stored as 'parent' role
-        parentId: req.user._id,
-        schoolId: req.user.schoolId
-      });
-      
-      const childrenIds = children.map(child => child._id);
-      query.studentId = { $in: childrenIds };
+      query.teacherId = req.user._id;
     }
 
     const reports = await Report.find(query)
@@ -477,7 +485,7 @@ router.get('/due-status', protect, authorize('teacher', 'school_admin', 'super_a
       // Check if student is in teacher's classes
       const student = await User.findOne({
         _id: studentId,
-        role: 'parent', // Students are stored as 'parent' role
+        role: 'student', // Students are stored as 'student' role
         studentClass: { $in: teacherClasses.map(cls => cls.name) },
         schoolId: req.user.schoolId
       });
@@ -694,146 +702,6 @@ router.get('/test-media/:filename', async (req, res) => {
   }
 });
 
-// @desc    Get available templates for a student (excluding already generated by any teacher for same period)
-// @route   GET /api/reports/available-templates/:studentId
-// @access  Private (teacher, school_admin, super_admin)
-router.get('/available-templates/:studentId', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    
-    // Get student information
-    const student = await User.findById(studentId).select('firstName lastName studentGrade schoolId');
-    if (!student) {
-      return res.status(404).json({ success: false, message: 'Student not found' });
-    }
-    
-    // Verify access - teachers can only access students in their assigned classes
-    if (req.user.role === 'teacher') {
-      const Class = require('../models/Class');
-      const teacherClasses = await Class.find({
-        'assignedTeachers.teacherId': req.user._id,
-        isActive: true
-      });
-      
-      const studentInTeacherClasses = await User.findOne({
-        _id: studentId,
-        studentClass: { $in: teacherClasses.map(cls => cls.name) },
-        schoolId: req.user.schoolId
-      });
-      
-      if (!studentInTeacherClasses) {
-        return res.status(403).json({ success: false, message: 'Access denied - student not in your assigned classes' });
-      }
-    }
-    
-    // Get school settings for period calculation
-    const school = await School.findById(student.schoolId).select('settings');
-    if (!school) {
-      return res.status(400).json({ success: false, message: 'School not found' });
-    }
-    
-    const settings = school.settings || {};
-    const timezone = settings.timezone || 'UTC';
-    const { getCurrentDateInTimezone, getStartOfFrequencyPeriod, getEndOfFrequencyPeriod } = require('../utils/dateUtils');
-    const now = getCurrentDateInTimezone(timezone);
-    
-    // Get all templates for this student's grade and school
-    const ReportTemplate = require('../models/ReportTemplate');
-    const allTemplates = await ReportTemplate.find({
-      schoolId: student.schoolId,
-      isActive: true,
-      $or: [
-        { grade: student.studentGrade },
-        { grade: { $exists: false } },
-        { grade: null }
-      ]
-    }).select('name reportFrequency grade');
-    
-    // Get all existing reports for this student from ANY teacher for current periods
-    const availableTemplates = [];
-    
-    for (const template of allTemplates) {
-      const frequency = template.reportFrequency;
-      const frequencyConfig = settings.reportFrequencies?.[frequency];
-      
-      // Skip if frequency is not enabled
-      if (!frequencyConfig || !frequencyConfig.enabled) {
-        continue;
-      }
-      
-      // Calculate current period start and end dates for this frequency
-      const periodStart = getStartOfFrequencyPeriod(frequency, now, settings);
-      const periodEnd = getEndOfFrequencyPeriod(frequency, now, settings);
-      
-      // Check if any teacher has already generated a report for this student in this period
-      const existingReport = await Report.findOne({
-        studentId: studentId,
-        templateId: template._id,
-        createdAt: {
-          $gte: periodStart,
-          $lte: periodEnd
-        }
-      }).populate('teacherId', 'firstName lastName');
-      
-      // If no existing report for this period, template is available
-      if (!existingReport) {
-        availableTemplates.push({
-          _id: template._id,
-          name: template.name,
-          reportFrequency: template.reportFrequency,
-          grade: template.grade,
-          isAvailable: true,
-          periodStart,
-          periodEnd
-        });
-      } else {
-        // Include template but mark as unavailable with details
-        availableTemplates.push({
-          _id: template._id,
-          name: template.name,
-          reportFrequency: template.reportFrequency,
-          grade: template.grade,
-          isAvailable: false,
-          existingReport: {
-            id: existingReport._id,
-            createdAt: existingReport.createdAt,
-            teacherName: existingReport.teacherId ? 
-              `${existingReport.teacherId.firstName} ${existingReport.teacherId.lastName}` : 'Unknown',
-            status: existingReport.status
-          },
-          periodStart,
-          periodEnd
-        });
-      }
-    }
-    
-    res.json({
-      success: true,
-      data: {
-        student: {
-          id: student._id,
-          name: `${student.firstName} ${student.lastName}`,
-          grade: student.studentGrade
-        },
-        availableTemplates,
-        totalTemplates: allTemplates.length,
-        availableCount: availableTemplates.filter(t => t.isAvailable).length,
-        unavailableCount: availableTemplates.filter(t => !t.isAvailable).length,
-        timezone,
-        calculatedAt: now.toISOString()
-      }
-    });
-    
-  } catch (error) {
-    logger.error('Error getting available templates for student:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while getting available templates',
-      error: error.message
-    });
-  }
-});
-
 // @desc    Check due reports for current teacher and create notifications
 // @route   POST /api/reports/check-due
 // @access  Private (teacher)
@@ -865,7 +733,7 @@ router.post('/check-due', protect, authorize('teacher'), async (req, res) => {
 
     // Get students from teacher's assigned classes
     const students = await User.find({
-      role: 'parent', // Students are stored as 'parent' role
+      role: 'student', // Students are stored as 'student' role
       studentClass: { $in: teacherClasses.map(cls => cls.name) },
       schoolId: teacher.schoolId,
       isActive: true
@@ -942,6 +810,27 @@ router.post('/check-due', protect, authorize('teacher'), async (req, res) => {
             { _id: teacher._id },
             { $push: { notifications: notification } }
           );
+          
+          // Send FCM push notification if Firebase is initialized
+          if (firebaseService.isFirebaseInitialized()) {
+            const fcmNotification = {
+              title: notification.title,
+              message: notification.message,
+              type: notification.type
+            };
+            
+            const fcmData = {
+              studentId: notification.data.studentId,
+              studentName: notification.data.studentName,
+              templateId: notification.data.templateId,
+              templateName: notification.data.templateName,
+              frequency: notification.data.frequency,
+              action: 'create_report'
+            };
+            
+            await firebaseService.sendNotificationToUser(teacher, fcmNotification, fcmData);
+          }
+          
           createdCount += 1;
           createdNotifications.push(notification);
         }
@@ -1209,7 +1098,7 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
     console.log('🔍 Backend - Created Report Attachments Length:', report.attachments?.length || 0);
 
     const populatedReport = await Report.findById(report._id)
-      .populate('studentId', 'firstName lastName grade studentClass class')
+      .populate('studentId', 'firstName lastName grade studentClass class parentEmail')
       .populate('teacherId', 'firstName lastName')
       .populate('templateId', 'name reportFrequency');
 
@@ -1217,6 +1106,88 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
     console.log('🔍 Backend - Populated Report Voice Recording:', JSON.stringify(populatedReport.voiceRecording, null, 2));
     console.log('🔍 Backend - Populated Report Recordings Array:', populatedReport.voiceRecording?.recordings);
     console.log('🔍 Backend - Populated Report Recordings Length:', populatedReport.voiceRecording?.recordings?.length || 0);
+
+    // Send push notification and create in-app notification for parent (don't wait for it)
+    setImmediate(async () => {
+      try {
+        const student = populatedReport.studentId;
+        
+        if (student && student.parentEmail) {
+          // Find parent user account
+          const parentUser = await User.findOne({
+            email: student.parentEmail,
+            role: 'parent',
+            schoolId: req.user.schoolId
+          });
+
+          if (parentUser) {
+            const studentName = `${student.firstName} ${student.lastName}`;
+            const teacherName = `${populatedReport.teacherId.firstName} ${populatedReport.teacherId.lastName}`;
+            const reportTitle = populatedReport.templateId?.name || 'Report';
+
+            // Create in-app notification
+            try {
+              parentUser.notifications.push({
+                id: `report_${populatedReport._id}_${Date.now()}`,
+                type: 'report',
+                title: 'New Report',
+                message: `A new ${reportTitle} for ${studentName} has been generated by ${teacherName}.`,
+                data: {
+                  reportId: populatedReport._id.toString(),
+                  studentId: student._id.toString(),
+                  studentName: studentName,
+                  reportTitle: reportTitle,
+                  teacherName: teacherName,
+                  reportType: populatedReport.reportType
+                },
+                isRead: false,
+                createdAt: new Date()
+              });
+              await parentUser.save();
+              logger.info(`In-app notification created for parent`, {
+                parentEmail: student.parentEmail,
+                reportId: populatedReport._id
+              });
+            } catch (notifSaveError) {
+              logger.error('Error saving in-app notification:', notifSaveError);
+            }
+
+            // Send push notification if tokens available
+            if (parentUser.fcmTokens && parentUser.fcmTokens.length > 0) {
+              await firebaseService.sendNotificationToUser(
+                parentUser,
+                {
+                  title: '📋 New Report Available',
+                  body: `A new ${reportTitle} for ${studentName} has been generated by ${teacherName}.`,
+                  type: 'report_generated',
+                  priority: 'high'
+                },
+                {
+                  reportId: populatedReport._id.toString(),
+                  studentId: student._id.toString(),
+                  studentName: studentName,
+                  reportTitle: reportTitle,
+                  teacherName: teacherName,
+                  reportType: populatedReport.reportType
+                }
+              );
+
+              logger.info(`Push notification sent to parent for new report`, {
+                parentEmail: student.parentEmail,
+                studentName: studentName,
+                reportId: populatedReport._id
+              });
+            }
+          }
+        }
+      } catch (notifError) {
+        // Log but don't fail the request
+        logger.error('Error sending notification for new report:', {
+          error: notifError.message,
+          reportId: populatedReport._id
+        });
+      }
+    });
 
     res.status(201).json({
       success: true,
@@ -1428,6 +1399,15 @@ router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'su
       .populate('teacherId', 'firstName lastName')
       .populate('schoolId', 'name');
 
+    // Get parent user account to check phone number and WhatsApp preferences
+    let parentUser = null;
+    if (report.studentId && report.studentId.parentEmail) {
+      parentUser = await User.findOne({ 
+        email: report.studentId.parentEmail,
+        role: 'parent'
+      }).select('phoneNumber phone preferences');
+    }
+
     if (!report) {
       return res.status(404).json({
         success: false,
@@ -1447,27 +1427,15 @@ router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'su
     const studentName = `${report.studentId.firstName} ${report.studentId.lastName}`;
     const teacherName = `${report.teacherId.firstName} ${report.teacherId.lastName}`;
     const schoolName = report.schoolId?.name || 'Barrana.ai School';
-
-    // Prepare media attachments with full file paths
-    const mediaAttachments = [];
-    if (report.attachments && report.attachments.length > 0) {
-      for (const attachment of report.attachments) {
-        const filePath = path.join(__dirname, '../uploads/media', attachment.filename);
-        if (fs.existsSync(filePath)) {
-          mediaAttachments.push({
-            filename: attachment.filename,
-            originalName: attachment.originalName,
-            mimeType: attachment.mimeType,
-            path: filePath,
-            size: attachment.size
-          });
-        } else {
-          console.warn(`Media file not found: ${filePath}`);
-        }
-      }
+    
+    // Get school logo if available
+    let schoolLogo = null;
+    if (report.schoolId?.logo) {
+      const baseUrl = process.env.BASE_URL || 'http://localhost:5050';
+      schoolLogo = `${baseUrl}${report.schoolId.logo}`;
     }
 
-    // Prepare email data
+    // Prepare email data with WhatsApp information
     const emailData = {
       parentEmail,
       studentName,
@@ -1481,28 +1449,80 @@ router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'su
       }),
       schoolName,
       schoolId: report.schoolId._id.toString(),
-      mediaAttachments: mediaAttachments
+      schoolLogo: schoolLogo,
+      reportId: report._id.toString(),
+      attachments: report.attachments || [],  // ✅ FIX: Include attachments
+      // WhatsApp integration data
+      parentPhoneNumber: parentUser?.phoneNumber || parentUser?.phone || null,
+      whatsappEnabled: parentUser?.preferences?.notifications?.whatsapp || false
     };
 
-    // Log email attempt with media info
-    logger.info(`Sending report email to ${parentEmail}`, {
-      service: 'reports',
-      user: req.user._id,
-      reportId: req.params.id,
-      studentName,
-      teacherName,
-      mediaAttachmentCount: mediaAttachments.length,
-      hasMediaAttachments: mediaAttachments.length > 0
+    logger.info(`Preparing to send email with ${report.attachments?.length || 0} attachment(s)`);
+    logger.info(`WhatsApp settings for parent:`, {
+      hasParentUser: !!parentUser,
+      phoneNumber: emailData.parentPhoneNumber,
+      whatsappEnabled: emailData.whatsappEnabled,
+      parentPreferences: parentUser?.preferences
     });
 
     // Send the email
     const emailResult = await sendReportEmail(emailData);
 
-    // Update report status to 'sent' if email was successful
+    // Update report status to 'sent' and save PDF path if email was successful
     if (emailResult.success) {
       report.status = 'sent';
       report.sentAt = new Date();
+      
+      // Save PDF path if it was generated
+      if (emailResult.pdfPath) {
+        report.pdfPath = emailResult.pdfPath;
+        logger.info(`Saving PDF path to report: ${emailResult.pdfPath}`);
+      }
+      
       await report.save();
+      
+      logger.info(`Report ${report._id} status updated to 'sent' with pdfPath: ${report.pdfPath || 'none'}`);
+      
+      // Send push notification to parent (don't wait for it)
+      setImmediate(async () => {
+        try {
+          if (parentUser && parentUser.fcmTokens && parentUser.fcmTokens.length > 0) {
+            const reportTitle = report.templateId?.name || report.title || 'Report';
+            
+            // Send push notification
+            await firebaseService.sendNotificationToUser(
+              parentUser,
+              {
+                title: '📧 Report Sent',
+                body: `${reportTitle} for ${studentName} has been sent to your email.`,
+                type: 'report_sent',
+                priority: 'high'
+              },
+              {
+                reportId: report._id.toString(),
+                studentId: report.studentId._id.toString(),
+                studentName: studentName,
+                reportTitle: reportTitle,
+                teacherName: teacherName,
+                reportType: report.reportType,
+                pdfPath: report.pdfPath || null
+              }
+            );
+            
+            logger.info(`Push notification sent to parent for report sent`, {
+              parentEmail: parentEmail,
+              studentName: studentName,
+              reportId: report._id
+            });
+          }
+        } catch (notifError) {
+          // Log but don't fail the request
+          logger.error('Error sending push notification for sent report:', {
+            error: notifError.message,
+            reportId: report._id
+          });
+        }
+      });
     }
 
     res.json({
@@ -1510,7 +1530,8 @@ router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'su
       message: 'Report email sent successfully',
       data: {
         reportId: report._id,
-        emailResult
+        emailResult,
+        pdfPath: report.pdfPath
       }
     });
 

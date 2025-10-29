@@ -361,16 +361,20 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
       return url;
     }
     
+    // Get base URL (remove /api suffix if present)
+    let baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5050';
+    if (baseUrl.endsWith('/api')) {
+      baseUrl = baseUrl.replace('/api', '');
+    }
+    
     // If it's a relative URL starting with /, make it absolute
     if (url.startsWith('/')) {
-      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5050';
       const fullUrl = `${baseUrl}${url}`;
       console.log('🔍 Converting relative URL to absolute:', fullUrl);
       return fullUrl;
     }
     
     // Default case: assume it's a relative URL without leading slash
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5050';
     const fullUrl = `${baseUrl}/${url}`;
     console.log('🔍 Converting to absolute URL (default case):', fullUrl);
     return fullUrl;

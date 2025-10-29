@@ -311,8 +311,8 @@ npm run build
 - **AWS** - EC2, ECS, or Lambda deployment
 - **Google Cloud** - GKE or Cloud Run
 - **Azure** - AKS or App Service
-- **Vercel** - Frontend deployment
-- **Netlify** - Static site hosting
+- **DigitalOcean** - App Platform or Droplets
+- **Render** - Full-stack deployment
 
 ### Self-Hosted
 - **Docker** - Containerized deployment

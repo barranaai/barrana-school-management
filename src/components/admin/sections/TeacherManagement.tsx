@@ -92,8 +92,15 @@ import {
 import { useData } from '../../../contexts/DataContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import PhoneNumberInput from '../../common/PhoneNumberInput';
+import { themeColors } from '../../../theme/adminTheme';
+import NotificationIcon from '../../common/NotificationIcon';
 
-const TeacherManagement: React.FC = () => {
+interface TeacherManagementProps {
+  schoolBranding?: any;
+}
+
+const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding }) => {
   const [openTeacherDialog, setOpenTeacherDialog] = useState(false);
   const [openTrainingDialog, setOpenTrainingDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
@@ -951,17 +958,104 @@ const TeacherManagement: React.FC = () => {
     showSnackbar('Filters cleared!', 'info');
   };
 
+  // Helper function to get random card color
+  const getRandomCardColor = (index: number) => {
+    return themeColors.cardColors[index % themeColors.cardColors.length];
+  };
+
   return (
     <Container maxWidth="xl">
-      {/* Header */}
-      <Fade in timeout={800}>
-        <Box sx={{ mb: 4 }}>
+      {/* School Banner */}
+      {schoolBranding && (
+        <Fade in timeout={600}>
+          <Paper
+            elevation={0}
+            sx={{
+              background: `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#273890'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#7f0f4a'} 100%)`,
+              borderRadius: 4,
+              p: 3,
+              mb: 4,
+              mt: 0,
+              color: 'white',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={9}>
+                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                  {schoolBranding.name || 'School Name'}
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+                  {schoolBranding.established && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📅 Est. {schoolBranding.established}
+                    </Typography>
+                  )}
+                {schoolBranding.address && (
+                  <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                    📍 {typeof schoolBranding.address === 'string' 
+                      ? schoolBranding.address 
+                      : `${schoolBranding.address.street}, ${schoolBranding.address.city}, ${schoolBranding.address.state}`}
+                  </Typography>
+                )}
+                  {schoolBranding.email && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      ✉️ {schoolBranding.email}
+                    </Typography>
+                  )}
+                  {schoolBranding.phone && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📞 {schoolBranding.phone}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                {(schoolBranding.logo || schoolBranding.branding?.logo) && (() => {
+                  const logoPath = schoolBranding.logo || schoolBranding.branding?.logo || '';
+                  const logoUrl = logoPath.startsWith('http://') || logoPath.startsWith('https://') 
+                    ? logoPath 
+                    : `${(process.env.REACT_APP_API_URL || 'http://localhost:5050').replace('/api', '')}${logoPath.startsWith('/') ? logoPath : '/' + logoPath}`;
+                  return (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Box sx={{
+                        bgcolor: 'rgba(255,255,255,0.95)',
+                        borderRadius: 3,
+                        p: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <img 
+                          src={logoUrl} 
+                          alt={schoolBranding.name}
+                          style={{ 
+                            maxWidth: '120px',
+                            maxHeight: '120px',
+                            objectFit: 'contain'
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })()}
+              </Grid>
+            </Grid>
+          </Paper>
+        </Fade>
+      )}
+
+      {/* Header with Notification Icon */}
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Fade in timeout={800}>
           <Typography 
             variant="h4" 
-            gutterBottom
-            sx={{
+            sx={{ 
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: schoolBranding 
+                ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -970,18 +1064,9 @@ const TeacherManagement: React.FC = () => {
           >
             Teacher & Staff Management
           </Typography>
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              color: 'text.secondary',
-              opacity: 0.8,
-              fontWeight: 500,
-            }}
-          >
-            Manage teacher accounts, track performance metrics, and provide training resources
-          </Typography>
-        </Box>
-      </Fade>
+        </Fade>
+        <NotificationIcon />
+      </Box>
 
       {/* Summary Statistics */}
       <Grow in timeout={900}>
@@ -991,7 +1076,7 @@ const TeacherManagement: React.FC = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  background: 'rgba(255,255,255,0.8)',
+                  background: getRandomCardColor(0),
                   borderRadius: 3,
                   backdropFilter: 'blur(10px)',
                   border: '1px solid rgba(255,255,255,0.3)',
@@ -1016,7 +1101,7 @@ const TeacherManagement: React.FC = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  background: 'rgba(255,255,255,0.8)',
+                  background: getRandomCardColor(0),
                   borderRadius: 3,
                   backdropFilter: 'blur(10px)',
                   border: '1px solid rgba(255,255,255,0.3)',
@@ -1041,7 +1126,7 @@ const TeacherManagement: React.FC = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  background: 'rgba(255,255,255,0.8)',
+                  background: getRandomCardColor(0),
                   borderRadius: 3,
                   backdropFilter: 'blur(10px)',
                   border: '1px solid rgba(255,255,255,0.3)',
@@ -1066,7 +1151,7 @@ const TeacherManagement: React.FC = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  background: 'rgba(255,255,255,0.8)',
+                  background: getRandomCardColor(0),
                   borderRadius: 3,
                   backdropFilter: 'blur(10px)',
                   border: '1px solid rgba(255,255,255,0.3)',
@@ -1091,7 +1176,7 @@ const TeacherManagement: React.FC = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  background: 'rgba(255,255,255,0.8)',
+                  background: getRandomCardColor(0),
                   borderRadius: 3,
                   backdropFilter: 'blur(10px)',
                   border: '1px solid rgba(255,255,255,0.3)',
@@ -1116,7 +1201,7 @@ const TeacherManagement: React.FC = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  background: 'rgba(255,255,255,0.8)',
+                  background: getRandomCardColor(0),
                   borderRadius: 3,
                   backdropFilter: 'blur(10px)',
                   border: '1px solid rgba(255,255,255,0.3)',
@@ -1425,37 +1510,13 @@ const TeacherManagement: React.FC = () => {
           }}
         >
           <CardContent sx={{ p: 3 }}>
-            <TableContainer component={Paper} sx={{ boxShadow: 'none', borderRadius: 3 }}>
-              <Table>
+            <TableContainer component={Paper} sx={{ boxShadow: 'none', borderRadius: 3, overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 800 }}>
                 <TableHead>
                   <TableRow sx={{ background: 'rgba(102, 126, 234, 0.05)' }}>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Teacher</TableCell>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Grade</TableCell>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Students</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>
-                      <Tooltip title="Reports generated for assigned students">
-                        <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'help' }}>
-                          Reports Generated
-                          <Info sx={{ ml: 0.5, fontSize: '0.875rem', opacity: 0.7 }} />
-                        </Box>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>
-                      <Tooltip title="Average time: Audio recording + AI generation + Review/editing">
-                        <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'help' }}>
-                          Avg Time/Report
-                          <Info sx={{ ml: 0.5, fontSize: '0.875rem', opacity: 0.7 }} />
-                        </Box>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>
-                      <Tooltip title="Efficiency: Completion rate, time efficiency, report quality, frequency compliance, and consistency">
-                        <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'help' }}>
-                          Efficiency
-                          <Info sx={{ ml: 0.5, fontSize: '0.875rem', opacity: 0.7 }} />
-                        </Box>
-                      </Tooltip>
-                    </TableCell>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Last Login</TableCell>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Status</TableCell>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>
@@ -1521,33 +1582,6 @@ const TeacherManagement: React.FC = () => {
                           <Typography sx={{ fontWeight: 500 }}>
                             {getTeacherStudentCount(teacher._id || teacher.id || '')}
                           </Typography>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell>
-                        <Tooltip title={`Reports generated for assigned students`}>
-                          <Typography sx={{ fontWeight: 500 }}>
-                            {getTeacherReportCount(teacher._id || teacher.id || '')}
-                          </Typography>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell>
-                        <Tooltip title={`Average time: Audio recording + AI generation + Review/editing`}>
-                          <Typography sx={{ fontWeight: 500 }}>
-                            {getTeacherAvgTimePerReport(teacher._id || teacher.id || '')} min
-                          </Typography>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell>
-                        <Tooltip title={`Efficiency: Completion rate, time efficiency, report quality, frequency compliance, and consistency`}>
-                          <Chip
-                            label={`${getTeacherEfficiency(teacher._id || teacher.id || '')}%`}
-                            color={getEfficiencyColor(getTeacherEfficiency(teacher._id || teacher.id || '')) as any}
-                            size="small"
-                            sx={{
-                              fontWeight: 600,
-                              borderRadius: 2,
-                            }}
-                          />
                         </Tooltip>
                       </TableCell>
                       <TableCell>
@@ -1825,12 +1859,11 @@ const TeacherManagement: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField 
-                  fullWidth 
-                  label="Phone" 
+                <PhoneNumberInput
                   value={teacherForm.phone}
-                  onChange={(e) => handleFormChange('phone', e.target.value)}
+                  onChange={(value) => handleFormChange('phone', value)}
                   required
+                  helperText="E.164 format (e.g., +1234567890) required for WhatsApp notifications"
                 />
               </Grid>
               <Grid item xs={12} md={6}>

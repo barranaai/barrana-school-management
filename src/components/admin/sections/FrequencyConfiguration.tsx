@@ -83,8 +83,26 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
   schoolSettings,
   onSettingsChange
 }) => {
-  // Ensure schoolSettings has proper default structure
-  const settings = {
+  // Local state to hold pending changes
+  const [localSettings, setLocalSettings] = useState<any>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Initialize local settings from props
+  useEffect(() => {
+    if (schoolSettings && Object.keys(schoolSettings).length > 0) {
+      // Always reinitialize when schoolSettings changes (on page load or refresh)
+      console.log('✅ Initializing/Reinitializing local settings');
+      console.log('   Timezone:', schoolSettings.timezone);
+      console.log('   Daily workingDays:', schoolSettings.reportFrequencies?.Daily?.workingDays);
+      console.log('   Daily dueTime:', schoolSettings.reportFrequencies?.Daily?.dueTime);
+      setLocalSettings(initializeSettings(schoolSettings));
+      setHasUnsavedChanges(false); // Reset unsaved changes flag on initialization
+    }
+  }, [JSON.stringify(schoolSettings)]); // Reinitialize whenever schoolSettings content changes
+
+  // Helper function to initialize settings with defaults
+  const initializeSettings = (schoolSettings: any) => ({
     timezone: schoolSettings.timezone || 'UTC',
     calendar: {
       workingDays: {
@@ -172,7 +190,11 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
           skipHolidays: false  // Not applicable for annual reports
         }
     }
-  };
+  });
+
+  // Use local settings if available, otherwise show loading state
+  const settings = localSettings || initializeSettings(schoolSettings);
+
   const [openHolidayDialog, setOpenHolidayDialog] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<any>(null);
   const [holidayForm, setHolidayForm] = useState({
@@ -240,7 +262,6 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
 
   const handleFrequencyChange = (frequency: string, field: string, value: any) => {
     console.log('🔄 Frequency change:', { frequency, field, value });
-    console.log('🔄 Current settings:', settings);
     
     const updatedSettings = {
       ...settings,
@@ -253,8 +274,8 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
       }
     };
     
-    console.log('🔄 Updated settings:', updatedSettings);
-    onSettingsChange(updatedSettings);
+    setLocalSettings(updatedSettings);
+    setHasUnsavedChanges(true);
   };
 
   const handleCalendarChange = (field: string, value: any) => {
@@ -265,7 +286,8 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
         [field]: value
       }
     };
-    onSettingsChange(updatedSettings);
+    setLocalSettings(updatedSettings);
+    setHasUnsavedChanges(true);
   };
 
   const handleWorkingDayChange = (day: string, value: boolean) => {
@@ -279,7 +301,8 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
         }
       }
     };
-    onSettingsChange(updatedSettings);
+    setLocalSettings(updatedSettings);
+    setHasUnsavedChanges(true);
   };
 
   const handleQuarterChange = (quarter: string, field: string, value: any) => {
@@ -299,10 +322,28 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
         }
       }
     };
-    onSettingsChange(updatedSettings);
+    setLocalSettings(updatedSettings);
+    setHasUnsavedChanges(true);
   };
 
+  // Save all changes
+  const handleSaveChanges = async () => {
+    setIsSaving(true);
+    try {
+      await onSettingsChange(settings);
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
+  // Discard changes and reset to saved state
+  const handleCancelChanges = () => {
+    setLocalSettings(initializeSettings(schoolSettings));
+    setHasUnsavedChanges(false);
+  };
 
   const handleAddHoliday = () => {
     setEditingHoliday(null);
@@ -373,8 +414,75 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
     }
   };
 
+  // Show loading state if settings haven't been initialized yet
+  if (!localSettings) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Typography>Loading configuration...</Typography>
+      </Box>
+    );
+  }
+
   return (
     <Box>
+      {/* Save/Cancel Bar - Fixed at top when there are unsaved changes */}
+      {hasUnsavedChanges && (
+        <Box 
+          sx={{ 
+            position: 'sticky', 
+            top: 0, 
+            zIndex: 1000,
+            bgcolor: 'warning.light',
+            p: 2,
+            mb: 3,
+            borderRadius: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: 3
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body1" sx={{ fontWeight: 600, color: 'warning.dark' }}>
+              ⚠️ You have unsaved changes
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Remember to save your configuration before leaving this page
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={handleCancelChanges}
+              disabled={isSaving}
+              sx={{ 
+                borderColor: 'grey.400',
+                color: 'text.primary',
+                '&:hover': {
+                  borderColor: 'grey.600',
+                  bgcolor: 'grey.50'
+                }
+              }}
+            >
+              Cancel Changes
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSaveChanges}
+              disabled={isSaving}
+              sx={{ 
+                bgcolor: 'success.main',
+                '&:hover': {
+                  bgcolor: 'success.dark'
+                }
+              }}
+            >
+              {isSaving ? 'Saving...' : 'Save All Changes'}
+            </Button>
+          </Box>
+        </Box>
+      )}
+
       {/* Timezone Display (Read-only) */}
       <Card sx={{ mb: 3 }}>
         <CardContent>

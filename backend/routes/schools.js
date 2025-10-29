@@ -119,6 +119,15 @@ router.put('/:id/settings', protect, authorize('super_admin', 'school_admin'), a
   try {
     const { timezone, calendar, reportFrequencies } = req.body;
     
+    // Debug logging
+    if (reportFrequencies?.Daily) {
+      logger.info('📝 Daily frequency update received:', {
+        workingDays: reportFrequencies.Daily.workingDays,
+        dueTime: reportFrequencies.Daily.dueTime,
+        enabled: reportFrequencies.Daily.enabled
+      });
+    }
+    
     // Check if user has access to this school
     if (req.user.role === 'school_admin' && req.user.schoolId?.toString() !== req.params.id) {
       return res.status(403).json({
@@ -151,13 +160,25 @@ router.put('/:id/settings', protect, authorize('super_admin', 'school_admin'), a
       updateData['settings.reportFrequencies'] = reportFrequencies;
     }
 
+    logger.info('📝 Update data being saved:', {
+      updateData: JSON.stringify(updateData, null, 2)
+    });
+
     const updatedSchool = await School.findByIdAndUpdate(
       req.params.id,
       { $set: updateData },
       { new: true, runValidators: true }
     );
 
-    logger.info(`School settings updated for school ${req.params.id} by user ${req.user._id}`);
+    logger.info('✅ School settings updated successfully');
+    
+    // Log the saved Daily config for verification
+    if (updatedSchool.settings?.reportFrequencies?.Daily) {
+      logger.info('📝 Saved Daily config:', {
+        workingDays: updatedSchool.settings.reportFrequencies.Daily.workingDays,
+        dueTime: updatedSchool.settings.reportFrequencies.Daily.dueTime
+      });
+    }
 
     res.json({
       success: true,
@@ -433,6 +454,66 @@ router.get('/:id/reports', protect, authorize('super_admin', 'school_admin'), as
   }
 });
 
+// @route   PUT /api/schools/:id/branding
+// @desc    Update school branding (colors, logo, etc.)
+// @access  Private (School Admin, Super Admin)
+router.put('/:id/branding', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+  try {
+    const { primaryColor, secondaryColor } = req.body;
+    
+    // Check if user has access to this school
+    if (req.user.role === 'school_admin' && req.user.schoolId?.toString() !== req.params.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    const school = await School.findById(req.params.id);
+    
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        message: 'School not found'
+      });
+    }
+
+    // Update branding
+    const updateData = {};
+    
+    if (primaryColor) {
+      updateData['branding.primaryColor'] = primaryColor;
+    }
+    
+    if (secondaryColor) {
+      updateData['branding.secondaryColor'] = secondaryColor;
+    }
+
+    const updatedSchool = await School.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    logger.info(`School branding updated for school ${req.params.id} by user ${req.user._id}`);
+
+    res.json({
+      success: true,
+      message: 'School branding updated successfully',
+      data: {
+        branding: updatedSchool.branding
+      }
+    });
+  } catch (error) {
+    logger.error('Error updating school branding:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating school branding',
+      error: error.message
+    });
+  }
+});
+
 // @route   POST /api/schools/:id/logo
 // @desc    Upload school logo
 // @access  Private (School Admin, Super Admin)
@@ -463,5 +544,79 @@ router.get('/:id/logo', protect, authorize('school_admin', 'super_admin'), async
 // @desc    Delete school logo
 // @access  Private (School Admin, Super Admin)
 router.delete('/:id/logo', protect, authorize('school_admin', 'super_admin'), deleteSchoolLogo);
+
+// @route   PUT /api/schools/:id/communication
+// @desc    Update school communication settings (WhatsApp, Email, SMS)
+// @access  Private (School Admin, Super Admin)
+router.put('/:id/communication', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+  try {
+    const { whatsapp, email, sms } = req.body;
+    
+    // Check if user has access to this school
+    if (req.user.role === 'school_admin' && req.user.schoolId?.toString() !== req.params.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    const school = await School.findById(req.params.id);
+    
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        message: 'School not found'
+      });
+    }
+
+    // Update communication settings
+    const updateData = {};
+    
+    if (whatsapp) {
+      if (whatsapp.enabled !== undefined) updateData['communication.whatsapp.enabled'] = whatsapp.enabled;
+      if (whatsapp.phoneNumber !== undefined) updateData['communication.whatsapp.phoneNumber'] = whatsapp.phoneNumber;
+      if (whatsapp.twilioAccountSid !== undefined) updateData['communication.whatsapp.twilioAccountSid'] = whatsapp.twilioAccountSid;
+      if (whatsapp.twilioAuthToken !== undefined) updateData['communication.whatsapp.twilioAuthToken'] = whatsapp.twilioAuthToken;
+      if (whatsapp.displayName !== undefined) updateData['communication.whatsapp.displayName'] = whatsapp.displayName;
+    }
+    
+    if (email) {
+      if (email.enabled !== undefined) updateData['communication.email.enabled'] = email.enabled;
+      if (email.fromName !== undefined) updateData['communication.email.fromName'] = email.fromName;
+      if (email.fromEmail !== undefined) updateData['communication.email.fromEmail'] = email.fromEmail;
+      if (email.replyTo !== undefined) updateData['communication.email.replyTo'] = email.replyTo;
+    }
+    
+    if (sms) {
+      if (sms.enabled !== undefined) updateData['communication.sms.enabled'] = sms.enabled;
+      if (sms.phoneNumber !== undefined) updateData['communication.sms.phoneNumber'] = sms.phoneNumber;
+      if (sms.twilioAccountSid !== undefined) updateData['communication.sms.twilioAccountSid'] = sms.twilioAccountSid;
+      if (sms.twilioAuthToken !== undefined) updateData['communication.sms.twilioAuthToken'] = sms.twilioAuthToken;
+    }
+
+    const updatedSchool = await School.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    logger.info(`School communication settings updated for school ${req.params.id} by user ${req.user._id}`);
+
+    res.json({
+      success: true,
+      message: 'Communication settings updated successfully',
+      data: {
+        communication: updatedSchool.communication
+      }
+    });
+  } catch (error) {
+    logger.error('Error updating school communication settings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+});
 
 module.exports = router; 

@@ -60,6 +60,7 @@ import {
   Mic,
   Stop,
   PlayArrow,
+  Pause,
   Delete,
   Close,
   AutoFixHigh,
@@ -76,6 +77,8 @@ import { communicationService } from '../../../services/communicationService';
 import { REPORT_FREQUENCIES, type ReportFrequency } from '../../../constants/reportFrequencies';
 import { mediaService, type UploadedMedia } from '../../../services/mediaService';
 import MediaUpload from '../../common/MediaUpload';
+import NotificationIcon from '../../common/NotificationIcon';
+import { themeColors } from '../../../theme/teacherTheme';
 import toast from 'react-hot-toast';
 import moment from 'moment-timezone';
 
@@ -117,7 +120,21 @@ const Transition = React.forwardRef(function Transition(
   return <Slide direction="up" ref={ref} {...props} />;
 });
 
-const StudentManagement: React.FC = () => {
+export interface StudentManagementProps {
+  schoolBranding?: any;
+}
+
+const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding }) => {
+  // Card background colors array
+  const cardColors = themeColors.cardColors;
+  
+  // Helper function to get a random card color
+  const getRandomCardColor = (index?: number) => {
+    if (index !== undefined) {
+      return cardColors[index % cardColors.length];
+    }
+    return cardColors[Math.floor(Math.random() * cardColors.length)];
+  };
   const { reports, getStudentsByTeacherClasses, getReportsByTeacherStudents, addReport, teachers, school } = useData();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
@@ -151,6 +168,7 @@ const StudentManagement: React.FC = () => {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
   
   // Media upload state
   const [uploadedMedia, setUploadedMedia] = useState<UploadedMedia[]>([]);
@@ -204,10 +222,13 @@ const StudentManagement: React.FC = () => {
     const schoolSettings = school?.settings || {};
     const timezone = schoolSettings.timezone || 'UTC';
     
-    // Get current time in school timezone
-    const schoolTime = moment().tz(timezone).toDate();
+    // IMPORTANT: Keep as moment object to preserve timezone info
+    // Converting to Date too early causes timezone issues
+    const schoolTime = moment().tz(timezone);
     
-    return schoolTime;
+    // Return a Date that represents the current time
+    // We'll need to be careful with this in calculations
+    return schoolTime.toDate();
   };
 
   // Helper function to format date in school timezone
@@ -284,184 +305,184 @@ const StudentManagement: React.FC = () => {
       schoolSettings: school?.settings
     });
     
-    // Use the passed currentDate directly, don't create a new Date object
-    const now = currentDate;
-    
     // Get school settings for frequency configuration
     const schoolSettings = school?.settings || {};
+    const timezone = schoolSettings.timezone || 'UTC';
     const frequencyConfig = schoolSettings.reportFrequencies?.[frequency];
+    
+    // CRITICAL FIX: Work with moment-timezone objects to preserve timezone!
+    // Date objects lose timezone info and use device's local timezone
+    const now = moment(currentDate).tz(timezone);
     
     console.log('🔍 Frontend frequency config', {
       frequency,
       frequencyConfig,
-      enabled: frequencyConfig?.enabled
+      enabled: frequencyConfig?.enabled,
+      timezone,
+      nowInSchoolTZ: now.format('YYYY-MM-DD HH:mm:ss z')
     });
     
     if (frequencyConfig?.enabled) {
       
       // Use school's frequency configuration
-      // Create a fresh date object for each frequency to avoid modification issues
-      let dueDate = new Date(now);
+      // Work with moment objects to preserve timezone
+      let dueDate = now.clone();
       
       switch (frequency) {
         case 'Daily':
-          // Check if today is a working day
+          // Check if today is a working day (use moment's .isoWeekday() which respects timezone)
           const workingDays = frequencyConfig.workingDays || [1, 2, 3, 4, 5]; // Default to Mon-Fri
-          const currentDayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+          const currentDayOfWeek = now.isoWeekday(); // 1 = Monday, 2 = Tuesday, ..., 7 = Sunday (ISO format to match backend)
           const isWorkingDay = workingDays.includes(currentDayOfWeek);
           
           if (!isWorkingDay) {
-            // Find the next working day
-            let nextWorkingDay = new Date(now);
+            // Find the next working day (using moment to preserve timezone)
+            let nextWorkingDay = dueDate.clone();
             do {
-              nextWorkingDay.setDate(nextWorkingDay.getDate() + 1);
-            } while (!workingDays.includes(nextWorkingDay.getDay()));
+              nextWorkingDay.add(1, 'day');
+            } while (!workingDays.includes(nextWorkingDay.isoWeekday()));
             dueDate = nextWorkingDay;
-          } else {
-            dueDate = new Date(now);
           }
+          // If it's a working day, dueDate is already set to today
           
-          // Set the configured time
+          // Set the configured time (using moment methods)
           const [dailyHours, dailyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-          dueDate.setHours(dailyHours, dailyMinutes, 0, 0);
-          dueDate.setMilliseconds(0);
+          dueDate.hour(dailyHours).minute(dailyMinutes).second(0).millisecond(0);
           break;
         case 'Weekly':
-          // Due on configured day of the week (match backend logic exactly)
-          const targetDay = frequencyConfig.dueDay; // Backend uses 0=Sunday, 1=Monday, ..., 6=Saturday (same as JS getDay())
-          const currentDay = now.getDay();
+          // Due on configured day of the week (use moment methods to preserve timezone)
+          const targetDay = frequencyConfig.dueDay; // 0=Sunday, 1=Monday, ..., 6=Saturday
+          const currentDay = now.day(); // Use moment's .day() which respects timezone
           let daysToAdd = (targetDay - currentDay + 7) % 7;
           
-          // If it's the target day today, check if we've passed the due time (like backend)
+          // If it's the target day today, check if we've passed the due time
           if (daysToAdd === 0) {
             const dueTime = frequencyConfig.dueTime || '17:00';
             const [dueHours, dueMinutes] = dueTime.split(':').map(Number);
-            const currentHours = now.getHours();
-            const currentMinutes = now.getMinutes();
+            const currentHours = now.hour(); // Use moment's .hour() which respects timezone
+            const currentMinutes = now.minute();
             
-            // If current time is after due time, move to next week (match backend logic)
+            // If current time is after due time, move to next week
             if (currentHours > dueHours || (currentHours === dueHours && currentMinutes > dueMinutes)) {
               daysToAdd = 7;
             }
           }
           
-          // Ensure we're working with a fresh date object
-          dueDate = new Date(now);
-          dueDate.setDate(now.getDate() + daysToAdd);
+          // Use moment to add days (preserves timezone)
+          dueDate = now.clone().add(daysToAdd, 'days');
           const [weeklyHours, weeklyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-          dueDate.setHours(weeklyHours, weeklyMinutes, 0, 0);
+          dueDate.hour(weeklyHours).minute(weeklyMinutes).second(0).millisecond(0);
           break;
         case 'Bi-Weekly':
-          // Rule-based bi-weekly calculation (simplified for frontend)
+          // Rule-based bi-weekly calculation (using moment methods)
           const biWeeklyRule = frequencyConfig.rule || 'alternateWeeks';
           const biWeeklyDueDay = frequencyConfig.dueDay || 5;
           
           if (biWeeklyRule === 'alternateWeeks') {
             // Set to the configured day of the week
             const biWeekTargetDay = biWeeklyDueDay - 1;
-            const biWeekCurrentDay = now.getDay();
+            const biWeekCurrentDay = now.day();
             const biWeekDaysToAdd = (biWeekTargetDay - biWeekCurrentDay + 7) % 7;
-            dueDate.setDate(now.getDate() + biWeekDaysToAdd);
+            dueDate.add(biWeekDaysToAdd, 'days');
             
             // Ensure it's every other week based on start week
             const startWeek = frequencyConfig.startWeek || 1;
-            const weekNumber = Math.floor(dueDate.getTime() / (7 * 24 * 60 * 60 * 1000));
-            const shouldBeEvenWeek = startWeek === 1; // Week 1 starts with odd weeks
+            const weekNumber = dueDate.week();
+            const shouldBeEvenWeek = startWeek === 1;
             
             if ((weekNumber % 2 === 0) !== shouldBeEvenWeek) {
-              dueDate.setDate(dueDate.getDate() + 7);
+              dueDate.add(7, 'days');
             }
           } else if (biWeeklyRule === 'specificWeeks') {
             // Simplified: use alternate weeks as fallback
             const biWeekTargetDay = biWeeklyDueDay - 1;
-            const biWeekCurrentDay = now.getDay();
+            const biWeekCurrentDay = now.day();
             const biWeekDaysToAdd = (biWeekTargetDay - biWeekCurrentDay + 7) % 7;
-            dueDate.setDate(now.getDate() + biWeekDaysToAdd);
+            dueDate.add(biWeekDaysToAdd, 'days');
             
-            const weekNumber = Math.floor(dueDate.getTime() / (7 * 24 * 60 * 60 * 1000));
+            const weekNumber = dueDate.week();
             if (weekNumber % 2 !== 0) {
-              dueDate.setDate(dueDate.getDate() + 7);
+              dueDate.add(7, 'days');
             }
           } else if (biWeeklyRule === 'nthWeekOfMonth') {
             // Simplified: use 3rd week of month
-            dueDate.setDate(1); // Start of month
-            dueDate.setDate(dueDate.getDate() + 14); // 3rd week
+            dueDate.date(1).add(14, 'days'); // Start of month + 2 weeks
             
             const biWeekTargetDay = biWeeklyDueDay - 1;
-            const biWeekCurrentDay = dueDate.getDay();
+            const biWeekCurrentDay = dueDate.day();
             const biWeekDaysToAdd = (biWeekTargetDay - biWeekCurrentDay + 7) % 7;
-            dueDate.setDate(dueDate.getDate() + biWeekDaysToAdd);
+            dueDate.add(biWeekDaysToAdd, 'days');
           }
           
           const [biWeeklyHours, biWeeklyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-          dueDate.setHours(biWeeklyHours, biWeeklyMinutes, 0, 0);
+          dueDate.hour(biWeeklyHours).minute(biWeeklyMinutes).second(0).millisecond(0);
           break;
         case 'Monthly':
-          // Rule-based monthly calculation (simplified for frontend)
+          // Rule-based monthly calculation (using moment methods)
           const monthlyRule = frequencyConfig.rule || 'lastWorkingDay';
           if (monthlyRule === 'specificDate') {
             const specificDay = frequencyConfig.specificDay || 28;
-            dueDate.setDate(specificDay);
+            dueDate.date(specificDay);
           } else if (monthlyRule === 'lastDay') {
-            dueDate.setDate(0); // Last day of current month
+            dueDate.endOf('month');
           } else if (monthlyRule === 'lastWorkingDay') {
             // Simplified: use last day of month
-            dueDate.setDate(0);
+            dueDate.endOf('month');
           } else if (monthlyRule === 'nthWeekday') {
             // Simplified: use 1st Friday
             const nth = frequencyConfig.nthWeekday?.n || 1;
             const weekday = frequencyConfig.nthWeekday?.weekday || 5;
-            dueDate.setDate(1);
-            while (dueDate.getDay() !== weekday) {
-              dueDate.setDate(dueDate.getDate() + 1);
+            dueDate.date(1);
+            while (dueDate.day() !== weekday) {
+              dueDate.add(1, 'day');
             }
             if (nth > 1) {
-              dueDate.setDate(dueDate.getDate() + (nth - 1) * 7);
+              dueDate.add((nth - 1) * 7, 'days');
             }
           }
           const [monthlyHours, monthlyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-          dueDate.setHours(monthlyHours, monthlyMinutes, 0, 0);
+          dueDate.hour(monthlyHours).minute(monthlyMinutes).second(0).millisecond(0);
           break;
         case 'Bi-Monthly':
-          // Rule-based bi-monthly calculation (simplified for frontend)
+          // Rule-based bi-monthly calculation (using moment methods)
           const biMonthlyRule = frequencyConfig.rule || 'lastWorkingDay';
           const startMonth = frequencyConfig.startMonth || 9;
           
           // Ensure we're on the correct bi-monthly period
-          const biMonthlyCurrentMonth = dueDate.getMonth() + 1;
+          const biMonthlyCurrentMonth = dueDate.month() + 1;
           const monthsSinceStart = (biMonthlyCurrentMonth - startMonth + 12) % 12;
           if (monthsSinceStart % 2 !== 0) {
-            dueDate.setMonth(dueDate.getMonth() + 1);
+            dueDate.add(1, 'month');
           }
           
           if (biMonthlyRule === 'specificDate') {
             const specificDay = frequencyConfig.specificDay || 28;
-            dueDate.setDate(specificDay);
+            dueDate.date(specificDay);
           } else if (biMonthlyRule === 'lastDay') {
-            dueDate.setDate(0);
+            dueDate.endOf('month');
           } else if (biMonthlyRule === 'lastWorkingDay') {
-            dueDate.setDate(0);
+            dueDate.endOf('month');
           } else if (biMonthlyRule === 'nthWeekday') {
             const nth = frequencyConfig.nthWeekday?.n || 1;
             const weekday = frequencyConfig.nthWeekday?.weekday || 5;
-            dueDate.setDate(1);
-            while (dueDate.getDay() !== weekday) {
-              dueDate.setDate(dueDate.getDate() + 1);
+            dueDate.date(1);
+            while (dueDate.day() !== weekday) {
+              dueDate.add(1, 'day');
             }
             if (nth > 1) {
-              dueDate.setDate(dueDate.getDate() + (nth - 1) * 7);
+              dueDate.add((nth - 1) * 7, 'days');
             }
           }
           const [biMonthlyHours, biMonthlyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-          dueDate.setHours(biMonthlyHours, biMonthlyMinutes, 0, 0);
+          dueDate.hour(biMonthlyHours).minute(biMonthlyMinutes).second(0).millisecond(0);
           break;
         case 'Quarterly':
-          // Find the next enabled quarter based on current date
+          // Find the next enabled quarter based on current date (using moment methods)
           const quarters = frequencyConfig.quarters || {};
-          const quarterCurrentMonth = now.getMonth() + 1; // Convert to 1-based month
+          const quarterCurrentMonth = now.month() + 1; // Convert to 1-based month
           
           // Find the next quarter that is enabled and hasn't passed yet
-          let nextQuarterDate = null;
+          let nextQuarterMoment = null;
           
           // Check all quarters in order
           const quarterOrder = ['q1', 'q2', 'q3', 'q4'];
@@ -472,101 +493,93 @@ const StudentManagement: React.FC = () => {
               const quarterDay = quarter.day;
               
               // Create date for this quarter in current year
-              let quarterDate = new Date(now.getFullYear(), quarterMonth, quarterDay);
+              let quarterMoment = now.clone().month(quarterMonth).date(quarterDay);
               
               // If this quarter has passed, try next year
-              if (quarterDate < now) {
-                quarterDate = new Date(now.getFullYear() + 1, quarterMonth, quarterDay);
+              if (quarterMoment.isBefore(now)) {
+                quarterMoment.add(1, 'year');
               }
               
               // If this is the first valid quarter or it's earlier than our current best
-              if (!nextQuarterDate || quarterDate < nextQuarterDate) {
-                nextQuarterDate = quarterDate;
+              if (!nextQuarterMoment || quarterMoment.isBefore(nextQuarterMoment)) {
+                nextQuarterMoment = quarterMoment;
               }
             }
           }
           
-          if (nextQuarterDate) {
-            dueDate = nextQuarterDate;
+          if (nextQuarterMoment) {
+            dueDate = nextQuarterMoment;
             const [quarterlyHours, quarterlyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-            dueDate.setHours(quarterlyHours, quarterlyMinutes, 0, 0);
-          } else {
-            // Fallback: if no quarters are enabled, use current date
-            dueDate = now;
+            dueDate.hour(quarterlyHours).minute(quarterlyMinutes).second(0).millisecond(0);
           }
+          // If no quarters enabled, dueDate remains as now.clone()
           break;
         case 'Annually':
-          // Due on configured month and day (format: MMDD, e.g., 615 = June 15th)
+          // Due on configured month and day (format: MMDD, e.g., 615 = June 15th, using moment methods)
           const yearTargetDay = frequencyConfig.dueDay;
           const yearTargetMonth = Math.floor(yearTargetDay / 100) - 1; // Convert to 0-based month index
           const yearTargetDate = yearTargetDay % 100;
           
-          dueDate.setMonth(yearTargetMonth);
-          dueDate.setDate(yearTargetDate);
+          dueDate.month(yearTargetMonth).date(yearTargetDate);
           const [annuallyHours, annuallyMinutes] = (frequencyConfig.dueTime || '17:00').split(':').map(Number);
-          dueDate.setHours(annuallyHours, annuallyMinutes, 0, 0);
+          dueDate.hour(annuallyHours).minute(annuallyMinutes).second(0).millisecond(0);
           break;
         default:
-          return now;
+          return now.toDate(); // Convert moment back to Date
       }
       
       console.log('🔍 Frontend calculated due date (enabled config)', {
         frequency,
-        dueDate: dueDate.toISOString(),
-        dueTime: frequencyConfig.dueTime
+        dueDate: dueDate.toISOString(), // moment has .toISOString()
+        dueTime: frequencyConfig.dueTime,
+        timezone
       });
       
-      return dueDate;
+      return dueDate.toDate(); // Convert moment back to Date for compatibility
     } else {
-      // Fallback to default calculation
-      let fallbackDueDate: Date;
+      // Fallback to default calculation (also use moment to preserve timezone)
+      let fallbackDueDate = now.clone();
       
       switch (frequency) {
         case 'Daily':
-          fallbackDueDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          fallbackDueDate.startOf('day');
           break;
         case 'Weekly':
           // Due by end of current week (Sunday)
-          fallbackDueDate = new Date(now);
-          fallbackDueDate.setDate(now.getDate() + (7 - now.getDay()));
-          fallbackDueDate.setHours(23, 59, 59, 999);
+          fallbackDueDate.endOf('week');
           break;
         case 'Bi-Weekly':
           // Due by end of current 2-week period
-          fallbackDueDate = new Date(now);
-          fallbackDueDate.setDate(now.getDate() + (14 - (now.getDay() + 7)));
-          fallbackDueDate.setHours(23, 59, 59, 999);
+          fallbackDueDate.add(14 - now.day(), 'days').endOf('day');
           break;
         case 'Monthly':
           // Due by end of current month
-          fallbackDueDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-          fallbackDueDate.setHours(23, 59, 59, 999);
+          fallbackDueDate.endOf('month');
           break;
         case 'Bi-Monthly':
           // Due by end of current 2-month period
-          fallbackDueDate = new Date(now.getFullYear(), Math.floor(now.getMonth() / 2) * 2 + 2, 0);
-          fallbackDueDate.setHours(23, 59, 59, 999);
+          fallbackDueDate.add(2, 'months').endOf('month');
           break;
         case 'Quarterly':
           // Due by end of current quarter
-          fallbackDueDate = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 0);
-          fallbackDueDate.setHours(23, 59, 59, 999);
+          fallbackDueDate.endOf('quarter');
           break;
         case 'Annually':
           // Due by end of current year
-          fallbackDueDate = new Date(now.getFullYear(), 11, 31);
-          fallbackDueDate.setHours(23, 59, 59, 999);
+          fallbackDueDate.endOf('year');
           break;
         default:
-          fallbackDueDate = now;
+          // Return current time
+          break;
       }
       
       console.log('🔍 Frontend calculated due date (fallback)', {
         frequency,
-        fallbackDueDate: fallbackDueDate.toISOString()
+        fallbackDueDate: fallbackDueDate.toISOString(),
+        timezone
       });
       
-      return fallbackDueDate;
+      return fallbackDueDate.toDate(); // Convert back to Date
     }
   };
 
@@ -845,7 +858,13 @@ const StudentManagement: React.FC = () => {
     // Calculation completed
     
     return due;
-  }, [teacherStudents.length, reportTemplates.length, school?.settings, school?.settings?.timezone]);
+  }, [
+    teacherStudents.length, 
+    reportTemplates.length, 
+    school?.settings?.timezone,
+    JSON.stringify(school?.settings?.reportFrequencies), // Recalculate when report frequencies change
+    reports.length // Also recalculate when reports change
+  ]);
 
   const filteredStudents = teacherStudents.filter(student =>
     student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -904,68 +923,42 @@ const StudentManagement: React.FC = () => {
     let currentMainPoint: { main: string; subPoints: string[] } | null = null;
     
     for (let i = 0; i < lines.length; i++) {
-      const trimmedLine = lines[i].trim();
+      const originalLine = lines[i].trim();
       
       // Skip empty lines
-      if (!trimmedLine) continue;
+      if (!originalLine) continue;
       
-      // Check if this is a main heading (ends with colon or is a standalone title)
-      const isMainHeading = trimmedLine.endsWith(':') || 
-        (trimmedLine.length > 3 && 
-         trimmedLine.length < 100 && 
-         !trimmedLine.includes('.') && 
-         !trimmedLine.toLowerCase().startsWith('write') &&
-         !trimmedLine.toLowerCase().includes('details about') &&
-         !trimmedLine.match(/^[-•*]\s+/) &&
-         !trimmedLine.match(/^\d+\.\s+/));
+      // Check if this line starts with "Heading:" or "Subheading:"
+      const isHeading = /^Heading:\s*/i.test(originalLine);
+      const isSubheading = /^Subheading:\s*/i.test(originalLine);
       
-      if (isMainHeading) {
+      // Only process lines that are explicitly marked as Heading or Subheading
+      if (!isHeading && !isSubheading) continue;
+      
+      // Remove the prefix and get the actual content
+      const content = originalLine
+        .replace(/^Heading:\s*/i, '')
+        .replace(/^Subheading:\s*/i, '')
+        .trim();
+      
+      // Skip if content is empty after removing prefix
+      if (!content) continue;
+      
+      if (isHeading) {
         // Save previous main point if it exists
         if (currentMainPoint && currentMainPoint.main) {
           keyPoints.push(currentMainPoint);
         }
         
         // Start new main point
-        const mainPoint = trimmedLine.replace(/[:]\s*$/, '').trim();
-        if (mainPoint && 
-            mainPoint.length > 2 && 
-            !mainPoint.toLowerCase().includes('example')) {
-          currentMainPoint = {
-            main: mainPoint,
-            subPoints: []
-          };
-        }
-      } else {
-        // Check if this is a sub-point (bullet, number, or descriptive text)
-        const isBulletPoint = trimmedLine.match(/^[-•*]\s+(.+)/);
-        const isNumberedPoint = trimmedLine.match(/^\d+\.\s+(.+)/);
-        const isDescriptiveText = trimmedLine.length > 10 && 
-          trimmedLine.length < 120 && 
-          !trimmedLine.toLowerCase().includes('write') &&
-          !trimmedLine.toLowerCase().includes('details about') &&
-          !trimmedLine.toLowerCase().includes('example');
-        
-        if (currentMainPoint && (isBulletPoint || isNumberedPoint || isDescriptiveText)) {
-          let subPoint = '';
-          
-          if (isBulletPoint) {
-            subPoint = isBulletPoint[1]?.replace(/[:]\s*$/, '').trim() || '';
-          } else if (isNumberedPoint) {
-            subPoint = isNumberedPoint[1]?.replace(/[:]\s*$/, '').trim() || '';
-          } else if (isDescriptiveText) {
-            // For descriptive text, try to extract meaningful phrases
-            subPoint = trimmedLine.replace(/[:]\s*$/, '').trim();
-            // Limit length and clean up
-            if (subPoint.length > 80) {
-              subPoint = subPoint.substring(0, 80) + '...';
-            }
-          }
-          
-          if (subPoint && 
-              subPoint.length > 3 && 
-              !currentMainPoint.subPoints.includes(subPoint)) {
-            currentMainPoint.subPoints.push(subPoint);
-          }
+        currentMainPoint = {
+          main: content,
+          subPoints: []
+        };
+      } else if (isSubheading && currentMainPoint) {
+        // Add as sub-point to current main point
+        if (!currentMainPoint.subPoints.includes(content)) {
+          currentMainPoint.subPoints.push(content);
         }
       }
     }
@@ -975,26 +968,7 @@ const StudentManagement: React.FC = () => {
       keyPoints.push(currentMainPoint);
     }
     
-    // If we found very few key points, try a simpler flat approach
-    if (keyPoints.length < 2) {
-      const fallbackPoints = templateContent
-        .split(/[:\n]/)
-        .map(part => part.trim())
-        .filter(part => 
-          part.length > 5 && 
-          part.length < 50 && 
-          !part.toLowerCase().includes('write') &&
-          !part.toLowerCase().includes('details') &&
-          !part.toLowerCase().includes('example')
-        )
-        .slice(0, 6)
-        .map(point => ({ main: point, subPoints: [] }));
-      
-      return fallbackPoints;
-    }
-    
-    // Limit to 6 main points max for better UI
-    return keyPoints.slice(0, 6);
+    return keyPoints;
   };
 
   // Auto-select template based on student's grade (only due templates)
@@ -1058,6 +1032,7 @@ const StudentManagement: React.FC = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
+      let startTime = Date.now();
 
       mediaRecorder.ondataavailable = (event) => {
         chunks.push(event.data);
@@ -1066,11 +1041,12 @@ const StudentManagement: React.FC = () => {
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
         const url = URL.createObjectURL(blob);
+        const duration = Math.floor((Date.now() - startTime) / 1000); // Calculate actual duration
         const newRecording = {
           id: Date.now().toString(),
           blob,
           url,
-          duration: recordingTime
+          duration
         };
         setRecordings(prev => [...prev, newRecording]);
         stream.getTracks().forEach(track => track.stop());
@@ -2069,6 +2045,117 @@ const StudentManagement: React.FC = () => {
 
   return (
     <Container maxWidth="xl">
+      {/* School Banner */}
+      {schoolBranding && (() => {
+        const primaryColor = schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#273890';
+        const secondaryColor = schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#7f0f4a';
+        
+        return (
+          <Card sx={{ 
+            mb: 3,
+            mt: 2,
+            background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+            borderRadius: '16px !important',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            overflow: 'hidden',
+            position: 'relative',
+          }}>
+            <CardContent sx={{ p: 4 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 3 }}>
+                <Box sx={{ flex: 1, minWidth: '300px' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Typography variant="h4" sx={{ 
+                      fontWeight: 700, 
+                      color: 'white',
+                      textShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      {schoolBranding.schoolName || schoolBranding.name || 'School Name'}
+                    </Typography>
+                    {schoolBranding.established && (
+                      <Chip 
+                        label={`Estd: ${schoolBranding.established}`}
+                        sx={{ 
+                          bgcolor: 'rgba(255,255,255,0.3)',
+                          color: 'white',
+                          fontWeight: 600,
+                          height: '32px',
+                        }}
+                      />
+                    )}
+                  </Box>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {schoolBranding.address && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'white', opacity: 0.95, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          📍 {schoolBranding.address}
+                        </Typography>
+                      </Box>
+                    )}
+                    {schoolBranding.email && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'white', opacity: 0.95, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          ✉️ {schoolBranding.email}
+                        </Typography>
+                      </Box>
+                    )}
+                    {schoolBranding.phone && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'white', opacity: 0.95, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          📞 {schoolBranding.phone}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Box>
+                {schoolBranding.logo && (() => {
+                  const logoUrl = schoolBranding.logo.startsWith('http://') || schoolBranding.logo.startsWith('https://') 
+                    ? schoolBranding.logo 
+                    : `${(process.env.REACT_APP_API_URL || 'http://localhost:5050').replace('/api', '')}${schoolBranding.logo.startsWith('/') ? schoolBranding.logo : '/' + schoolBranding.logo}`;
+                  return (
+                    <Box sx={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '120px',
+                    }}>
+                      <Box sx={{
+                        bgcolor: 'rgba(255,255,255,0.95)',
+                        borderRadius: 3,
+                        p: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                        minWidth: '140px',
+                        minHeight: '140px',
+                        maxWidth: '180px',
+                        maxHeight: '180px',
+                      }}>
+                        <Box
+                          component="img"
+                          src={logoUrl}
+                          alt={schoolBranding.schoolName || schoolBranding.name || 'School Logo'}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                          sx={{
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain',
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })()}
+              </Box>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* Header */}
       <Fade in timeout={800}>
         <Box sx={{ mb: 4 }}>
@@ -2079,7 +2166,9 @@ const StudentManagement: React.FC = () => {
                 gutterBottom
                 sx={{
                   fontWeight: 700,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: schoolBranding 
+                    ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
@@ -2099,44 +2188,7 @@ const StudentManagement: React.FC = () => {
                 Manage and track your assigned students
               </Typography>
             </Box>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                variant="outlined"
-                startIcon={<Notifications />}
-                onClick={checkDueReportsForNotifications}
-                sx={{
-                  borderRadius: 2,
-                  px: 3,
-                  py: 1,
-                  borderColor: '#4caf50',
-                  color: '#4caf50',
-                  '&:hover': {
-                    borderColor: '#45a049',
-                    backgroundColor: 'rgba(76, 175, 80, 0.05)',
-                  }
-                }}
-              >
-                Check Due Reports
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<AutoFixHigh />}
-                onClick={forceRefreshDueReports}
-                sx={{
-                  borderRadius: 2,
-                  px: 3,
-                  py: 1,
-                  borderColor: '#667eea',
-                  color: '#667eea',
-                  '&:hover': {
-                    borderColor: '#5a6fd8',
-                    backgroundColor: 'rgba(102, 126, 234, 0.05)',
-                  }
-                }}
-              >
-                Refresh Calculations
-              </Button>
-            </Box>
+            <NotificationIcon />
           </Box>
         </Box>
       </Fade>
@@ -2246,7 +2298,7 @@ const StudentManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(0),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -2289,7 +2341,7 @@ const StudentManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(1),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -2332,7 +2384,7 @@ const StudentManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(2),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -2375,7 +2427,7 @@ const StudentManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(3),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -2714,7 +2766,9 @@ const StudentManagement: React.FC = () => {
                                 }}
                                 disabled={false} // Template availability will be checked when dialog opens
                             sx={{
-                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', // Generic style - availability checked when dialog opens
+                              background: schoolBranding 
+                                ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                               borderRadius: 2,
                               px: 2,
                               py: 0.5,
@@ -2731,10 +2785,16 @@ const StudentManagement: React.FC = () => {
                                 alignItems: 'center',
                                 justifyContent: 'center'
                               },
-                              boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
+                              boxShadow: schoolBranding 
+                                ? `0 2px 8px ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'}50`
+                                : '0 2px 8px rgba(102, 126, 234, 0.3)',
                               '&:hover': {
-                                background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
-                                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)',
+                                background: schoolBranding 
+                                  ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#5a6fd8'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#6a4190'} 100%)`
+                                  : 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                                boxShadow: schoolBranding 
+                                  ? `0 4px 12px ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'}60`
+                                  : '0 4px 12px rgba(102, 126, 234, 0.4)',
                                 transform: 'translateY(-1px)',
                               }
                             }}
@@ -2771,7 +2831,9 @@ const StudentManagement: React.FC = () => {
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: schoolBranding 
+              ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white',
             borderRadius: '12px 12px 0 0',
             p: 3,
@@ -2861,12 +2923,12 @@ const StudentManagement: React.FC = () => {
               )}
 
               {/* Detailed Information */}
-              <Grid container spacing={4}>
+              <Grid container spacing={4} sx={{ mt: 3 }}>
                 <Grid item xs={12} md={6}>
                   <Card
                     sx={{
                       borderRadius: 3,
-                      background: 'rgba(255,255,255,0.8)',
+                      background: 'rgba(255, 255, 255, 0.95)',
                       backdropFilter: 'blur(10px)',
                       border: '1px solid rgba(255,255,255,0.3)',
                       boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
@@ -2878,7 +2940,9 @@ const StudentManagement: React.FC = () => {
                         gutterBottom 
                         sx={{ 
                           fontWeight: 700,
-                          color: '#667eea',
+                          color: schoolBranding 
+                            ? (schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea')
+                            : '#667eea',
                           mb: 3,
                           display: 'flex',
                           alignItems: 'center',
@@ -2940,7 +3004,7 @@ const StudentManagement: React.FC = () => {
                   <Card
                     sx={{
                       borderRadius: 3,
-                      background: 'rgba(255,255,255,0.8)',
+                      background: 'rgba(255, 255, 255, 0.95)',
                       backdropFilter: 'blur(10px)',
                       border: '1px solid rgba(255,255,255,0.3)',
                       boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
@@ -2952,7 +3016,9 @@ const StudentManagement: React.FC = () => {
                         gutterBottom 
                         sx={{ 
                           fontWeight: 700,
-                          color: '#667eea',
+                          color: schoolBranding 
+                            ? (schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea')
+                            : '#667eea',
                           mb: 3,
                           display: 'flex',
                           alignItems: 'center',
@@ -3019,11 +3085,17 @@ const StudentManagement: React.FC = () => {
               borderRadius: 2,
               px: 3,
               py: 1.5,
-              borderColor: '#667eea',
-              color: '#667eea',
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
               '&:hover': {
-                borderColor: '#5a6fd8',
-                backgroundColor: 'rgba(102, 126, 234, 0.05)',
+                borderColor: '#b71c1c',
+                backgroundColor: 'rgba(211, 47, 47, 0.05)',
+                color: '#b71c1c',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                backgroundColor: 'rgba(198, 40, 40, 0.1)',
+                color: '#c62828',
               }
             }}
           >
@@ -3086,18 +3158,26 @@ const StudentManagement: React.FC = () => {
               },
               background: selectedStudent && (hasCurrentPeriodReport(selectedStudent) || getStudentDueReports(selectedStudent?._id || '').length === 0)
                 ? 'linear-gradient(135deg, #ccc 0%, #999 100%)'
-                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                : schoolBranding 
+                  ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                  : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               boxShadow: selectedStudent && (hasCurrentPeriodReport(selectedStudent) || getStudentDueReports(selectedStudent?._id || '').length === 0)
                 ? '0 4px 16px rgba(0,0,0,0.1)'
-                : '0 4px 16px rgba(102, 126, 234, 0.3)',
+                : schoolBranding 
+                  ? `0 4px 16px ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'}50`
+                  : '0 4px 16px rgba(102, 126, 234, 0.3)',
               fontWeight: 600,
               '&:hover': {
                 background: selectedStudent && (hasCurrentPeriodReport(selectedStudent) || getStudentDueReports(selectedStudent?._id || '').length === 0)
                   ? 'linear-gradient(135deg, #ccc 0%, #999 100%)'
-                  : 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                  : schoolBranding 
+                    ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#5a6fd8'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#6a4190'} 100%)`
+                    : 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
                 boxShadow: selectedStudent && (hasCurrentPeriodReport(selectedStudent) || getStudentDueReports(selectedStudent?._id || '').length === 0)
                   ? '0 4px 16px rgba(0,0,0,0.1)'
-                  : '0 6px 20px rgba(102, 126, 234, 0.4)',
+                  : schoolBranding 
+                    ? `0 6px 20px ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'}60`
+                    : '0 6px 20px rgba(102, 126, 234, 0.4)',
                 transform: hasCurrentPeriodReport(selectedStudent) || getStudentDueReports(selectedStudent?._id || '').length === 0 ? 'none' : 'translateY(-1px)',
               }
             }}
@@ -3137,7 +3217,9 @@ const StudentManagement: React.FC = () => {
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: schoolBranding 
+              ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white',
             p: 3,
             display: 'flex',
@@ -3560,17 +3642,33 @@ const StudentManagement: React.FC = () => {
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
                           <Button
-                            variant="outlined"
+                            variant={playingRecordingId === recording.id ? "contained" : "outlined"}
                             size="small"
-                            startIcon={<PlayArrow />}
+                            startIcon={playingRecordingId === recording.id ? <Pause /> : <PlayArrow />}
+                            color={playingRecordingId === recording.id ? "primary" : "inherit"}
                             onClick={() => {
                               if (audioRef.current) {
-                                audioRef.current.src = recording.url;
-                                audioRef.current.play();
+                                if (playingRecordingId === recording.id) {
+                                  // Pause if currently playing this recording
+                                  audioRef.current.pause();
+                                  setPlayingRecordingId(null);
+                                } else {
+                                  // Play this recording
+                                  // Convert URL if it's a server path (not a blob URL)
+                                  let audioUrl = recording.url;
+                                  if (audioUrl && !audioUrl.startsWith('blob:') && !audioUrl.startsWith('http://') && !audioUrl.startsWith('https://')) {
+                                    // It's a relative server path, convert to absolute URL
+                                    const baseUrl = (process.env.REACT_APP_API_URL || 'http://localhost:5050').replace('/api', '');
+                                    audioUrl = audioUrl.startsWith('/') ? `${baseUrl}${audioUrl}` : `${baseUrl}/${audioUrl}`;
+                                  }
+                                  audioRef.current.src = audioUrl;
+                                  audioRef.current.play();
+                                  setPlayingRecordingId(recording.id);
+                                }
                               }
                             }}
                           >
-                            Play
+                            {playingRecordingId === recording.id ? 'Pause' : 'Play'}
                           </Button>
                           <Button
                             variant="outlined"
@@ -3581,6 +3679,12 @@ const StudentManagement: React.FC = () => {
                               setRecordings(prev => prev.filter(r => r.id !== recording.id));
                               if (recordings.length === 1) {
                                 setTranscription('');
+                              }
+                              if (playingRecordingId === recording.id) {
+                                setPlayingRecordingId(null);
+                                if (audioRef.current) {
+                                  audioRef.current.pause();
+                                }
                               }
                             }}
                           >
@@ -3604,7 +3708,12 @@ const StudentManagement: React.FC = () => {
                   </Box>
                 )}
               </Box>
-              <audio ref={audioRef} style={{ display: 'none' }} />
+              <audio 
+                ref={audioRef} 
+                style={{ display: 'none' }}
+                onEnded={() => setPlayingRecordingId(null)}
+                onPause={() => setPlayingRecordingId(null)}
+              />
             </Paper>
             )}
 
@@ -3722,7 +3831,25 @@ const StudentManagement: React.FC = () => {
         </DialogContent>
 
         <DialogActions sx={{ p: 3, gap: 2 }}>
-          <Button onClick={handleCloseReportDialog} variant="outlined" size="large">
+          <Button 
+            onClick={handleCloseReportDialog} 
+            variant="outlined" 
+            size="large"
+            sx={{
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: 'rgba(211, 47, 47, 0.05)',
+                color: '#b71c1c',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                backgroundColor: 'rgba(198, 40, 40, 0.1)',
+                color: '#c62828',
+              }
+            }}
+          >
             Cancel
           </Button>
           {selectedTemplate && (
@@ -3746,9 +3873,9 @@ const StudentManagement: React.FC = () => {
               </Button>
               <Button
                 variant="contained"
-                startIcon={<Send />}
+                startIcon={isSending ? null : <Send />}
                 onClick={sendReportToParents}
-                disabled={!teachers.find(t => (t._id === (user?.id || user?._id)) || (t.id === (user?.id || user?._id)))?.canEmailReports}
+                disabled={!teachers.find(t => (t._id === (user?.id || user?._id)) || (t.id === (user?.id || user?._id)))?.canEmailReports || isSending}
                 size="large"
                 sx={{
                   background: teachers.find(t => (t._id === (user?.id || user?._id)) || (t.id === (user?.id || user?._id)))?.canEmailReports
@@ -3758,7 +3885,7 @@ const StudentManagement: React.FC = () => {
                   opacity: teachers.find(t => (t._id === (user?.id || user?._id)) || (t.id === (user?.id || user?._id)))?.canEmailReports ? 1 : 0.6,
                 }}
               >
-                Send to Parents
+                {isSending ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Send to Parents'}
               </Button>
             </>
           )}

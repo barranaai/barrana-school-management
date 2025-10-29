@@ -20,7 +20,7 @@ const { width, height } = Dimensions.get('window');
 const LoginScreen: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'teacher' | 'parent'>('teacher');
+  const [role, setRole] = useState<'teacher' | 'parent' | 'student'>('teacher');
   const [showPassword, setShowPassword] = useState(false);
   const { login, error, isLoading } = useAuth();
 
@@ -146,6 +146,26 @@ const LoginScreen: React.FC = () => {
                     role === 'parent' && styles.roleButtonTextActive
                   ]}>
                     Parent
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.roleButton,
+                    role === 'student' && styles.roleButtonActive
+                  ]}
+                  onPress={() => setRole('student')}
+                >
+                  <Ionicons 
+                    name="school-outline" 
+                    size={20} 
+                    color={role === 'student' ? '#25D366' : '#8E8E93'} 
+                  />
+                  <Text style={[
+                    styles.roleButtonText,
+                    role === 'student' && styles.roleButtonTextActive
+                  ]}>
+                    Student
                   </Text>
                 </TouchableOpacity>
               </View>

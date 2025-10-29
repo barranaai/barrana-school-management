@@ -9,17 +9,22 @@ const { protect, authorize, auditLog } = require('../middleware/auth');
 const { sendEmail } = require('../utils/email');
 const { logger } = require('../utils/logger');
 
-// Rate limiting for auth routes
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // limit each IP to 50 requests per windowMs (increased for testing)
-  message: {
-    success: false,
-    message: 'Too many authentication attempts, please try again later'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// Rate limiting for auth routes - TEMPORARILY DISABLED FOR DEBUGGING
+const authLimiter = (req, res, next) => {
+  console.log('🔓 Rate limiter bypassed for debugging');
+  next();
+};
+
+// const authLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 50, // limit each IP to 50 requests per windowMs (increased for testing)
+//   message: {
+//     success: false,
+//     message: 'Too many authentication attempts, please try again later'
+//   },
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
 
 // @route   POST /api/auth/register
 // @desc    Register a new user
@@ -28,9 +33,9 @@ router.post('/register', [
   authLimiter,
   body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
-  body('email').isEmail().withMessage('Please provide a valid email'),
+  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-  body('role').isIn(['school_admin', 'teacher', 'parent']).withMessage('Invalid role'),
+  body('role').isIn(['school_admin', 'teacher', 'parent', 'student']).withMessage('Invalid role'),
   body('schoolId').optional().isMongoId().withMessage('Invalid school ID')
 ], async (req, res) => {
   try {
@@ -132,13 +137,14 @@ router.post('/register', [
 // @access  Public
 router.post('/login', [
   authLimiter,
-  body('email').isEmail().withMessage('Please provide a valid email'),
+  body('email').notEmpty().withMessage('Email or Student ID is required'),
   body('password').notEmpty().withMessage('Password is required')
 ], async (req, res) => {
   try {
     // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ VALIDATION ERRORS:', errors.array());
       return res.status(400).json({
         success: false,
         message: 'Validation errors',
@@ -148,10 +154,36 @@ router.post('/login', [
 
     const { email, password } = req.body;
 
-    // Find user by email and include password for comparison
-    const user = await User.findByEmail(email).select('+password').populate('schoolId', 'name slug schoolType');
+    // Debug logging
+    logger.info('Login attempt', { emailOrStudentId: email, timestamp: new Date().toISOString() });
+
+    // Find user by email OR studentId and include password for comparison
+    // Email could be either an actual email or a studentId
+    let user = null;
+    
+    // Try to find by email first
+    if (email && email.includes('@')) {
+      user = await User.findOne({ email: email.toLowerCase() })
+        .select('+password')
+        .populate('schoolId', 'name slug schoolType');
+    } else {
+      // Try to find by studentId (for student login)
+      user = await User.findOne({ studentId: email.toUpperCase() })
+        .select('+password')
+        .populate('schoolId', 'name slug schoolType');
+    }
+    
+    logger.info('User lookup result', { 
+      userFound: !!user, 
+      email: email,
+      userEmail: user?.email,
+      userRole: user?.role,
+      userActive: user?.isActive,
+      hasPassword: !!user?.password
+    });
     
     if (!user) {
+      logger.warn('Login failed - user not found', { email });
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -168,7 +200,14 @@ router.post('/login', [
 
     // Check password
     const isMatch = await user.comparePassword(password);
+    logger.info('Password check result', { 
+      email: email, 
+      passwordMatch: isMatch,
+      passwordLength: password?.length
+    });
+    
     if (!isMatch) {
+      logger.warn('Login failed - password mismatch', { email });
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -231,7 +270,8 @@ router.get('/me', protect, async (req, res) => {
           isEmailVerified: user.isEmailVerified,
           preferences: user.preferences,
           lastLogin: user.lastLogin,
-          lastActivity: user.lastActivity
+          lastActivity: user.lastActivity,
+          canEmailReports: user.canEmailReports || false
         }
       }
     });
@@ -249,7 +289,7 @@ router.get('/me', protect, async (req, res) => {
 // @access  Public
 router.post('/forgot-password', [
   authLimiter,
-  body('email').isEmail().withMessage('Please provide a valid email')
+  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -424,6 +464,36 @@ router.post('/verify-email', [
   }
 });
 
+// @route   GET /api/auth/test
+// @desc    Test auth route
+// @access  Public
+router.get('/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Auth route is working!',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV
+  });
+});
+
+// Temporary debug route (simplified)
+router.get('/debug/users', async (req, res) => {
+  try {
+    const userCount = await User.countDocuments();
+    res.status(200).json({
+      success: true,
+      userCount: userCount,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Debug error',
+      error: error.message
+    });
+  }
+});
+
 // @route   POST /api/auth/logout
 // @desc    Logout user (client-side token removal)
 // @access  Private
@@ -432,6 +502,46 @@ router.post('/logout', protect, auditLog('logout'), (req, res) => {
     success: true,
     message: 'Logged out successfully'
   });
+});
+
+// Simple test login endpoint - bypasses all middleware
+router.post('/test-login', async (req, res) => {
+  console.log('🧪 TEST LOGIN ENDPOINT CALLED');
+  console.log('Request body:', req.body);
+  
+  try {
+    const { email, password } = req.body;
+    
+    console.log('Email:', email);
+    console.log('Password length:', password?.length);
+    
+    const user = await User.findByEmail(email).select('+password');
+    console.log('User found:', !!user);
+    
+    if (!user) {
+      console.log('❌ User not found');
+      return res.json({ success: false, message: 'User not found' });
+    }
+    
+    console.log('User email:', user.email);
+    console.log('User role:', user.role);
+    console.log('User active:', user.isActive);
+    
+    const isMatch = await user.comparePassword(password);
+    console.log('Password match:', isMatch);
+    
+    if (!isMatch) {
+      console.log('❌ Password mismatch');
+      return res.json({ success: false, message: 'Password mismatch' });
+    }
+    
+    console.log('✅ Login successful');
+    res.json({ success: true, message: 'Test login successful', user: { email: user.email, role: user.role } });
+    
+  } catch (error) {
+    console.error('❌ Test login error:', error);
+    res.json({ success: false, message: 'Error', error: error.message });
+  }
 });
 
 module.exports = router; 

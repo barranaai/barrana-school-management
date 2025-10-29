@@ -2,6 +2,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { logger } = require('../utils/logger');
+const School = require('../models/School');
 
 // Configure multer for logo uploads
 const storage = multer.diskStorage({
@@ -58,11 +59,26 @@ const uploadSchoolLogo = async (req, res) => {
     const schoolId = req.params.id;
     const logoUrl = `/uploads/logos/${req.file.filename}`;
     
-    logger.info(`Logo uploaded successfully for school ${schoolId}`, {
+    // Update the school with the new logo URL
+    const school = await School.findByIdAndUpdate(
+      schoolId,
+      { $set: { 'branding.logo': logoUrl } },
+      { new: true, runValidators: true }
+    );
+
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        message: 'School not found'
+      });
+    }
+    
+    logger.info(`Logo uploaded and saved to database for school ${schoolId}`, {
       filename: req.file.filename,
       originalName: req.file.originalname,
       size: req.file.size,
-      mimetype: req.file.mimetype
+      mimetype: req.file.mimetype,
+      logoUrl
     });
 
     res.json({
@@ -90,14 +106,37 @@ const uploadSchoolLogo = async (req, res) => {
 // Get logo URL for a school
 const getSchoolLogo = async (schoolId) => {
   try {
+    // First, try to get logo from database
+    const school = await School.findById(schoolId);
+    
+    if (school && school.branding && school.branding.logo) {
+      return school.branding.logo;
+    }
+    
+    // Fallback: check file system
     const logoDir = path.join(__dirname, '../uploads/logos');
+    
+    // Check if directory exists
+    if (!fs.existsSync(logoDir)) {
+      return null;
+    }
+    
     const files = fs.readdirSync(logoDir);
     
     // Find logo file for this school
     const logoFile = files.find(file => file.startsWith(`school-${schoolId}-logo-`));
     
     if (logoFile) {
-      return `/uploads/logos/${logoFile}`;
+      const logoUrl = `/uploads/logos/${logoFile}`;
+      
+      // Update database with found logo
+      await School.findByIdAndUpdate(
+        schoolId,
+        { $set: { 'branding.logo': logoUrl } },
+        { new: true }
+      );
+      
+      return logoUrl;
     }
     
     return null; // No logo found
@@ -121,7 +160,14 @@ const deleteSchoolLogo = async (req, res) => {
       const logoPath = path.join(logoDir, logoFile);
       fs.unlinkSync(logoPath);
       
-      logger.info(`Logo deleted successfully for school ${schoolId}`, {
+      // Remove logo URL from database
+      await School.findByIdAndUpdate(
+        schoolId,
+        { $unset: { 'branding.logo': '' } },
+        { new: true }
+      );
+      
+      logger.info(`Logo deleted successfully from file system and database for school ${schoolId}`, {
         filename: logoFile
       });
 

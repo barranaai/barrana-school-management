@@ -4,6 +4,7 @@ const { protect, authorize } = require('../middleware/auth');
 const User = require('../models/User');
 const Report = require('../models/Report');
 const { logger } = require('../utils/logger');
+const firebaseService = require('../services/firebaseService');
 
 // @desc    Send report approval notification to school admins
 // @route   POST /api/communication/report-approval-notification
@@ -73,6 +74,23 @@ router.post('/report-approval-notification', protect, authorize('teacher', 'scho
             }
           }
         });
+        
+        // Send FCM push notification if Firebase is initialized
+        if (firebaseService.isFirebaseInitialized()) {
+          const fcmNotification = {
+            title: notificationData.title,
+            message: notificationData.message,
+            type: notificationData.type
+          };
+          
+          const fcmData = {
+            reportId: reportData.reportId,
+            studentName: reportData.studentName,
+            action: 'approve_report'
+          };
+          
+          await firebaseService.sendNotificationToUser(admin, fcmNotification, fcmData);
+        }
         
         sentCount++;
         logger.info(`Notification sent to school admin ${admin.email} for report ${reportData.reportId}`);
@@ -177,6 +195,158 @@ router.patch('/notifications/:notificationId/read', protect, async (req, res) =>
     res.status(500).json({
       success: false,
       message: 'Server error while marking notification as read'
+    });
+  }
+});
+
+// @desc    Register FCM token for push notifications
+// @route   POST /api/communication/fcm/register
+// @access  Private
+router.post('/fcm/register', protect, async (req, res) => {
+  try {
+    const { token, device = 'web', deviceInfo = {} } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'FCM token is required'
+      });
+    }
+
+    // Check if token already exists for this user
+    const existingToken = await User.findOne({
+      _id: req.user._id,
+      'fcmTokens.token': token
+    });
+
+    if (existingToken) {
+      // Update lastUsed timestamp
+      await User.updateOne(
+        { _id: req.user._id, 'fcmTokens.token': token },
+        { $set: { 'fcmTokens.$.lastUsed': new Date() } }
+      );
+
+      return res.json({
+        success: true,
+        message: 'FCM token already registered, timestamp updated'
+      });
+    }
+
+    // Add new token
+    await User.findByIdAndUpdate(req.user._id, {
+      $push: {
+        fcmTokens: {
+          token,
+          device,
+          deviceInfo: {
+            userAgent: deviceInfo.userAgent || req.get('User-Agent'),
+            platform: deviceInfo.platform || device,
+            appVersion: deviceInfo.appVersion || '1.0.0'
+          },
+          createdAt: new Date(),
+          lastUsed: new Date()
+        }
+      }
+    });
+
+    logger.info(`FCM token registered for user ${req.user._id}`, {
+      device,
+      platform: deviceInfo.platform
+    });
+
+    res.json({
+      success: true,
+      message: 'FCM token registered successfully'
+    });
+
+  } catch (error) {
+    logger.error('Error registering FCM token:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while registering FCM token'
+    });
+  }
+});
+
+// @desc    Unregister FCM token
+// @route   DELETE /api/communication/fcm/unregister
+// @access  Private
+router.delete('/fcm/unregister', protect, async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'FCM token is required'
+      });
+    }
+
+    await User.findByIdAndUpdate(req.user._id, {
+      $pull: { fcmTokens: { token } }
+    });
+
+    logger.info(`FCM token unregistered for user ${req.user._id}`);
+
+    res.json({
+      success: true,
+      message: 'FCM token unregistered successfully'
+    });
+
+  } catch (error) {
+    logger.error('Error unregistering FCM token:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while unregistering FCM token'
+    });
+  }
+});
+
+// @desc    Test push notification
+// @route   POST /api/communication/fcm/test
+// @access  Private
+router.post('/fcm/test', protect, async (req, res) => {
+  try {
+    if (!firebaseService.isFirebaseInitialized()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Firebase is not initialized. Push notifications are disabled.'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    
+    if (!user.fcmTokens || user.fcmTokens.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No FCM tokens registered for this user'
+      });
+    }
+
+    const notification = {
+      title: '🎉 Test Notification',
+      message: 'If you see this, push notifications are working perfectly!',
+      type: 'test'
+    };
+
+    const data = {
+      testId: Date.now().toString(),
+      sender: 'system'
+    };
+
+    const result = await firebaseService.sendNotificationToUser(user, notification, data);
+
+    res.json({
+      success: true,
+      message: 'Test notification sent',
+      result
+    });
+
+  } catch (error) {
+    logger.error('Error sending test notification:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while sending test notification'
     });
   }
 });

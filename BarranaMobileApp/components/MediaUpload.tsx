@@ -234,6 +234,23 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  // Convert media URL to full server URL
+  const convertMediaUrl = (url: string | undefined): string => {
+    if (!url || url.startsWith('blob:')) {
+      return ''; // Skip blob URLs or undefined
+    }
+    
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url; // Already a full URL
+    }
+    
+    // Convert relative URL to full server URL
+    const serverUrl = url.startsWith('/') ? url : '/' + url;
+    // Remove /api from base URL since media URLs don't include /api prefix
+    const baseUrl = apiService.getBaseUrl().replace('/api', '');
+    return `${baseUrl}${serverUrl}`;
+  };
+
   const totalFiles = mediaFiles.length + uploadedMedia.length;
 
   return (
@@ -303,10 +320,10 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
                     onPress={() => setPreviewModal({ visible: true, media })}
                   >
                     {media.mimeType.startsWith('image/') ? (
-                      <Image source={{ uri: media.url }} style={styles.mediaImage} />
+                      <Image source={{ uri: convertMediaUrl(media.url) }} style={styles.mediaImage} />
                     ) : (
                       <View style={styles.videoPreview}>
-                        <Image source={{ uri: media.thumbnail || media.url }} style={styles.mediaImage} />
+                        <Image source={{ uri: convertMediaUrl(media.thumbnail || media.url) }} style={styles.mediaImage} />
                         <View style={styles.videoOverlay}>
                           <Ionicons name="play" size={24} color="white" />
                         </View>
@@ -405,7 +422,11 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
               {('type' in previewModal.media && previewModal.media.type === 'image') || 
                ('mimeType' in previewModal.media && previewModal.media.mimeType?.startsWith('image/')) ? (
                 <Image
-                  source={{ uri: previewModal.media.thumbnail || previewModal.media.uri }}
+                  source={{ 
+                    uri: 'uri' in previewModal.media 
+                      ? previewModal.media.uri  // Local file, use as-is
+                      : convertMediaUrl(previewModal.media.url)  // Uploaded file, convert URL
+                  }}
                   style={styles.previewImage}
                   resizeMode="contain"
                 />

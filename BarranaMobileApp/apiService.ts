@@ -23,7 +23,7 @@ export interface User {
   firstName: string;
   lastName: string;
   email: string;
-  role: 'teacher' | 'parent' | 'school_admin' | 'super_admin';
+  role: 'teacher' | 'parent' | 'student' | 'school_admin' | 'super_admin';
   schoolId?: string | {
     _id: string;
     name: string;
@@ -51,7 +51,7 @@ export interface RegisterRequest {
   lastName: string;
   email: string;
   password: string;
-  role: 'teacher' | 'parent';
+  role: 'teacher' | 'parent' | 'student';
   schoolId?: string;
 }
 
@@ -98,6 +98,11 @@ class ApiService {
         return Promise.reject(error);
       }
     );
+  }
+
+  // Get base URL
+  public getBaseUrl(): string {
+    return API_BASE_URL;
   }
 
   // Token management

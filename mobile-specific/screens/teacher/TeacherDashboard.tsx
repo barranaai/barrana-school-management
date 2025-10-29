@@ -81,7 +81,9 @@ const TeacherDashboard: React.FC = () => {
       case 'Daily':
         // Check if today is a working day
         const workingDays = config.workingDays || [1, 2, 3, 4, 5];
-        const currentDayOfWeek = now.getDay();
+        // Convert JavaScript day (0=Sunday) to ISO weekday (1=Monday, 7=Sunday)
+        const jsDay = now.getDay();
+        const currentDayOfWeek = jsDay === 0 ? 7 : jsDay;
         const isWorkingDay = workingDays.includes(currentDayOfWeek);
         
         if (!isWorkingDay) {
@@ -89,7 +91,10 @@ const TeacherDashboard: React.FC = () => {
           let nextWorkingDay = new Date(now);
           do {
             nextWorkingDay.setDate(nextWorkingDay.getDate() + 1);
-          } while (!workingDays.includes(nextWorkingDay.getDay()));
+            const nextJsDay = nextWorkingDay.getDay();
+            const nextIsoDay = nextJsDay === 0 ? 7 : nextJsDay;
+            if (workingDays.includes(nextIsoDay)) break;
+          } while (true);
           dueDate = nextWorkingDay;
         }
         break;

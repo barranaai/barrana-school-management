@@ -104,7 +104,7 @@ export const convertWorkingDaysToArray = (workingDays: any): number[] => {
   const days = [];
   const dayMap = {
     monday: 1, tuesday: 2, wednesday: 3, thursday: 4,
-    friday: 5, saturday: 6, sunday: 0
+    friday: 5, saturday: 6, sunday: 7  // ISO weekday format (1=Monday, 7=Sunday)
   };
   
   for (const [day, enabled] of Object.entries(workingDays || {})) {
@@ -136,7 +136,7 @@ export const isHoliday = (date: moment.Moment, holidays: any[]): boolean => {
  * Check if a date is a weekend based on working days
  */
 export const isWeekend = (date: moment.Moment, workingDays: number[]): boolean => {
-  return !workingDays.includes(date.day());
+  return !workingDays.includes(date.isoWeekday());  // Use isoWeekday (1=Monday, 7=Sunday)
 };
 
 /**
@@ -225,7 +225,7 @@ export const calculateDueDate = (
   switch (frequency) {
     case 'Daily':
       calculationMethod = 'working-days';
-      const currentDayOfWeek = dueDate.day();
+      const currentDayOfWeek = dueDate.isoWeekday();  // Use isoWeekday (1=Monday, 7=Sunday)
       const isWorkingDay = workingDays.includes(currentDayOfWeek);
       
       if (!isWorkingDay) {

@@ -48,6 +48,12 @@ import {
 import { useData } from '../../../contexts/DataContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { apiService, CreateClassData } from '../../../services/apiService';
+import { themeColors } from '../../../theme/adminTheme';
+import NotificationIcon from '../../common/NotificationIcon';
+
+interface ClassManagementProps {
+  schoolBranding?: any;
+}
 
 interface Class {
   _id: string;
@@ -102,7 +108,7 @@ interface Teacher {
   isActive: boolean;
 }
 
-const ClassManagement: React.FC = () => {
+const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => {
   const [openClassDialog, setOpenClassDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
@@ -424,10 +430,12 @@ const ClassManagement: React.FC = () => {
           academicYear: classItem.schedule.academicYear,
           semester: classItem.schedule.semester,
           subjects: classItem.subjects || [],
-          assignedTeachers: classItem.assignedTeachers.map(at => ({
-            teacherId: at.teacherId._id,
-            role: at.role,
-          })),
+          assignedTeachers: classItem.assignedTeachers
+            .filter(at => at.teacherId) // Filter out null teachers
+            .map(at => ({
+              teacherId: at.teacherId._id,
+              role: at.role,
+            })),
           status: classItem.status,
         });
       }
@@ -551,16 +559,101 @@ const ClassManagement: React.FC = () => {
     }
   };
 
+  const getRandomCardColor = (index: number) => {
+    return themeColors.cardColors[index % themeColors.cardColors.length];
+  };
+
   return (
     <Container maxWidth="xl">
-      <Fade in timeout={800}>
-        <Box sx={{ mb: 4 }}>
+      {schoolBranding && (
+        <Fade in timeout={600}>
+          <Paper
+            elevation={0}
+            sx={{
+              background: `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#273890'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#7f0f4a'} 100%)`,
+              borderRadius: 4,
+              p: 3,
+              mb: 4,
+              mt: 0,
+              color: 'white',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={9}>
+                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                  {schoolBranding.name || 'School Name'}
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+                  {schoolBranding.established && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📅 Est. {schoolBranding.established}
+                    </Typography>
+                  )}
+                {schoolBranding.address && (
+                  <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                    📍 {typeof schoolBranding.address === 'string' 
+                      ? schoolBranding.address 
+                      : `${schoolBranding.address.street}, ${schoolBranding.address.city}, ${schoolBranding.address.state}`}
+                  </Typography>
+                )}
+                  {schoolBranding.email && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      ✉️ {schoolBranding.email}
+                    </Typography>
+                  )}
+                  {schoolBranding.phone && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📞 {schoolBranding.phone}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                {(schoolBranding.logo || schoolBranding.branding?.logo) && (() => {
+                  const logoPath = schoolBranding.logo || schoolBranding.branding?.logo || '';
+                  const logoUrl = logoPath.startsWith('http://') || logoPath.startsWith('https://') 
+                    ? logoPath 
+                    : `${(process.env.REACT_APP_API_URL || 'http://localhost:5050').replace('/api', '')}${logoPath.startsWith('/') ? logoPath : '/' + logoPath}`;
+                  return (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Box sx={{
+                        bgcolor: 'rgba(255,255,255,0.95)',
+                        borderRadius: 3,
+                        p: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <img 
+                          src={logoUrl} 
+                          alt={schoolBranding.name}
+                          style={{ 
+                            maxWidth: '120px',
+                            maxHeight: '120px',
+                            objectFit: 'contain'
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })()}
+              </Grid>
+            </Grid>
+          </Paper>
+        </Fade>
+      )}
+
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Fade in timeout={800}>
           <Typography 
             variant="h4" 
-            gutterBottom
-            sx={{
+            sx={{ 
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: schoolBranding 
+                ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -569,18 +662,9 @@ const ClassManagement: React.FC = () => {
           >
             Class Management
           </Typography>
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              color: 'text.secondary',
-              opacity: 0.8,
-              fontWeight: 500,
-            }}
-          >
-            Manage classes, assign teachers, and track enrollment across your school.
-          </Typography>
-        </Box>
-      </Fade>
+        </Fade>
+        <NotificationIcon />
+      </Box>
 
       {/* Performance Overview */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -589,7 +673,7 @@ const ClassManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(0),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -628,7 +712,7 @@ const ClassManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(0),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -664,7 +748,7 @@ const ClassManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(0),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -700,7 +784,7 @@ const ClassManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(0),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -736,7 +820,7 @@ const ClassManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(0),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -772,7 +856,7 @@ const ClassManagement: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(0),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -937,7 +1021,7 @@ const ClassManagement: React.FC = () => {
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                            {classItem.assignedTeachers.map((assignment, index) => (
+                            {classItem.assignedTeachers.filter(assignment => assignment.teacherId).map((assignment, index) => (
                               <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Avatar sx={{ width: 24, height: 24, fontSize: '0.75rem' }}>
                                   {assignment.teacherId.firstName.charAt(0)}{assignment.teacherId.lastName.charAt(0)}
@@ -952,7 +1036,7 @@ const ClassManagement: React.FC = () => {
                                 />
                               </Box>
                             ))}
-                            {classItem.assignedTeachers.length === 0 && (
+                            {classItem.assignedTeachers.filter(assignment => assignment.teacherId).length === 0 && (
                               <Typography variant="body2" color="text.secondary">
                                 No teachers assigned
                               </Typography>
@@ -1084,7 +1168,7 @@ const ClassManagement: React.FC = () => {
                     </Box>
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="body2" color="text.secondary">Assigned Teachers</Typography>
-                      {selectedClass.assignedTeachers.map((assignment, index) => (
+                      {selectedClass.assignedTeachers.filter((assignment: any) => assignment.teacherId).map((assignment: any, index: number) => (
                         <Box key={index} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Avatar sx={{ width: 24, height: 24, fontSize: '0.75rem' }}>
                             {assignment.teacherId.firstName.charAt(0)}{assignment.teacherId.lastName.charAt(0)}
@@ -1099,6 +1183,11 @@ const ClassManagement: React.FC = () => {
                           />
                         </Box>
                       ))}
+                      {selectedClass.assignedTeachers.filter((assignment: any) => assignment.teacherId).length === 0 && (
+                        <Typography variant="body2" color="text.secondary">
+                          No teachers assigned
+                        </Typography>
+                      )}
                     </Box>
                   </Grid>
                 </Grid>

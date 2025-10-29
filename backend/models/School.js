@@ -151,7 +151,8 @@ const schoolSchema = new mongoose.Schema({
     reportFrequencies: {
       Daily: {
         enabled: { type: Boolean, default: true },
-        dueDay: { type: Number, default: 1, min: 1, max: 7 }, // 1 = Monday, 7 = Sunday
+        dueDay: { type: Number, default: 1, min: 1, max: 7 }, // 1 = Monday, 7 = Sunday (deprecated, use workingDays)
+        workingDays: { type: [Number], default: [1, 2, 3, 4, 5] }, // Array of working days (1=Monday, 7=Sunday)
         dueTime: { type: String, default: '17:00' }, // 24-hour format
         skipWeekends: { type: Boolean, default: true },
         skipHolidays: { type: Boolean, default: true }
@@ -279,6 +280,84 @@ const schoolSchema = new mongoose.Schema({
       default: '#dc004e'
     },
     customDomain: String
+  },
+  
+  // Communication Configuration
+  communication: {
+    whatsapp: {
+      enabled: {
+        type: Boolean,
+        default: false
+      },
+      phoneNumber: {
+        type: String,
+        trim: true,
+        validate: {
+          validator: function(v) {
+            if (!v) return true; // Allow empty
+            return /^\+[1-9]\d{7,14}$/.test(v); // E.164 format
+          },
+          message: props => `${props.value} is not a valid WhatsApp number! Use E.164 format: +1234567890`
+        }
+      },
+      twilioAccountSid: {
+        type: String,
+        trim: true
+      },
+      twilioAuthToken: {
+        type: String,
+        trim: true
+      },
+      displayName: {
+        type: String,
+        trim: true
+      }
+    },
+    email: {
+      enabled: {
+        type: Boolean,
+        default: true
+      },
+      fromName: {
+        type: String,
+        trim: true
+      },
+      fromEmail: {
+        type: String,
+        trim: true,
+        lowercase: true
+      },
+      replyTo: {
+        type: String,
+        trim: true,
+        lowercase: true
+      }
+    },
+    sms: {
+      enabled: {
+        type: Boolean,
+        default: false
+      },
+      phoneNumber: {
+        type: String,
+        trim: true,
+        validate: {
+          validator: function(v) {
+            if (!v) return true; // Allow empty
+            return /^\+[1-9]\d{7,14}$/.test(v); // E.164 format
+          },
+          message: props => `${props.value} is not a valid SMS number! Use E.164 format: +1234567890`
+        }
+      },
+      twilioAccountSid: {
+        type: String,
+        trim: true
+      },
+      twilioAuthToken: {
+        type: String,
+        trim: true
+      }
+    }
   },
   
   // Usage Statistics

@@ -86,7 +86,7 @@ import {
 import { Country, State, City } from 'country-state-city';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
-import ReportConfiguration from '../admin/sections/ReportConfiguration';
+import SchoolConfiguration from '../admin/sections/SchoolConfiguration';
 import apiService from '../../services/apiService';
 import { getTimezoneOptions } from '../../utils/timezoneUtils';
 import TimezoneSelector from '../common/TimezoneSelector';
@@ -197,6 +197,28 @@ const SuperAdminDashboard: React.FC = () => {
   const [currentSection, setCurrentSection] = useState('overview');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [schools, setSchools] = useState<any[]>([]);
+
+  // Handle hash navigation for direct access to sections
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash && menuItems.some(item => item.section === hash)) {
+        setCurrentSection(hash);
+      } else if (!hash) {
+        window.location.hash = 'overview';
+      }
+    }, 0);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Update URL hash when section changes
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash !== currentSection) {
+      window.location.hash = currentSection;
+    }
+  }, [currentSection]);
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [openSchoolDialog, setOpenSchoolDialog] = useState(false);
@@ -252,7 +274,7 @@ const SuperAdminDashboard: React.FC = () => {
   const menuItems = [
     { text: 'Global Overview', section: 'overview', icon: <Dashboard /> },
     { text: 'School Management', section: 'schools', icon: <School /> },
-    { text: 'Report Templates', section: 'reportTemplates', icon: <Description /> },
+    { text: 'School Configuration', section: 'reportTemplates', icon: <Description /> },
     { text: 'User Management', section: 'users', icon: <People /> },
     { text: 'Billing Management', section: 'billing', icon: <Payment /> },
     { text: 'Advanced Analytics', section: 'analytics', icon: <Analytics /> },
@@ -461,19 +483,43 @@ const SuperAdminDashboard: React.FC = () => {
   };
 
   const handleEditSchool = (school: any) => {
+    console.log('🔵 handleEditSchool - Loading school for edit:', school);
+    console.log('   school.address:', school.address);
+    console.log('   school.address.country:', school.address?.country);
+    console.log('   school.address.state:', school.address?.state);
+    console.log('   school.address.city:', school.address?.city);
+    
     setSelectedSchool(school);
-    const country = COUNTRIES.find(c => c.name === school.country);
+    
+    // Extract address fields correctly - address is ALWAYS an object with nested fields
+    const countryName = school.address?.country || school.country || 'United States';
+    const stateName = school.address?.state || school.state || '';
+    const cityName = school.address?.city || school.city || '';
+    
+    console.log('   Extracted values:', { countryName, stateName, cityName });
+    
+    // Find country and populate states/cities
+    const country = COUNTRIES.find(c => c.name === countryName);
     if (country) {
+      console.log('   Found country:', country.name, 'ISO:', country.isoCode);
       setSelectedCountryCode(country.isoCode);
-      setStates(getStatesForCountry(country.isoCode));
+      const statesForCountry = getStatesForCountry(country.isoCode);
+      setStates(statesForCountry);
       
-      if (school.state) {
-        const state = State.getStatesOfCountry(country.isoCode).find(s => s.name === school.state);
+      if (stateName) {
+        const state = State.getStatesOfCountry(country.isoCode).find(s => s.name === stateName);
         if (state) {
+          console.log('   Found state:', state.name, 'ISO:', state.isoCode);
           setSelectedStateCode(state.isoCode);
-          setCities(getCitiesForCountry(country.isoCode, state.isoCode));
+          const citiesForState = getCitiesForCountry(country.isoCode, state.isoCode);
+          setCities(citiesForState);
+          console.log('   Loaded cities for state:', citiesForState.length);
+        } else {
+          console.log('   State not found:', stateName);
         }
       }
+    } else {
+      console.log('   Country not found:', countryName);
     }
 
     setSchoolForm({
@@ -484,16 +530,23 @@ const SuperAdminDashboard: React.FC = () => {
       contactPerson: typeof school.contactPerson === 'object' ? school.contactPerson?.name || '' : school.contactPerson || '',
       email: typeof school.contactPerson === 'object' ? school.contactPerson?.email || '' : school.email || '',
       phone: typeof school.contactPerson === 'object' ? school.contactPerson?.phone || '' : school.phone || '',
-      address: typeof school.address === 'string' ? school.address : school.address?.street || '',
-      city: typeof school.address === 'string' ? school.city : school.address?.city || school.city || '',
-      state: typeof school.address === 'string' ? school.state : school.address?.state || school.state || '',
-      zipCode: typeof school.address === 'string' ? school.zipCode : school.address?.zipCode || school.zipCode || '',
-      country: school.country || 'United States',
+      address: school.address?.street || '',
+      city: cityName,
+      state: stateName,
+      zipCode: school.address?.zipCode || '',
+      country: countryName,
       customCity: school.customCity || '',
       subscriptionPlan: school.subscription?.plan || 'basic',
       isActive: school.isActive !== false,
       timezone: school.settings?.timezone || 'UTC'
     });
+    
+    console.log('✅ School form populated:', {
+      country: countryName,
+      state: stateName,
+      city: cityName
+    });
+    
     setOpenEditSchoolDialog(true);
   };
 
@@ -727,7 +780,7 @@ const SuperAdminDashboard: React.FC = () => {
       case 'schools':
         return <SchoolManagement />;
       case 'reportTemplates':
-        return <ReportConfiguration />;
+        return <SchoolConfiguration />;
       case 'users':
         return <UserManagement />;
       case 'billing':

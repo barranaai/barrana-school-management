@@ -50,6 +50,13 @@ import {
 } from '@mui/icons-material';
 import { useData } from '../../../contexts/DataContext';
 import toast from 'react-hot-toast';
+import PhoneNumberInput from '../../common/PhoneNumberInput';
+import { themeColors } from '../../../theme/adminTheme';
+import NotificationIcon from '../../common/NotificationIcon';
+
+interface StudentManagementProps {
+  schoolBranding?: any;
+}
 
 // InfoRow component for displaying labeled information
 const InfoRow: React.FC<{ label: string; value: string; icon?: React.ReactNode }> = ({ label, value, icon }) => (
@@ -98,7 +105,7 @@ const InfoRow: React.FC<{ label: string; value: string; icon?: React.ReactNode }
   </Box>
 );
 
-const StudentManagement: React.FC = () => {
+const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding }) => {
   // Helper function to format medical info for display
   const formatMedicalInfo = (medicalInfo: any): string => {
     if (typeof medicalInfo === 'object' && medicalInfo !== null) {
@@ -122,6 +129,7 @@ const StudentManagement: React.FC = () => {
     firstName: '',
     lastName: '',
     email: '',
+    studentId: '',
     grade: '',
     class: '',
     status: 'active' as 'active' | 'pending' | 'inactive',
@@ -405,6 +413,7 @@ const StudentManagement: React.FC = () => {
     const matchesSearch = 
       student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ((student as any).studentId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (student.id || student._id || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesGrade = filterGrade === '' || student.grade === filterGrade;
@@ -438,6 +447,7 @@ const StudentManagement: React.FC = () => {
         firstName: '',
         lastName: '',
         email: '',
+        studentId: '',
         grade: '',
         class: '',
         status: 'active' as 'active' | 'pending' | 'inactive',
@@ -462,6 +472,7 @@ const StudentManagement: React.FC = () => {
           firstName: student.firstName,
           lastName: student.lastName,
           email: (student as any).email || '',
+          studentId: (student as any).studentId || '',
           grade: student.grade,
           class: student.class || '',
           status: student.status || 'active',
@@ -559,6 +570,7 @@ const StudentManagement: React.FC = () => {
         lastName: formData.lastName,
         // Only include email if it's not empty
         ...(formData.email && formData.email.trim() && { email: formData.email.trim() }),
+        studentId: formData.studentId.toUpperCase().trim(), // Backend expects studentId
         grade: formData.grade, // Frontend interface expects grade
         studentGrade: formData.grade, // Backend expects studentGrade
         avatar,
@@ -657,6 +669,7 @@ const StudentManagement: React.FC = () => {
         firstName: '',
         lastName: '',
         email: '',
+        studentId: '',
         grade: '',
         class: '',
         status: 'active' as 'active' | 'pending' | 'inactive',
@@ -680,6 +693,7 @@ const StudentManagement: React.FC = () => {
           lastName: formData.lastName,
           // Only include email if it's not empty
           ...(formData.email && formData.email.trim() && { email: formData.email.trim() }),
+          studentId: formData.studentId.toUpperCase().trim(), // Backend expects studentId
           studentGrade: formData.grade, // Backend expects studentGrade
           parentName: formData.parentName,
           parentEmail: formData.parentEmail,
@@ -785,17 +799,104 @@ const StudentManagement: React.FC = () => {
     }
   };
 
+  // Helper function to get random card color
+  const getRandomCardColor = (index: number) => {
+    return themeColors.cardColors[index % themeColors.cardColors.length];
+  };
+
   return (
     <Container maxWidth="xl">
-      {/* Header */}
-      <Fade in timeout={800}>
-        <Box sx={{ mb: 4 }}>
+      {/* School Banner */}
+      {schoolBranding && (
+        <Fade in timeout={600}>
+          <Paper
+            elevation={0}
+            sx={{
+              background: `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#273890'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#7f0f4a'} 100%)`,
+              borderRadius: 4,
+              p: 3,
+              mb: 4,
+              mt: 0,
+              color: 'white',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={9}>
+                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                  {schoolBranding.name || 'School Name'}
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+                  {schoolBranding.established && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📅 Est. {schoolBranding.established}
+                    </Typography>
+                  )}
+                {schoolBranding.address && (
+                  <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                    📍 {typeof schoolBranding.address === 'string' 
+                      ? schoolBranding.address 
+                      : `${schoolBranding.address.street}, ${schoolBranding.address.city}, ${schoolBranding.address.state}`}
+                  </Typography>
+                )}
+                  {schoolBranding.email && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      ✉️ {schoolBranding.email}
+                    </Typography>
+                  )}
+                  {schoolBranding.phone && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📞 {schoolBranding.phone}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                {(schoolBranding.logo || schoolBranding.branding?.logo) && (() => {
+                  const logoPath = schoolBranding.logo || schoolBranding.branding?.logo || '';
+                  const logoUrl = logoPath.startsWith('http://') || logoPath.startsWith('https://') 
+                    ? logoPath 
+                    : `${(process.env.REACT_APP_API_URL || 'http://localhost:5050').replace('/api', '')}${logoPath.startsWith('/') ? logoPath : '/' + logoPath}`;
+                  return (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Box sx={{
+                        bgcolor: 'rgba(255,255,255,0.95)',
+                        borderRadius: 3,
+                        p: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <img 
+                          src={logoUrl} 
+                          alt={schoolBranding.name}
+                          style={{ 
+                            maxWidth: '120px',
+                            maxHeight: '120px',
+                            objectFit: 'contain'
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })()}
+              </Grid>
+            </Grid>
+          </Paper>
+        </Fade>
+      )}
+
+      {/* Header with Notification Icon */}
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Fade in timeout={800}>
           <Typography 
             variant="h4" 
-            gutterBottom
-            sx={{
+            sx={{ 
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: schoolBranding 
+                ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -804,25 +905,16 @@ const StudentManagement: React.FC = () => {
           >
             Student Management
           </Typography>
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              color: 'text.secondary',
-              opacity: 0.8,
-              fontWeight: 500,
-            }}
-          >
-            Manage student records, enrollment, and academic progress
-          </Typography>
-        </Box>
-      </Fade>
+        </Fade>
+        <NotificationIcon />
+      </Box>
 
       {/* Search and Actions */}
       <Grow in timeout={1000}>
         <Paper
           elevation={0}
           sx={{
-            background: 'rgba(255,255,255,0.8)',
+            background: getRandomCardColor(0),
             borderRadius: 4,
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255,255,255,0.3)',
@@ -1076,7 +1168,7 @@ const StudentManagement: React.FC = () => {
         <Paper
           elevation={0}
           sx={{
-            background: 'rgba(255,255,255,0.8)',
+            background: getRandomCardColor(1),
             borderRadius: 4,
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255,255,255,0.3)',
@@ -1107,6 +1199,7 @@ const StudentManagement: React.FC = () => {
                       />
                     </TableCell>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Student</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Student ID</TableCell>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Grade</TableCell>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Class</TableCell>
                     <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Status</TableCell>
@@ -1168,6 +1261,18 @@ const StudentManagement: React.FC = () => {
                             </Typography>
                           </Box>
                         </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography 
+                          sx={{ 
+                            fontWeight: 600, 
+                            fontFamily: 'monospace',
+                            color: '#667eea',
+                            fontSize: '0.875rem'
+                          }}
+                        >
+                          {(student as any).studentId || 'N/A'}
+                        </Typography>
                       </TableCell>
                       <TableCell>
                         <Typography sx={{ fontWeight: 500 }}>
@@ -1617,6 +1722,32 @@ const StudentManagement: React.FC = () => {
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
+                  label="Student ID"
+                  value={formData.studentId}
+                  onChange={(e) => handleFormChange('studentId', e.target.value.toUpperCase())}
+                  required
+                  error={!!fieldErrors.studentId}
+                  helperText={fieldErrors.studentId || 'Unique identifier for the student'}
+                  placeholder="e.g., STU001"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 3,
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: fieldErrors.lastName ? '#f44336' : 'rgba(102, 126, 234, 0.5)',
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: fieldErrors.lastName ? '#f44336' : '#667eea',
+                      },
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': {
+                      color: fieldErrors.lastName ? '#f44336' : '#667eea',
+                    },
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
                   label="Email"
                   type="email"
                   value={formData.email}
@@ -1716,12 +1847,10 @@ const StudentManagement: React.FC = () => {
                   helperText={fieldErrors.parentEmail}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Parent Phone"
+              <Grid item xs={12}>
+                <PhoneNumberInput
                   value={formData.parentPhone}
-                  onChange={(e) => handleFormChange('parentPhone', e.target.value)}
+                  onChange={(value) => handleFormChange('parentPhone', value)}
                   required
                   error={!!fieldErrors.parentPhone}
                   helperText={fieldErrors.parentPhone}
@@ -1817,7 +1946,7 @@ const StudentManagement: React.FC = () => {
             <Button 
               variant="contained" 
               onClick={handleSaveStudent}
-              disabled={!formData.firstName || !formData.lastName || !formData.grade || !formData.parentName || !formData.parentEmail}
+              disabled={!formData.firstName || !formData.lastName || !formData.studentId || !formData.grade || !formData.parentName || !formData.parentEmail}
               sx={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                 borderRadius: 3,

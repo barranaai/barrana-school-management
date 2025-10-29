@@ -32,8 +32,14 @@ import {
   Info,
 } from '@mui/icons-material';
 import { useData } from '../../../contexts/DataContext';
+import { themeColors } from '../../../theme/adminTheme';
+import NotificationIcon from '../../common/NotificationIcon';
 
-const ExecutiveSummary: React.FC = () => {
+interface ExecutiveSummaryProps {
+  schoolBranding?: any;
+}
+
+const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({ schoolBranding }) => {
   const { students, teachers, reports, classes, analytics, school, isLoading } = useData();
 
   // Use analytics from DataContext
@@ -147,17 +153,104 @@ const ExecutiveSummary: React.FC = () => {
     );
   }
 
+  // Helper function to get random card color
+  const getRandomCardColor = (index: number) => {
+    return themeColors.cardColors[index % themeColors.cardColors.length];
+  };
+
   return (
     <Container maxWidth="xl">
-      {/* Header */}
-      <Fade in timeout={800}>
-        <Box sx={{ mb: 4 }}>
+      {/* School Banner */}
+      {schoolBranding && (
+        <Fade in timeout={600}>
+          <Paper
+            elevation={0}
+            sx={{
+              background: `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#273890'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#7f0f4a'} 100%)`,
+              borderRadius: 4,
+              p: 3,
+              mb: 4,
+              mt: 0,
+              color: 'white',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={9}>
+                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                  {schoolBranding.name || 'School Name'}
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+                  {schoolBranding.established && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📅 Est. {schoolBranding.established}
+                    </Typography>
+                  )}
+                {schoolBranding.address && (
+                  <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                    📍 {typeof schoolBranding.address === 'string' 
+                      ? schoolBranding.address 
+                      : `${schoolBranding.address.street}, ${schoolBranding.address.city}, ${schoolBranding.address.state}`}
+                  </Typography>
+                )}
+                  {schoolBranding.email && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      ✉️ {schoolBranding.email}
+                    </Typography>
+                  )}
+                  {schoolBranding.phone && (
+                    <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                      📞 {schoolBranding.phone}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                {(schoolBranding.logo || schoolBranding.branding?.logo) && (() => {
+                  const logoPath = schoolBranding.logo || schoolBranding.branding?.logo || '';
+                  const logoUrl = logoPath.startsWith('http://') || logoPath.startsWith('https://') 
+                    ? logoPath 
+                    : `${(process.env.REACT_APP_API_URL || 'http://localhost:5050').replace('/api', '')}${logoPath.startsWith('/') ? logoPath : '/' + logoPath}`;
+                  return (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Box sx={{
+                        bgcolor: 'rgba(255,255,255,0.95)',
+                        borderRadius: 3,
+                        p: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <img 
+                          src={logoUrl} 
+                          alt={schoolBranding.name}
+                          style={{ 
+                            maxWidth: '120px',
+                            maxHeight: '120px',
+                            objectFit: 'contain'
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })()}
+              </Grid>
+            </Grid>
+          </Paper>
+        </Fade>
+      )}
+
+      {/* Header with Notification Icon */}
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Fade in timeout={800}>
           <Typography 
             variant="h4" 
-            gutterBottom
-            sx={{
+            sx={{ 
               fontWeight: 700,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: schoolBranding 
+                ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -166,18 +259,10 @@ const ExecutiveSummary: React.FC = () => {
           >
             Executive Summary
           </Typography>
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              color: 'text.secondary',
-              opacity: 0.8,
-              fontWeight: 500,
-            }}
-          >
-            Overview of {school.name}'s performance and key metrics
-          </Typography>
-        </Box>
-      </Fade>
+        </Fade>
+        <NotificationIcon />
+      </Box>
+
 
       {/* KPIs Grid */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -188,7 +273,7 @@ const ExecutiveSummary: React.FC = () => {
                 elevation={0}
                 sx={{
                   height: '100%',
-                  background: 'rgba(255,255,255,0.8)',
+                  background: getRandomCardColor(index),
                   borderRadius: 4,
                   backdropFilter: 'blur(10px)',
                   border: '1px solid rgba(255,255,255,0.3)',
@@ -271,7 +356,7 @@ const ExecutiveSummary: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(4),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -304,10 +389,11 @@ const ExecutiveSummary: React.FC = () => {
                       <ListItem 
                         alignItems="flex-start"
                         sx={{
+                          background: themeColors.nested,
                           borderRadius: 2,
                           mb: 1,
                           '&:hover': {
-                            background: 'rgba(102, 126, 234, 0.05)',
+                            background: 'rgba(102, 126, 234, 0.1)',
                           },
                           transition: 'all 0.2s ease-in-out',
                         }}
@@ -378,7 +464,7 @@ const ExecutiveSummary: React.FC = () => {
             <Paper
               elevation={0}
               sx={{
-                background: 'rgba(255,255,255,0.8)',
+                background: getRandomCardColor(3),
                 borderRadius: 4,
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255,255,255,0.3)',
@@ -411,10 +497,11 @@ const ExecutiveSummary: React.FC = () => {
                       <ListItem 
                         alignItems="flex-start"
                         sx={{
+                          background: themeColors.nested,
                           borderRadius: 2,
                           mb: 1,
                           '&:hover': {
-                            background: 'rgba(102, 126, 234, 0.05)',
+                            background: 'rgba(102, 126, 234, 0.1)',
                           },
                           transition: 'all 0.2s ease-in-out',
                         }}

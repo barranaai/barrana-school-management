@@ -13,6 +13,7 @@ export interface Student {
   grade: string;
   class?: string;
   studentClass?: string; // Class assignment for students
+  studentId?: string; // Student ID field
   status?: 'active' | 'pending' | 'inactive';
   lastReport: string;
   parentName?: string;
@@ -282,6 +283,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     grade: apiStudent.grade || (apiStudent as any).studentGrade, // Handle both grade and studentGrade
     class: (apiStudent as any).studentClass, // Backend sends studentClass, frontend expects class
     studentClass: (apiStudent as any).studentClass, // Add studentClass field
+    studentId: apiStudent.studentId, // Add studentId field
     status: (apiStudent as any).status || ((apiStudent as any).isActive ? 'active' : 'inactive'),
     lastReport: apiStudent.lastReport || 'Never',
     parentName: (apiStudent as any).parentName,

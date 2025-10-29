@@ -1,6 +1,9 @@
 const nodemailer = require('nodemailer');
+const path = require('path');
+const fs = require('fs');
 const { logger } = require('../utils/logger');
 const { getSchoolLogo } = require('./logoService');
+const notificationLogger = require('./notificationLogger');
 
 // Create transporter (you can configure this based on your email provider)
 const createTransporter = () => {
@@ -391,25 +394,51 @@ const createReportEmailTemplate = async (data) => {
     reportContent,
     reportDate,
     schoolName,
-    schoolId
+    schoolId,
+    schoolBranding
   } = data;
+
+  // Extract branding colors with fallbacks
+  const primaryColor = schoolBranding?.primaryColor || '#667eea';
+  const secondaryColor = schoolBranding?.secondaryColor || '#dc004e';
 
   // Format the report content
   const formattedContent = formatReportContent(reportContent);
 
-  // Get school logo if available
+  // Get school logo if available - will be attached as CID
   let logoHtml = '';
+  let logoAttachment = null;
+  
   if (schoolId) {
     const logoUrl = await getSchoolLogo(schoolId);
     if (logoUrl) {
-      // Convert relative URL to absolute URL for email
-      const baseUrl = process.env.BASE_URL || 'http://localhost:5050';
-      const absoluteLogoUrl = `${baseUrl}${logoUrl}`;
-      logoHtml = `
-        <div style="text-align: center; margin-bottom: 15px;">
-          <img src="${absoluteLogoUrl}" alt="${schoolName || 'School Logo'}" style="max-height: 60px; max-width: 200px; object-fit: contain;">
-        </div>
-      `;
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const logoPath = path.join(__dirname, '..', logoUrl);
+        
+        if (fs.existsSync(logoPath)) {
+          // Use CID (Content-ID) reference for logo
+          logoHtml = `
+            <div style="text-align: center; margin-bottom: 15px;">
+              <img src="cid:school-logo" alt="${schoolName || 'School Logo'}" style="max-height: 60px; max-width: 200px; object-fit: contain;">
+            </div>
+          `;
+          
+          // Prepare logo as CID attachment
+          const logoExt = path.extname(logoPath).toLowerCase();
+          const mimeType = logoExt === '.png' ? 'image/png' : logoExt === '.jpg' || logoExt === '.jpeg' ? 'image/jpeg' : 'image/png';
+          
+          logoAttachment = {
+            filename: `school-logo${logoExt}`,
+            path: logoPath,
+            cid: 'school-logo',
+            contentType: mimeType
+          };
+        }
+      } catch (error) {
+        logger.warn('Error loading logo for email:', error.message);
+      }
     }
   }
 
@@ -425,11 +454,11 @@ const createReportEmailTemplate = async (data) => {
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+          .header { background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; }
           .content { background: #f8f9fa; padding: 20px; border-radius: 0 0 8px 8px; }
-          .report-content { background: white; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #667eea; }
+          .report-content { background: white; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid ${primaryColor}; }
           .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-          .highlight { color: #667eea; font-weight: bold; }
+          .highlight { color: ${primaryColor}; font-weight: bold; }
           .report-content strong { color: #2d3748; font-weight: 700; }
           .report-content em { color: #4a5568; font-style: italic; }
         </style>
@@ -500,7 +529,8 @@ ${schoolName || 'Barrana.ai School'}
 ---
 This is an automated message from the Barrana.ai School Management System.
 Please do not reply to this email. Contact the school directly for any inquiries.
-    `
+    `,
+    logoAttachment
   };
 };
 
@@ -565,6 +595,8 @@ const sendWelcomeEmail = async (emailData) => {
 
 // Send report email to parent
 const sendReportEmail = async (emailData) => {
+  let pdfPath = null;
+  
   try {
     const transporter = createTransporter();
     
@@ -574,7 +606,8 @@ const sendReportEmail = async (emailData) => {
         to: emailData.parentEmail,
         subject: `Student Report: ${emailData.studentName} - ${emailData.reportTitle}`,
         studentName: emailData.studentName,
-        teacherName: emailData.teacherName
+        teacherName: emailData.teacherName,
+        attachmentsCount: emailData.attachments?.length || 0
       });
       
       return {
@@ -584,7 +617,21 @@ const sendReportEmail = async (emailData) => {
       };
     }
 
-    const { parentEmail, studentName, teacherName, reportTitle, reportContent, reportDate, schoolName, schoolId } = emailData;
+    const { parentEmail, studentName, teacherName, reportTitle, reportContent, reportDate, schoolName, schoolId, attachments, reportId, schoolLogo } = emailData;
+
+    // Get school branding data
+    let schoolBranding = null;
+    if (schoolId) {
+      try {
+        const School = require('../models/School');
+        const school = await School.findById(schoolId).select('branding');
+        if (school && school.branding) {
+          schoolBranding = school.branding;
+        }
+      } catch (error) {
+        logger.warn('Error fetching school branding, using defaults:', error.message);
+      }
+    }
 
     if (!parentEmail) {
       throw new Error('Parent email address is required');
@@ -597,40 +644,223 @@ const sendReportEmail = async (emailData) => {
       reportContent,
       reportDate,
       schoolName,
-      schoolId
+      schoolId,
+      schoolBranding
     });
+
+    // Generate PDF for the report
+    const pdfService = require('./pdfService');
+    let pdfInfo = null;
+    
+    try {
+      logger.info(`Generating PDF for report: ${reportTitle}`);
+      pdfInfo = await pdfService.generateReportPDF({
+        studentName,
+        teacherName,
+        reportTitle,
+        reportContent,
+        reportDate,
+        schoolName,
+        schoolLogo,
+        reportId,
+        schoolBranding
+      });
+      pdfPath = pdfInfo.path;
+      logger.info(`PDF generated successfully: ${pdfInfo.filename}`);
+    } catch (pdfError) {
+      logger.error('Error generating PDF, continuing without PDF attachment:', pdfError);
+      // Continue sending email without PDF if generation fails
+    }
+
+    // Process attachments - convert URLs to file paths
+    const emailAttachments = [];
+    
+    // Add logo as CID attachment (inline, not shown as attachment)
+    if (emailTemplate.logoAttachment) {
+      emailAttachments.push(emailTemplate.logoAttachment);
+      logger.info('School logo added as inline CID attachment');
+    }
+    
+    // Add PDF as attachment
+    if (pdfInfo && pdfPath && fs.existsSync(pdfPath)) {
+      emailAttachments.push({
+        filename: pdfInfo.filename,
+        path: pdfPath,
+        contentType: 'application/pdf'
+      });
+      logger.info(`PDF added to email attachments: ${pdfInfo.filename}`);
+    }
+    
+    // Add media attachments
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      for (const att of attachments) {
+        try {
+          // Convert relative URL to absolute file path
+          const filePath = path.join(__dirname, '..', att.url);
+          
+          // Check if file exists
+          if (fs.existsSync(filePath)) {
+            emailAttachments.push({
+              filename: att.originalName || att.filename,
+              path: filePath,
+              contentType: att.mimeType
+            });
+            logger.info(`Media attachment added to email: ${att.originalName || att.filename}`);
+          } else {
+            logger.warn(`Attachment file not found: ${filePath}`);
+          }
+        } catch (error) {
+          logger.error(`Error processing attachment: ${att.filename}`, error);
+        }
+      }
+    }
 
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: parentEmail,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
-      text: emailTemplate.text
+      text: emailTemplate.text,
+      attachments: emailAttachments
     };
 
-    // Add media attachments if provided
-    if (emailData.mediaAttachments && emailData.mediaAttachments.length > 0) {
-      mailOptions.attachments = emailData.mediaAttachments.map(media => ({
-        filename: media.originalName || media.filename,
-        path: media.path || `./uploads/media/${media.filename}`,
-        contentType: media.mimeType
-      }));
-      
-      logger.info(`Adding ${emailData.mediaAttachments.length} media attachments to email`);
-    }
+    logger.info(`Sending email with ${emailAttachments.length} attachment(s) to ${parentEmail}`);
 
     const result = await transporter.sendMail(mailOptions);
     
-    logger.info(`Email sent successfully to ${parentEmail} for student ${studentName}`);
+    logger.info(`Email sent successfully to ${parentEmail} for student ${studentName}`, {
+      attachmentsCount: emailAttachments.length,
+      pdfIncluded: !!pdfInfo,
+      messageId: result.messageId
+    });
+    
+    // Log to notification system
+    await notificationLogger.logEmail({
+      schoolId: emailData.schoolId,
+      type: 'report',
+      recipientId: emailData.parentId,
+      recipientName: emailData.parentName || 'Parent',
+      recipientEmail: parentEmail,
+      studentId: emailData.studentId,
+      studentName: studentName,
+      classId: emailData.classId,
+      className: emailData.className,
+      gradeLevel: emailData.gradeLevel,
+      reportId: emailData.reportId,
+      reportTitle: reportTitle,
+      subject: `Student Report: ${studentName} - ${reportTitle}`,
+      messagePreview: emailData.summary || 'Daily report for student',
+      status: 'sent',
+      sentAt: new Date(),
+      providerMessageId: result.messageId,
+      hasAttachments: emailAttachments.length > 0,
+      attachments: emailAttachments.map(att => ({
+        filename: att.filename,
+        type: att.contentType
+      }))
+    });
+    
+    // Keep PDF for parent access (don't delete)
+    if (pdfPath && fs.existsSync(pdfPath)) {
+      logger.info(`PDF saved for parent access: ${pdfPath}`);
+    }
+    
+    // Send WhatsApp notification if enabled
+    let whatsappResult = null;
+    try {
+      const whatsappService = require('./whatsappService');
+      
+      // Check if parent has WhatsApp enabled and phone number
+      if (emailData.parentPhoneNumber && emailData.whatsappEnabled) {
+        whatsappService.initialize();
+        
+        if (whatsappService.isAvailable()) {
+          whatsappResult = await whatsappService.sendReportNotification({
+            student: {
+              firstName: studentName.split(' ')[0],
+              lastName: studentName.split(' ').slice(1).join(' ')
+            },
+            parent: {
+              email: parentEmail,
+              phoneNumber: emailData.parentPhoneNumber
+            },
+            report: {
+              date: reportDate,
+              reportType: reportTitle
+            },
+            schoolName,
+            school: emailData.school
+          });
+          
+          if (whatsappResult.success) {
+            logger.info(`WhatsApp notification sent to parent: ${emailData.parentPhoneNumber}`);
+          } else {
+            logger.warn(`WhatsApp notification failed: ${whatsappResult.error}`);
+            
+            // SMS Fallback: Try SMS if WhatsApp fails and SMS is enabled
+            if (emailData.smsEnabled) {
+              logger.info(`Trying SMS fallback for ${emailData.parentPhoneNumber}...`);
+              try {
+                const smsService = require('./smsService');
+                smsService.initialize();
+                
+                const smsResult = await smsService.sendReportNotification({
+                  student: {
+                    firstName: studentName.split(' ')[0],
+                    lastName: studentName.split(' ').slice(1).join(' ')
+                  },
+                  parent: {
+                    email: parentEmail,
+                    phoneNumber: emailData.parentPhoneNumber
+                  },
+                  report: {
+                    date: reportDate,
+                    reportType: reportTitle
+                  },
+                  schoolName,
+                  school: emailData.school
+                });
+                
+                if (smsResult.success) {
+                  logger.info(`✅ SMS fallback successful for ${emailData.parentPhoneNumber}`);
+                } else {
+                  logger.warn(`SMS fallback also failed: ${smsResult.error}`);
+                }
+              } catch (smsError) {
+                logger.error('SMS fallback error (non-fatal):', smsError);
+              }
+            }
+          }
+        }
+      }
+    } catch (whatsappError) {
+      logger.error('WhatsApp notification error (non-fatal):', whatsappError);
+      // Don't throw error - WhatsApp is optional
+    }
     
     return {
       success: true,
       messageId: result.messageId,
-      message: 'Email sent successfully'
+      message: 'Email sent successfully',
+      attachmentsIncluded: emailAttachments.length,
+      pdfGenerated: !!pdfInfo,
+      pdfPath: pdfPath, // Return the PDF path to save in database
+      whatsappSent: whatsappResult?.success || false
     };
 
   } catch (error) {
     logger.error('Error sending email:', error);
+    
+    // Clean up PDF on error
+    if (pdfPath && fs.existsSync(pdfPath)) {
+      try {
+        fs.unlinkSync(pdfPath);
+        logger.info(`Cleaned up PDF after error: ${pdfPath}`);
+      } catch (cleanupError) {
+        logger.error('Error cleaning up PDF:', cleanupError);
+      }
+    }
+    
     throw new Error(`Failed to send email: ${error.message}`);
   }
 };

@@ -8,18 +8,12 @@ const { logger } = require('../utils/logger');
 const router = express.Router();
 
 // Get all students for a school
-router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher', 'parent'), async (req, res) => {
+router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), async (req, res) => {
   try {
-    let query = { role: 'parent' }; // Students are stored as 'parent' role
+    const query = { role: 'student' }; // Students are stored as 'student' role
     
     // Filter by school for school admins and teachers
     if (req.user.role === 'school_admin' || req.user.role === 'teacher') {
-      query.schoolId = req.user.schoolId;
-    }
-    
-    // For parent users, only return their own children
-    if (req.user.role === 'parent') {
-      query.parentId = req.user._id;
       query.schoolId = req.user.schoolId;
     }
     
@@ -65,7 +59,7 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher', 'pa
 // Get a single student
 router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
   try {
-    const query = { _id: req.params.id, role: 'parent' };
+    const query = { _id: req.params.id, role: 'student' };
     
     // Filter by school for school admins
     if (req.user.role === 'school_admin') {
@@ -103,17 +97,24 @@ router.post('/', [
   authorize('school_admin', 'super_admin'),
   body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
-  // Student email is optional (students stored as role 'parent')
-  body('email').optional().isEmail().withMessage('Please provide a valid email'),
+  body('email').optional({ checkFalsy: true }).isEmail().withMessage('Please provide a valid email'),
+  body('studentId').trim().notEmpty().withMessage('Student ID is required').isLength({ min: 3, max: 50 }).withMessage('Student ID must be between 3 and 50 characters'),
   body('studentGrade').trim().notEmpty().withMessage('Grade is required'),
-  body('parentName').trim().notEmpty().withMessage('Parent name is required'),
-  // Parent email is required to receive reports
-  body('parentEmail').isEmail().withMessage('Please provide a valid parent email'),
-  body('parentPhone').optional().trim(),
-  body('dateOfBirth').optional().isISO8601().withMessage('Please provide a valid date of birth'),
-  body('enrollmentDate').optional().isISO8601().withMessage('Please provide a valid enrollment date'),
-  body('academicLevel').optional().isIn(['beginner', 'intermediate', 'advanced']).withMessage('Invalid academic level'),
-  body('isActive').optional().isBoolean().withMessage('Status must be a boolean')
+  body('studentClass').optional({ checkFalsy: true }).trim(),
+  body('classId').optional({ checkFalsy: true }).isMongoId().withMessage('Invalid class ID'),
+  body('parentName').optional({ checkFalsy: true }).trim(),
+  body('parentEmail').optional({ checkFalsy: true }).isEmail().withMessage('Please provide a valid parent email'),
+  body('parentPhone').optional({ checkFalsy: true }).trim().matches(/^\+[1-9]\d{7,14}$/).withMessage('Phone number must be in E.164 format (e.g., +1234567890)'),
+  body('dateOfBirth').optional({ checkFalsy: true }).isISO8601().withMessage('Please provide a valid date of birth'),
+  body('enrollmentDate').optional({ checkFalsy: true }).isISO8601().withMessage('Please provide a valid enrollment date'),
+  body('address').optional({ checkFalsy: true }).trim(),
+  body('emergencyContact').optional({ checkFalsy: true }).trim(),
+  body('medicalInfo.allergies').optional({ checkFalsy: true }).isArray().withMessage('Allergies must be an array'),
+  body('medicalInfo.conditions').optional({ checkFalsy: true }).isArray().withMessage('Conditions must be an array'),
+  body('medicalInfo.medications').optional({ checkFalsy: true }).isArray().withMessage('Medications must be an array'),
+  body('academicLevel').optional({ checkFalsy: true }).isIn(['beginner', 'intermediate', 'advanced']).withMessage('Invalid academic level'),
+  body('notes').optional({ checkFalsy: true }).trim().isLength({ max: 1000 }).withMessage('Notes cannot exceed 1000 characters'),
+  body('isActive').optional({ checkFalsy: true }).isBoolean().withMessage('Status must be a boolean')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -129,6 +130,7 @@ router.post('/', [
       firstName, 
       lastName, 
       email, 
+      studentId,
       studentGrade, 
       parentName,
       parentEmail,
@@ -199,8 +201,10 @@ router.post('/', [
     const studentData = {
       firstName,
       lastName,
-      role: 'parent', // Students are stored as 'parent' role
+      role: 'student', // Student role for login with studentId
+      password: 'Student123!', // Default password for student login
       schoolId: typeof req.user.schoolId === 'string' ? req.user.schoolId : req.user.schoolId._id,
+      studentId: studentId.toUpperCase().trim(), // Convert to uppercase and trim
       studentGrade,
       parentName,
       parentEmail: parentEmail ? parentEmail.toLowerCase() : undefined,
@@ -352,7 +356,7 @@ router.put('/:id', [
       });
     }
 
-    const query = { _id: req.params.id, role: 'parent' };
+    const query = { _id: req.params.id, role: 'student' };
     
     // Filter by school for school admins
     if (req.user.role === 'school_admin') {
@@ -462,6 +466,46 @@ router.put('/:id', [
     .populate('classId', 'name grade')
     .select('-password');
 
+    // If parent phone or email changed, update the parent account
+    if (req.body.parentPhone || req.body.parentEmail) {
+      try {
+        const parentUpdateData = {};
+        if (req.body.parentPhone) {
+          parentUpdateData.phone = req.body.parentPhone;
+          parentUpdateData.phoneNumber = req.body.parentPhone;
+          
+          // Enable WhatsApp if phone is valid E.164 format
+          const isE164 = /^\+[1-9]\d{7,14}$/.test(req.body.parentPhone);
+          if (isE164) {
+            parentUpdateData['preferences.notifications.whatsapp'] = true;
+            logger.info(`WhatsApp enabled for parent with phone: ${req.body.parentPhone}`);
+          }
+        }
+        if (req.body.parentEmail) {
+          parentUpdateData.email = req.body.parentEmail.toLowerCase();
+        }
+
+        // Find and update the parent account
+        const parentEmail = req.body.parentEmail || student.parentEmail;
+        if (parentEmail) {
+          const updatedParent = await User.findOneAndUpdate(
+            { email: parentEmail.toLowerCase(), role: 'parent' },
+            parentUpdateData,
+            { new: true }
+          );
+          
+          if (updatedParent) {
+            logger.info(`Parent account updated for ${parentEmail}: ${JSON.stringify(parentUpdateData)}`);
+          } else {
+            logger.warn(`Parent account not found for email: ${parentEmail}`);
+          }
+        }
+      } catch (parentUpdateError) {
+        logger.error('Error updating parent account:', parentUpdateError);
+        // Don't fail the student update if parent update fails
+      }
+    }
+
     res.json({
       success: true,
       data: updatedStudent,
@@ -479,7 +523,7 @@ router.put('/:id', [
 // Delete a student
 router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
   try {
-    const query = { _id: req.params.id, role: 'parent' };
+    const query = { _id: req.params.id, role: 'student' };
     
     // Filter by school for school admins
     if (req.user.role === 'school_admin') {
@@ -553,7 +597,7 @@ router.post('/assign-teacher', [
     // Get current students assigned to this teacher
     const currentStudents = await User.find({ 
       assignedTeacher: teacherId,
-      role: 'parent',
+      role: 'student',
       schoolId: req.user.schoolId 
     });
 
@@ -573,7 +617,7 @@ router.post('/assign-teacher', [
     // Assign new students to teacher
     if (studentIds.length > 0) {
       await User.updateMany(
-        { _id: { $in: studentIds }, role: 'parent', schoolId: req.user.schoolId },
+        { _id: { $in: studentIds }, role: 'student', schoolId: req.user.schoolId },
         { assignedTeacher: teacherId }
       );
       

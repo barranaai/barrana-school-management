@@ -20,37 +20,49 @@ import {
   Language,
   Palette,
 } from '@mui/icons-material';
+import NotificationIcon from '../../common/NotificationIcon';
 
-const TeacherSettings: React.FC = () => {
+export interface TeacherSettingsProps {
+  schoolBranding?: any;
+}
+
+const TeacherSettings: React.FC<TeacherSettingsProps> = ({ schoolBranding }) => {
   return (
     <Container maxWidth="xl">
       {/* Header */}
       <Fade in timeout={800}>
         <Box sx={{ mb: 4 }}>
-          <Typography 
-            variant="h4" 
-            gutterBottom
-            sx={{
-              fontWeight: 700,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              backgroundClip: 'text',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              textShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            }}
-          >
-            Settings
-          </Typography>
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              color: 'text.secondary',
-              opacity: 0.8,
-              fontWeight: 500,
-            }}
-          >
-            Manage your account preferences and settings
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+            <Box>
+              <Typography 
+                variant="h4" 
+                gutterBottom
+                sx={{
+                  fontWeight: 700,
+                  background: schoolBranding 
+                    ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                }}
+              >
+                Settings
+              </Typography>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  color: 'text.secondary',
+                  opacity: 0.8,
+                  fontWeight: 500,
+                }}
+              >
+                Manage your account preferences and settings
+              </Typography>
+            </Box>
+            <NotificationIcon />
+          </Box>
         </Box>
       </Fade>
 

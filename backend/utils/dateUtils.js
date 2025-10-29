@@ -145,49 +145,6 @@ const getStartOfFrequencyPeriod = (frequency, schoolSettings, currentDate) => {
 };
 
 /**
- * Get the end of the current frequency period
- * @param {string} frequency - Report frequency  
- * @param {moment.Moment} now - Current date
- * @param {Object} schoolSettings - School settings object
- * @returns {Date} End of period date
- */
-const getEndOfFrequencyPeriod = (frequency, now, schoolSettings) => {
-  const moment = require('moment-timezone');
-  const timezone = schoolSettings.timezone || 'UTC';
-  const currentDate = moment.tz(now, timezone);
-  
-  switch (frequency) {
-    case 'Daily':
-      return currentDate.endOf('day').toDate();
-      
-    case 'Weekly':
-      return currentDate.endOf('week').toDate();
-      
-    case 'Bi-Weekly':
-      // For bi-weekly, calculate 2-week period from start of current period
-      const startOfBiWeekly = getStartOfFrequencyPeriod(frequency, now, schoolSettings);
-      return moment.tz(startOfBiWeekly, timezone).add(2, 'weeks').subtract(1, 'day').endOf('day').toDate();
-      
-    case 'Monthly':
-      return currentDate.endOf('month').toDate();
-      
-    case 'Bi-Monthly':
-      // For bi-monthly, calculate 2-month period from start of current period
-      const startOfBiMonthly = getStartOfFrequencyPeriod(frequency, now, schoolSettings);
-      return moment.tz(startOfBiMonthly, timezone).add(2, 'months').subtract(1, 'day').endOf('day').toDate();
-      
-    case 'Quarterly':
-      return currentDate.endOf('quarter').toDate();
-      
-    case 'Annually':
-      return currentDate.endOf('year').toDate();
-      
-    default:
-      return currentDate.endOf('day').toDate();
-  }
-};
-
-/**
  * Calculate due date for a specific frequency based on school configuration
  * @param {string} frequency - Report frequency
  * @param {Object} schoolSettings - School settings object
@@ -246,17 +203,29 @@ const calculateDueDate = (frequency, schoolSettings, baseDate = null) => {
   switch (frequency) {
     case 'Daily':
       // For daily reports, check if today is a working day
+      // Note: workingDays uses 1=Monday, 7=Sunday
+      // Moment.js day() uses 0=Sunday, 1=Monday, 6=Saturday
       const dailyWorkingDays = frequencyConfig.workingDays || [1, 2, 3, 4, 5]; // Default to Mon-Fri
-      const currentDayOfWeek = dueDate.day(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-      const isDailyWorkingDay = dailyWorkingDays.includes(currentDayOfWeek);
+      const momentDayOfWeek = dueDate.day(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      
+      // Convert Moment.js day (0-6) to our system (1-7)
+      // Moment: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+      // Ours:   7=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+      const ourDayOfWeek = momentDayOfWeek === 0 ? 7 : momentDayOfWeek;
+      const isDailyWorkingDay = dailyWorkingDays.includes(ourDayOfWeek);
       
       if (!isDailyWorkingDay) {
         // If today is not a working day, find the next working day
         let nextWorkingDay = dueDate.clone();
         do {
           nextWorkingDay.add(1, 'day');
-        } while (!dailyWorkingDays.includes(nextWorkingDay.day()) || 
-                 (frequencyConfig.skipHolidays && isHoliday(nextWorkingDay, holidays)));
+          const nextMomentDay = nextWorkingDay.day();
+          const nextOurDay = nextMomentDay === 0 ? 7 : nextMomentDay;
+          if (dailyWorkingDays.includes(nextOurDay) && 
+              !(frequencyConfig.skipHolidays && isHoliday(nextWorkingDay, holidays))) {
+            break;
+          }
+        } while (true);
         dueDate = nextWorkingDay;
       }
       // If it's a working day, the report is due TODAY (regardless of time)
@@ -265,7 +234,15 @@ const calculateDueDate = (frequency, schoolSettings, baseDate = null) => {
       
     case 'Weekly':
       // Set to the configured day of the week
-      const targetDay = frequencyConfig.dueDay; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      // Note: dueDay uses 1=Monday, 7=Sunday
+      // Moment.js day() uses 0=Sunday, 1=Monday, 6=Saturday
+      const weeklyDueDay = frequencyConfig.dueDay || 5; // Default to Friday (5 in our system)
+      
+      // Convert our day (1-7) to Moment.js day (0-6)
+      // Ours:   1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 7=Sun
+      // Moment: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat, 0=Sun
+      const targetDay = weeklyDueDay === 7 ? 0 : weeklyDueDay;
+      
       const currentDay = dueDate.day();
       let daysToAdd = (targetDay - currentDay + 7) % 7;
       
@@ -592,12 +569,15 @@ const calculateRuleBasedDate = (baseDate, frequencyConfig, workingDays, holidays
       
     case 'nthWeekday':
       const nth = frequencyConfig.nthWeekday?.n || 1;
-      const weekday = frequencyConfig.nthWeekday?.weekday || 5; // Friday
+      const weekday = frequencyConfig.nthWeekday?.weekday || 5; // Friday (in our system: 1=Mon, 7=Sun)
+      
+      // Convert our day format (1=Mon, 7=Sun) to Moment.js format (0=Sun, 1=Mon)
+      const momentWeekday = weekday === 7 ? 0 : weekday;
       
       if (nth === -1) {
         // Last occurrence of the weekday
         targetDate = currentDate.clone().endOf('month');
-        while (targetDate.day() !== weekday) {
+        while (targetDate.day() !== momentWeekday) {
           targetDate.subtract(1, 'day');
         }
       } else {
@@ -605,7 +585,7 @@ const calculateRuleBasedDate = (baseDate, frequencyConfig, workingDays, holidays
         targetDate = currentDate.clone().startOf('month');
         let count = 0;
         while (count < nth) {
-          if (targetDate.day() === weekday) {
+          if (targetDate.day() === momentWeekday) {
             count++;
           }
           if (count < nth) {
@@ -674,15 +654,18 @@ const calculateRuleBasedDate = (baseDate, frequencyConfig, workingDays, holidays
  */
 const calculateBiWeeklyDate = (baseDate, frequencyConfig, workingDays, holidays) => {
   const rule = frequencyConfig.rule || 'alternateWeeks';
-  const dueDay = frequencyConfig.dueDay || 5; // Friday
+  const dueDay = frequencyConfig.dueDay || 5; // Friday (in our system: 1=Mon, 7=Sun)
   const currentDate = baseDate.clone();
+  
+  // Helper function to convert our day format (1=Mon, 7=Sun) to Moment.js format (0=Sun, 1=Mon)
+  const convertToMomentDay = (ourDay) => ourDay === 7 ? 0 : ourDay;
   
   let targetDate;
   
   switch (rule) {
     case 'alternateWeeks':
       // Set to the configured day of the week
-      const targetDay = dueDay - 1; // Convert to moment day (0-6)
+      const targetDay = convertToMomentDay(dueDay);
       const currentDay = currentDate.day();
       const daysToAdd = (targetDay - currentDay + 7) % 7;
       targetDate = currentDate.clone().add(daysToAdd, 'days');
@@ -699,7 +682,7 @@ const calculateBiWeeklyDate = (baseDate, frequencyConfig, workingDays, holidays)
       
     case 'specificWeeks':
       // Set to the configured day of the week
-      const specificTargetDay = dueDay - 1;
+      const specificTargetDay = convertToMomentDay(dueDay);
       const specificCurrentDay = currentDate.day();
       const specificDaysToAdd = (specificTargetDay - specificCurrentDay + 7) % 7;
       targetDate = currentDate.clone().add(specificDaysToAdd, 'days');
@@ -730,10 +713,10 @@ const calculateBiWeeklyDate = (baseDate, frequencyConfig, workingDays, holidays)
           targetDate.add((firstSpecificWeek - 1) * 7, 'days');
           
           // Set to the correct day of week
-          const dayOfWeek = dueDay - 1;
+          const dayOfWeek = convertToMomentDay(dueDay);
           const currentDayOfWeek = targetDate.day();
-          const daysToAdd = (dayOfWeek - currentDayOfWeek + 7) % 7;
-          targetDate.add(daysToAdd, 'days');
+          const daysToAddWeek = (dayOfWeek - currentDayOfWeek + 7) % 7;
+          targetDate.add(daysToAddWeek, 'days');
         }
       }
       break;
@@ -750,7 +733,7 @@ const calculateBiWeeklyDate = (baseDate, frequencyConfig, workingDays, holidays)
       targetDate.add((weekOfMonth - 1) * 7, 'days');
       
       // Set to the correct day of week
-      const nthDayOfWeek = dueDay - 1;
+      const nthDayOfWeek = convertToMomentDay(dueDay);
       const nthCurrentDayOfWeek = targetDate.day();
       const nthDaysToAdd = (nthDayOfWeek - nthCurrentDayOfWeek + 7) % 7;
       targetDate.add(nthDaysToAdd, 'days');
@@ -764,7 +747,7 @@ const calculateBiWeeklyDate = (baseDate, frequencyConfig, workingDays, holidays)
       
     default:
       // Fallback to alternate weeks
-      const fallbackTargetDay = dueDay - 1;
+      const fallbackTargetDay = convertToMomentDay(dueDay);
       const fallbackCurrentDay = currentDate.day();
       const fallbackDaysToAdd = (fallbackTargetDay - fallbackCurrentDay + 7) % 7;
       targetDate = currentDate.clone().add(fallbackDaysToAdd, 'days');
@@ -806,10 +789,10 @@ const calculateBiWeeklyDate = (baseDate, frequencyConfig, workingDays, holidays)
       const firstSpecificWeek = Math.min(...specificWeeks);
       targetDate.add((firstSpecificWeek - 1) * 7, 'days');
       
-      const dayOfWeek = dueDay - 1;
+      const dayOfWeek = convertToMomentDay(dueDay);
       const currentDayOfWeek = targetDate.day();
-      const daysToAdd = (dayOfWeek - currentDayOfWeek + 7) % 7;
-      targetDate.add(daysToAdd, 'days');
+      const daysToAddPeriod = (dayOfWeek - currentDayOfWeek + 7) % 7;
+      targetDate.add(daysToAddPeriod, 'days');
     } else if (rule === 'nthWeekOfMonth') {
       targetDate.add(1, 'month');
       return calculateBiWeeklyDate(targetDate, frequencyConfig, workingDays, holidays);
@@ -842,6 +825,5 @@ module.exports = {
   getNextDueDate,
   formatDateInSchoolTimezone,
   getAvailableTimezones,
-  getStartOfFrequencyPeriod,
-  getEndOfFrequencyPeriod
+  getStartOfFrequencyPeriod
 };

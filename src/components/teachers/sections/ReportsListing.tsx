@@ -69,11 +69,25 @@ import { useData, type Report } from '../../../contexts/DataContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { reportService } from '../../../services/reportService';
 import { mediaService } from '../../../services/mediaService';
+import NotificationIcon from '../../common/NotificationIcon';
+import { themeColors } from '../../../theme/teacherTheme';
 import toast from 'react-hot-toast';
 
-interface ReportsListingProps {}
+export interface ReportsListingProps {
+  schoolBranding?: any;
+}
 
-const ReportsListing: React.FC<ReportsListingProps> = () => {
+const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
+  // Card background colors array
+  const cardColors = themeColors.cardColors;
+  
+  // Helper function to get a random card color
+  const getRandomCardColor = (index?: number) => {
+    if (index !== undefined) {
+      return cardColors[index % cardColors.length];
+    }
+    return cardColors[Math.floor(Math.random() * cardColors.length)];
+  };
   const { user } = useAuth();
   const { reports: contextReports, students, getReportsByTeacherStudents } = useData();
   const [reports, setReports] = useState<Report[]>([]);
@@ -281,11 +295,64 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'warning';
-      case 'review': return 'warning';
+      case 'review': return 'info';
       case 'approved': return 'success';
-      case 'sent': return 'success';
-      case 'archived': return 'secondary';
+      case 'sent': return 'info';
+      case 'archived': return 'default';
       default: return 'default';
+    }
+  };
+
+  const getStatusChipProps = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return {
+          borderColor: '#ff9800',
+          color: '#ff9800',
+          iconColor: '#ff9800',
+          hoverColor: '#f57c00',
+          activeColor: '#ef6c00',
+        };
+      case 'review':
+        return {
+          borderColor: '#2196f3',
+          color: '#2196f3',
+          iconColor: '#2196f3',
+          hoverColor: '#1976d2',
+          activeColor: '#1565c0',
+        };
+      case 'approved':
+        return {
+          borderColor: '#4caf50',
+          color: '#4caf50',
+          iconColor: '#4caf50',
+          hoverColor: '#388e3c',
+          activeColor: '#2e7d32',
+        };
+      case 'sent':
+        return {
+          borderColor: '#00bcd4',
+          color: '#00bcd4',
+          iconColor: '#00bcd4',
+          hoverColor: '#00acc1',
+          activeColor: '#0097a7',
+        };
+      case 'archived':
+        return {
+          borderColor: '#9e9e9e',
+          color: '#9e9e9e',
+          iconColor: '#9e9e9e',
+          hoverColor: '#757575',
+          activeColor: '#616161',
+        };
+      default:
+        return {
+          borderColor: '#9e9e9e',
+          color: '#9e9e9e',
+          iconColor: '#9e9e9e',
+          hoverColor: '#757575',
+          activeColor: '#616161',
+        };
     }
   };
 
@@ -559,33 +626,151 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
 
   return (
     <Container maxWidth="xl">
+      {/* School Banner */}
+      {schoolBranding && (() => {
+        const primaryColor = schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#273890';
+        const secondaryColor = schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#7f0f4a';
+        
+        return (
+          <Card sx={{ 
+            mb: 3,
+            mt: 2,
+            background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
+            borderRadius: '16px !important',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            overflow: 'hidden',
+            position: 'relative',
+          }}>
+            <CardContent sx={{ p: 4 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 3 }}>
+                <Box sx={{ flex: 1, minWidth: '300px' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Typography variant="h4" sx={{ 
+                      fontWeight: 700, 
+                      color: 'white',
+                      textShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      {schoolBranding.schoolName || schoolBranding.name || 'School Name'}
+                    </Typography>
+                    {schoolBranding.established && (
+                      <Chip 
+                        label={`Estd: ${schoolBranding.established}`}
+                        sx={{ 
+                          bgcolor: 'rgba(255,255,255,0.3)',
+                          color: 'white',
+                          fontWeight: 600,
+                          height: '32px',
+                        }}
+                      />
+                    )}
+                  </Box>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {schoolBranding.address && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'white', opacity: 0.95, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          📍 {schoolBranding.address}
+                        </Typography>
+                      </Box>
+                    )}
+                    {schoolBranding.email && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'white', opacity: 0.95, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          ✉️ {schoolBranding.email}
+                        </Typography>
+                      </Box>
+                    )}
+                    {schoolBranding.phone && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ color: 'white', opacity: 0.95, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          📞 {schoolBranding.phone}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Box>
+                {schoolBranding.logo && (() => {
+                  const logoUrl = schoolBranding.logo.startsWith('http://') || schoolBranding.logo.startsWith('https://') 
+                    ? schoolBranding.logo 
+                    : `${(process.env.REACT_APP_API_URL || 'http://localhost:5050').replace('/api', '')}${schoolBranding.logo.startsWith('/') ? schoolBranding.logo : '/' + schoolBranding.logo}`;
+                  return (
+                    <Box sx={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '120px',
+                    }}>
+                      <Box sx={{
+                        bgcolor: 'rgba(255,255,255,0.95)',
+                        borderRadius: 3,
+                        p: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                        minWidth: '140px',
+                        minHeight: '140px',
+                        maxWidth: '180px',
+                        maxHeight: '180px',
+                      }}>
+                        <Box
+                          component="img"
+                          src={logoUrl}
+                          alt={schoolBranding.schoolName || schoolBranding.name || 'School Logo'}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                          sx={{
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain',
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  );
+                })()}
+              </Box>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* Header */}
       <Fade in timeout={800}>
         <Box sx={{ mb: 4 }}>
-          <Typography 
-            variant="h4" 
-            gutterBottom
-            sx={{
-              fontWeight: 700,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              backgroundClip: 'text',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              textShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            }}
-          >
-            My Reports
-          </Typography>
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              color: 'text.secondary',
-              opacity: 0.8,
-              fontWeight: 500,
-            }}
-          >
-            View and manage all your generated reports and approvals
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+            <Box>
+              <Typography 
+                variant="h4" 
+                gutterBottom
+                sx={{
+                  fontWeight: 700,
+                  background: schoolBranding 
+                    ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  textShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                }}
+              >
+                My Reports
+              </Typography>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  color: 'text.secondary',
+                  opacity: 0.8,
+                  fontWeight: 500,
+                }}
+              >
+                View and manage all your generated reports and approvals
+              </Typography>
+            </Box>
+            <NotificationIcon />
+          </Box>
         </Box>
       </Fade>
 
@@ -595,7 +780,11 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grow in timeout={800}>
           <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+            <Card sx={{ 
+              borderRadius: 3, 
+              boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+              background: getRandomCardColor(0),
+            }}>
               <CardContent sx={{ p: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
@@ -617,7 +806,11 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
 
         <Grow in timeout={900}>
           <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+            <Card sx={{ 
+              borderRadius: 3, 
+              boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+              background: getRandomCardColor(1),
+            }}>
               <CardContent sx={{ p: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Avatar sx={{ bgcolor: 'warning.main', mr: 2 }}>
@@ -639,7 +832,11 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
 
         <Grow in timeout={1000}>
           <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+            <Card sx={{ 
+              borderRadius: 3, 
+              boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+              background: getRandomCardColor(2),
+            }}>
               <CardContent sx={{ p: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Avatar sx={{ bgcolor: 'success.main', mr: 2 }}>
@@ -661,7 +858,11 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
 
         <Grow in timeout={1100}>
           <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+            <Card sx={{ 
+              borderRadius: 3, 
+              boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+              background: getRandomCardColor(3),
+            }}>
               <CardContent sx={{ p: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Avatar sx={{ bgcolor: 'info.main', mr: 2 }}>
@@ -683,7 +884,11 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
 
         <Grow in timeout={1200}>
           <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+            <Card sx={{ 
+              borderRadius: 3, 
+              boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+              background: getRandomCardColor(4),
+            }}>
               <CardContent sx={{ p: 3 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Avatar sx={{ bgcolor: 'secondary.main', mr: 2 }}>
@@ -851,14 +1056,31 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
                               icon={<AudioFile />}
                               label={report.voiceRecording.recordingDuration && report.voiceRecording.recordingDuration > 60 ? "Multiple Audio" : "Audio"}
                               size="small"
-                              color="success"
                               variant="outlined"
                               onClick={() => handleAudioClick(report)}
                               sx={{ 
                                 cursor: 'pointer',
+                                borderColor: '#9c27b0',
+                                color: '#9c27b0',
+                                '& .MuiChip-icon': {
+                                  color: '#9c27b0 !important',
+                                },
                                 '&:hover': {
-                                  backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                                  backgroundColor: 'rgba(156, 39, 176, 0.1)',
+                                  borderColor: '#7b1fa2',
+                                  color: '#7b1fa2',
                                   transform: 'scale(1.05)',
+                                  '& .MuiChip-icon': {
+                                    color: '#7b1fa2 !important',
+                                  },
+                                },
+                                '&:active': {
+                                  backgroundColor: 'rgba(156, 39, 176, 0.2)',
+                                  borderColor: '#6a1b9a',
+                                  color: '#6a1b9a',
+                                  '& .MuiChip-icon': {
+                                    color: '#6a1b9a !important',
+                                  },
                                 },
                                 transition: 'all 0.2s ease'
                               }}
@@ -878,14 +1100,31 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
                               icon={<TextFields />}
                               label={report.voiceRecording.transcription.includes('--- Next Recording ---') ? "Combined" : "Transcribed"}
                               size="small"
-                              color="info"
                               variant="outlined"
                               onClick={() => handleTranscriptionClick(report)}
                               sx={{ 
                                 cursor: 'pointer',
+                                borderColor: '#ff9800',
+                                color: '#ff9800',
+                                '& .MuiChip-icon': {
+                                  color: '#ff9800 !important',
+                                },
                                 '&:hover': {
-                                  backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                                  backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                                  borderColor: '#f57c00',
+                                  color: '#f57c00',
                                   transform: 'scale(1.05)',
+                                  '& .MuiChip-icon': {
+                                    color: '#f57c00 !important',
+                                  },
+                                },
+                                '&:active': {
+                                  backgroundColor: 'rgba(255, 152, 0, 0.2)',
+                                  borderColor: '#ef6c00',
+                                  color: '#ef6c00',
+                                  '& .MuiChip-icon': {
+                                    color: '#ef6c00 !important',
+                                  },
                                 },
                                 transition: 'all 0.2s ease'
                               }}
@@ -932,14 +1171,31 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
                               icon={<AutoFixHigh />}
                               label="Generated Report"
                               size="small"
-                              color="primary"
                               variant="outlined"
                               onClick={() => handleAIGeneratedClick(report)}
                               sx={{ 
                                 cursor: 'pointer',
+                                borderColor: '#4caf50',
+                                color: '#4caf50',
+                                '& .MuiChip-icon': {
+                                  color: '#4caf50 !important',
+                                },
                                 '&:hover': {
-                                  backgroundColor: 'rgba(156, 39, 176, 0.1)',
+                                  backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                                  borderColor: '#388e3c',
+                                  color: '#388e3c',
                                   transform: 'scale(1.05)',
+                                  '& .MuiChip-icon': {
+                                    color: '#388e3c !important',
+                                  },
+                                },
+                                '&:active': {
+                                  backgroundColor: 'rgba(76, 175, 80, 0.2)',
+                                  borderColor: '#2e7d32',
+                                  color: '#2e7d32',
+                                  '& .MuiChip-icon': {
+                                    color: '#2e7d32 !important',
+                                  },
                                 },
                                 transition: 'all 0.2s ease'
                               }}
@@ -953,13 +1209,42 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
                       </TableCell>
                       
                       <TableCell>
-                        <Chip
-                          icon={getStatusIcon(report.status)}
-                          label={getStatusDisplayName(report.status)}
-                          size="small"
-                          color={getStatusColor(report.status) as any}
-                          sx={{ fontWeight: 600 }}
-                        />
+                        {(() => {
+                          const chipProps = getStatusChipProps(report.status);
+                          return (
+                            <Chip
+                              icon={getStatusIcon(report.status)}
+                              label={getStatusDisplayName(report.status)}
+                              size="small"
+                              variant="outlined"
+                              sx={{ 
+                                fontWeight: 600,
+                                borderColor: chipProps.borderColor,
+                                color: chipProps.color,
+                                '& .MuiChip-icon': {
+                                  color: `${chipProps.iconColor} !important`,
+                                },
+                                '&:hover': {
+                                  backgroundColor: `${chipProps.borderColor}15`,
+                                  borderColor: chipProps.hoverColor,
+                                  color: chipProps.hoverColor,
+                                  '& .MuiChip-icon': {
+                                    color: `${chipProps.hoverColor} !important`,
+                                  },
+                                },
+                                '&:active': {
+                                  backgroundColor: `${chipProps.borderColor}25`,
+                                  borderColor: chipProps.activeColor,
+                                  color: chipProps.activeColor,
+                                  '& .MuiChip-icon': {
+                                    color: `${chipProps.activeColor} !important`,
+                                  },
+                                },
+                                transition: 'all 0.2s ease'
+                              }}
+                            />
+                          );
+                        })()}
                       </TableCell>
                       
                       <TableCell>
@@ -1012,7 +1297,9 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: schoolBranding 
+              ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white',
             p: 3,
           }}
@@ -1022,7 +1309,7 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
           </Typography>
         </DialogTitle>
         
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ p: 3, pt: 4 }}>
           {selectedReport && (
             <Box>
               <Grid container spacing={3}>
@@ -1055,12 +1342,42 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
                         <ListItemText
                           primary="Status"
                           secondary={
-                            <Chip
-                              icon={getStatusIcon(selectedReport.status)}
-                              label={getStatusDisplayName(selectedReport.status)}
-                              size="small"
-                              color={getStatusColor(selectedReport.status) as any}
-                            />
+                            (() => {
+                              const chipProps = getStatusChipProps(selectedReport.status);
+                              return (
+                                <Chip
+                                  icon={getStatusIcon(selectedReport.status)}
+                                  label={getStatusDisplayName(selectedReport.status)}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ 
+                                    fontWeight: 600,
+                                    borderColor: chipProps.borderColor,
+                                    color: chipProps.color,
+                                    '& .MuiChip-icon': {
+                                      color: `${chipProps.iconColor} !important`,
+                                    },
+                                    '&:hover': {
+                                      backgroundColor: `${chipProps.borderColor}15`,
+                                      borderColor: chipProps.hoverColor,
+                                      color: chipProps.hoverColor,
+                                      '& .MuiChip-icon': {
+                                        color: `${chipProps.hoverColor} !important`,
+                                      },
+                                    },
+                                    '&:active': {
+                                      backgroundColor: `${chipProps.borderColor}25`,
+                                      borderColor: chipProps.activeColor,
+                                      color: chipProps.activeColor,
+                                      '& .MuiChip-icon': {
+                                        color: `${chipProps.activeColor} !important`,
+                                      },
+                                    },
+                                    transition: 'all 0.2s ease'
+                                  }}
+                                />
+                              );
+                            })()
                           }
                         />
                       </ListItem>
@@ -1154,7 +1471,24 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
         </DialogContent>
         
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={handleCloseDialog} variant="outlined">
+          <Button 
+            onClick={handleCloseDialog} 
+            variant="outlined"
+            sx={{
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: 'rgba(211, 47, 47, 0.05)',
+                color: '#b71c1c',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                backgroundColor: 'rgba(198, 40, 40, 0.1)',
+                color: '#c62828',
+              }
+            }}
+          >
             Close
           </Button>
           {selectedReport?.status === 'draft' && (
@@ -1189,7 +1523,9 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: schoolBranding 
+              ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white',
             p: 3,
             display: 'flex',
@@ -1425,7 +1761,24 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
         </DialogContent>
         
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={handleCloseAudioDialog} variant="outlined">
+          <Button 
+            onClick={handleCloseAudioDialog} 
+            variant="outlined"
+            sx={{
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: 'rgba(211, 47, 47, 0.05)',
+                color: '#b71c1c',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                backgroundColor: 'rgba(198, 40, 40, 0.1)',
+                color: '#c62828',
+              }
+            }}
+          >
             Close
           </Button>
         </DialogActions>
@@ -1446,7 +1799,9 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: schoolBranding 
+              ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white',
             p: 3,
             display: 'flex',
@@ -1521,7 +1876,24 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
         </DialogContent>
         
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={handleCloseTranscriptionDialog} variant="outlined">
+          <Button 
+            onClick={handleCloseTranscriptionDialog} 
+            variant="outlined"
+            sx={{
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: 'rgba(211, 47, 47, 0.05)',
+                color: '#b71c1c',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                backgroundColor: 'rgba(198, 40, 40, 0.1)',
+                color: '#c62828',
+              }
+            }}
+          >
             Close
           </Button>
         </DialogActions>
@@ -1542,7 +1914,9 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: schoolBranding 
+              ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white',
             p: 3,
             display: 'flex',
@@ -1618,7 +1992,9 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
                         onClick={handleSaveContent}
                         disabled={isSaving}
                         sx={{
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          background: schoolBranding 
+                            ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+                            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                         }}
                       >
                         {isSaving ? 'Saving...' : 'Save'}
@@ -1701,7 +2077,24 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
         </DialogContent>
         
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={handleCloseAIGeneratedDialog} variant="outlined">
+          <Button 
+            onClick={handleCloseAIGeneratedDialog} 
+            variant="outlined"
+            sx={{
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: 'rgba(211, 47, 47, 0.05)',
+                color: '#b71c1c',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                backgroundColor: 'rgba(198, 40, 40, 0.1)',
+                color: '#c62828',
+              }
+            }}
+          >
             Close
           </Button>
         </DialogActions>
@@ -1722,7 +2115,9 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: schoolBranding 
+              ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
+              : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             color: 'white',
             p: 3,
             display: 'flex',
@@ -1946,7 +2341,24 @@ const ReportsListing: React.FC<ReportsListingProps> = () => {
         </DialogContent>
         
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={handleCloseMediaDialog} variant="outlined">
+          <Button 
+            onClick={handleCloseMediaDialog} 
+            variant="outlined"
+            sx={{
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: 'rgba(211, 47, 47, 0.05)',
+                color: '#b71c1c',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                backgroundColor: 'rgba(198, 40, 40, 0.1)',
+                color: '#c62828',
+              }
+            }}
+          >
             Close
           </Button>
         </DialogActions>

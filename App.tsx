@@ -206,7 +206,7 @@ const AppNavigator = () => {
           {user?.role === 'teacher' && (
             <Stack.Screen name="TeacherApp" component={TeacherTabNavigator} />
           )}
-          {user?.role === 'parent' && (
+          {(user?.role === 'parent' || user?.role === 'student') && (
             <Stack.Screen name="ParentApp" component={ParentTabNavigator} />
           )}
         </>

@@ -78,7 +78,7 @@ router.get('/:id/students', protect, authorize('teacher', 'school_admin', 'super
 
     // Get students from teacher's assigned classes
     const students = await User.find({
-      role: 'parent', // Students are stored as 'parent' role
+      role: 'student', // Students are stored as 'student' role
       studentClass: { $in: teacherClasses.map(cls => cls.name) },
       schoolId: teacher.schoolId
     }).select('-password -emailVerificationToken -emailVerificationExpires -passwordResetToken -passwordResetExpires');
@@ -139,7 +139,7 @@ router.get('/:id/reports', protect, authorize('teacher', 'school_admin', 'super_
 
     // Get students from teacher's assigned classes
     const teacherStudents = await User.find({
-      role: 'parent', // Students are stored as 'parent' role
+      role: 'student', // Students are stored as 'student' role
       studentClass: { $in: teacherClasses.map(cls => cls.name) },
       schoolId: teacher.schoolId
     });
@@ -224,10 +224,15 @@ router.post('/', [
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('email').isEmail().withMessage('Please provide a valid email'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-  body('phone').trim().notEmpty().withMessage('Phone number is required'),
+  body('phone').optional({ checkFalsy: true }).trim().matches(/^\+[1-9]\d{7,14}$/).withMessage('Phone number must be in E.164 format (e.g., +1234567890)'),
   body('grade').trim().notEmpty().withMessage('Grade is required'),
-  body('canEmailReports').optional().isBoolean().withMessage('canEmailReports must be a boolean'),
-  body('schoolId').optional().isMongoId().withMessage('Valid school ID is required when provided')
+  body('specialization').optional({ checkFalsy: true }).trim(),
+  body('qualifications').optional({ checkFalsy: true }).trim(),
+  body('bio').optional({ checkFalsy: true }).trim().isLength({ max: 500 }).withMessage('Bio cannot exceed 500 characters'),
+  body('hireDate').optional({ checkFalsy: true }).isISO8601().withMessage('Please provide a valid hire date'),
+  body('subjects').optional({ checkFalsy: true }).isArray().withMessage('Subjects must be an array'),
+  body('canEmailReports').optional({ checkFalsy: true }).isBoolean().withMessage('canEmailReports must be a boolean'),
+  body('schoolId').optional({ checkFalsy: true }).isMongoId().withMessage('Valid school ID is required when provided')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -336,12 +341,17 @@ router.post('/', [
 router.put('/:id', [
   protect,
   authorize('school_admin', 'super_admin'),
-  body('firstName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
-  body('lastName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
-  body('email').optional().isEmail().withMessage('Please provide a valid email'),
-  body('phone').optional().trim().notEmpty().withMessage('Phone number cannot be empty'),
-  body('grade').optional().trim().notEmpty().withMessage('Grade cannot be empty'),
-  body('canEmailReports').optional().isBoolean().withMessage('canEmailReports must be a boolean')
+  body('firstName').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
+  body('lastName').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
+  body('email').optional({ checkFalsy: true }).isEmail().withMessage('Please provide a valid email'),
+  body('phone').optional({ checkFalsy: true }).trim().matches(/^\+[1-9]\d{7,14}$/).withMessage('Phone number must be in E.164 format (e.g., +1234567890)'),
+  body('grade').optional({ checkFalsy: true }).trim().notEmpty().withMessage('Grade cannot be empty'),
+  body('specialization').optional({ checkFalsy: true }).trim(),
+  body('qualifications').optional({ checkFalsy: true }).trim(),
+  body('bio').optional({ checkFalsy: true }).trim().isLength({ max: 500 }).withMessage('Bio cannot exceed 500 characters'),
+  body('hireDate').optional({ checkFalsy: true }).isISO8601().withMessage('Please provide a valid hire date'),
+  body('subjects').optional({ checkFalsy: true }).isArray().withMessage('Subjects must be an array'),
+  body('canEmailReports').optional({ checkFalsy: true }).isBoolean().withMessage('canEmailReports must be a boolean')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -500,6 +510,42 @@ router.get('/stats/overview', protect, authorize('school_admin', 'super_admin'),
     res.status(500).json({
       success: false,
       message: 'Server error while fetching teacher statistics'
+    });
+  }
+});
+
+// @desc    Get teacher notifications
+// @route   GET /api/teachers/me/notifications
+// @access  Private (Teacher only)
+router.get('/me/notifications', protect, authorize('teacher'), async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('notifications');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Sort notifications by createdAt (most recent first)
+    const sortedNotifications = (user.notifications || []).sort((a, b) => {
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    res.json({
+      success: true,
+      data: {
+        notifications: sortedNotifications,
+        unreadCount: sortedNotifications.filter(n => !n.read).length
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching teacher notifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching notifications',
+      error: error.message
     });
   }
 });

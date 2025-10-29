@@ -24,10 +24,17 @@ router.get('/', protect, authorize('school_admin', 'super_admin'), async (req, r
       .populate('createdBy', 'firstName lastName')
       .sort({ createdAt: -1 });
 
+    // Clean up null teacher references (teachers that were deleted)
+    const cleanedClasses = classes.map(classDoc => {
+      const classObj = classDoc.toObject();
+      classObj.assignedTeachers = classObj.assignedTeachers.filter(at => at.teacherId);
+      return classObj;
+    });
+
     res.json({
       success: true,
-      count: classes.length,
-      data: classes
+      count: cleanedClasses.length,
+      data: cleanedClasses
     });
   } catch (error) {
     logger.error('Error fetching classes:', error);
@@ -61,9 +68,13 @@ router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req
       });
     }
 
+    // Clean up null teacher references
+    const classObj = classData.toObject();
+    classObj.assignedTeachers = classObj.assignedTeachers.filter(at => at.teacherId);
+
     res.json({
       success: true,
-      data: classData
+      data: classObj
     });
   } catch (error) {
     logger.error('Error fetching class:', error);
@@ -80,12 +91,13 @@ router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req
 router.post('/', protect, authorize('school_admin', 'super_admin'), [
   body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Class name must be between 2 and 100 characters'),
   body('grade').trim().notEmpty().withMessage('Grade is required'),
-  body('description').optional().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
-  body('capacity').optional().isInt({ min: 1 }).withMessage('Capacity must be at least 1'),
+  body('description').optional({ checkFalsy: true }).trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
+  body('capacity').optional({ checkFalsy: true }).isInt({ min: 1, max: 1000 }).withMessage('Capacity must be between 1 and 1000'),
   body('academicYear').trim().notEmpty().withMessage('Academic year is required'),
-  body('semester').optional().isIn(['fall', 'spring', 'summer']).withMessage('Invalid semester'),
-  body('subjects').optional().isArray().withMessage('Subjects must be an array'),
-  body('assignedTeachers').optional().isArray().withMessage('Assigned teachers must be an array')
+  body('semester').optional({ checkFalsy: true }).isIn(['fall', 'spring', 'summer']).withMessage('Invalid semester'),
+  body('subjects').optional({ checkFalsy: true }).isArray().withMessage('Subjects must be an array'),
+  body('assignedTeachers').optional({ checkFalsy: true }).isArray().withMessage('Assigned teachers must be an array'),
+  body('status').optional({ checkFalsy: true }).isIn(['active', 'inactive', 'archived']).withMessage('Invalid status')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -184,12 +196,13 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), [
 // @route   PUT /api/classes/:id
 // @access  Private (School Admin, Super Admin)
 router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
-  body('name').optional().trim().isLength({ min: 2, max: 100 }).withMessage('Class name must be between 2 and 100 characters'),
-  body('grade').optional().trim().notEmpty().withMessage('Grade is required'),
-  body('description').optional().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
-  body('status').optional().isIn(['active', 'inactive', 'archived']).withMessage('Invalid status'),
-  body('capacity').optional().isInt({ min: 1 }).withMessage('Capacity must be at least 1'),
-  body('assignedTeachers').optional().isArray().withMessage('Assigned teachers must be an array')
+  body('name').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 100 }).withMessage('Class name must be between 2 and 100 characters'),
+  body('grade').optional({ checkFalsy: true }).trim().notEmpty().withMessage('Grade cannot be empty'),
+  body('description').optional({ checkFalsy: true }).trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
+  body('status').optional({ checkFalsy: true }).isIn(['active', 'inactive', 'archived']).withMessage('Invalid status'),
+  body('capacity').optional({ checkFalsy: true }).isInt({ min: 1, max: 1000 }).withMessage('Capacity must be between 1 and 1000'),
+  body('subjects').optional({ checkFalsy: true }).isArray().withMessage('Subjects must be an array'),
+  body('assignedTeachers').optional({ checkFalsy: true }).isArray().withMessage('Assigned teachers must be an array')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);

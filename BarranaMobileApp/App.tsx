@@ -15,8 +15,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import apiService, { User } from './apiService';
 import TeacherDashboard from './TeacherDashboard';
 import ParentDashboard from './ParentDashboard';
+import EnhancedParentDashboard from './screens/EnhancedParentDashboard';
+import PDFViewerScreen from './screens/PDFViewerScreen';
+import { BrandingProvider } from './contexts/BrandingContext';
 import StudentsScreen from './screens/StudentsScreen';
 import ReportsScreen from './screens/ReportsScreen';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+
+const Stack = createStackNavigator();
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -94,11 +101,12 @@ export default function App() {
     setCurrentScreen('dashboard');
   };
 
-  const handleDemoLogin = (role: 'teacher' | 'parent') => {
+  const handleDemoLogin = (role: 'teacher' | 'parent' | 'student') => {
     // Demo credentials for testing
     const demoCredentials = {
       teacher: { email: 'teacher@demo.com', password: 'demo12345' },
-      parent: { email: 'parent@demo.com', password: 'demo12345' }
+      parent: { email: 'parent@demo.com', password: 'demo12345' },
+      student: { email: 'STU001', password: 'Student123!' }
     };
     
     setEmail(demoCredentials[role].email);
@@ -185,8 +193,23 @@ export default function App() {
             />
           )}
 
-          {currentUser.role === 'parent' && (
-            <ParentDashboard user={currentUser} onLogout={handleLogout} />
+          {(currentUser.role === 'parent' || currentUser.role === 'student') && (
+            <BrandingProvider schoolId={currentUser.schoolId?._id || currentUser.schoolId}>
+              <NavigationContainer>
+                <Stack.Navigator screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="ParentHome">
+                    {(props) => (
+                      <EnhancedParentDashboard
+                        {...props}
+                        user={currentUser}
+                        onLogout={handleLogout}
+                      />
+                    )}
+                  </Stack.Screen>
+                  <Stack.Screen name="PDFViewer" component={PDFViewerScreen} />
+                </Stack.Navigator>
+              </NavigationContainer>
+            </BrandingProvider>
           )}
         </LinearGradient>
       </SafeAreaView>
@@ -256,6 +279,13 @@ export default function App() {
                 onPress={() => handleDemoLogin('parent')}
               >
                 <Text style={styles.demoButtonText}>👨‍👩‍👧‍👦 Parent Demo</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.demoButton}
+                onPress={() => handleDemoLogin('student')}
+              >
+                <Text style={styles.demoButtonText}>🎓 Student Demo</Text>
               </TouchableOpacity>
             </View>
           </View>
