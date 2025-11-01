@@ -267,6 +267,9 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
 
     // Create initial message with attachments
     const attachments = req.body.attachments || [];
+    const schedulingData = req.body.schedulingData || {};
+    const isScheduled = schedulingData.scheduledDateTime && new Date(schedulingData.scheduledDateTime) > new Date();
+    
     const message = await Message.create({
       conversationId: conversation._id,
       senderId: req.user._id,
@@ -278,17 +281,25 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
       content: initialMessage,
       type: 'text',
       schoolId: req.user.schoolId,
+      isScheduled: isScheduled,
+      scheduledDateTime: isScheduled ? new Date(schedulingData.scheduledDateTime) : undefined,
+      scheduledDate: isScheduled ? schedulingData.scheduledDate : undefined,
+      scheduledTime: isScheduled ? schedulingData.scheduledTime : undefined,
+      timezone: isScheduled ? (schedulingData.timezone || 'UTC') : undefined,
+      sentAt: isScheduled ? null : new Date(), // Set to null for scheduled messages to prevent default
       metadata: {
         ...conversation.metadata,
         attachments: attachments
       }
     });
 
-    // Update conversation
-    await conversation.updateLastMessage(message);
-    await conversation.incrementUnread(recipient.role);
+    // Only update conversation and create notifications if NOT scheduled
+    if (!isScheduled) {
+      // Update conversation
+      await conversation.updateLastMessage(message);
+      await conversation.incrementUnread(recipient.role);
 
-    // Create notification for recipient
+      // Create notification for recipient
     try {
       const recipientUser = await User.findById(recipient._id);
       if (recipientUser) {
@@ -340,13 +351,17 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
       // Don't fail the entire request if notification creation fails
     }
 
-    logger.info(`Message sent in conversation ${conversation._id}`);
+      logger.info(`Message sent in conversation ${conversation._id}`);
+    } else {
+      logger.info(`Message scheduled for ${message.scheduledDateTime} in conversation ${conversation._id}`);
+    }
 
     res.status(201).json({
       success: true,
       data: {
         conversation,
-        message
+        message,
+        isScheduled: isScheduled
       }
     });
   } catch (error) {

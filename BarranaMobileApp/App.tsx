@@ -132,13 +132,14 @@ export default function App() {
   }
 
   if (isLoggedIn && currentUser) {
+    const schoolId = (currentUser as any).schoolId?._id || (currentUser as any).schoolId;
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar style="light" />
-        <LinearGradient
-          colors={['#667eea', '#764ba2']}
-          style={styles.gradient}
-        >
+        {/* Always provide branding when we have a schoolId so all roles get dynamic colors */}
+        <BrandingProvider schoolId={schoolId}>
+          {/* Branded background gradient */}
+          <BrandedBackground>
           {/* Compact Header */}
           <View style={styles.compactHeader}>
             <View style={styles.headerLeft}>
@@ -194,24 +195,23 @@ export default function App() {
           )}
 
           {(currentUser.role === 'parent' || currentUser.role === 'student') && (
-            <BrandingProvider schoolId={currentUser.schoolId?._id || currentUser.schoolId}>
-              <NavigationContainer>
-                <Stack.Navigator screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="ParentHome">
-                    {(props) => (
-                      <EnhancedParentDashboard
-                        {...props}
-                        user={currentUser}
-                        onLogout={handleLogout}
-                      />
-                    )}
-                  </Stack.Screen>
-                  <Stack.Screen name="PDFViewer" component={PDFViewerScreen} />
-                </Stack.Navigator>
-              </NavigationContainer>
-            </BrandingProvider>
+            <NavigationContainer>
+              <Stack.Navigator screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="ParentHome">
+                  {(props) => (
+                    <EnhancedParentDashboard
+                      {...props}
+                      user={currentUser}
+                      onLogout={handleLogout}
+                    />
+                  )}
+                </Stack.Screen>
+                <Stack.Screen name="PDFViewer" component={PDFViewerScreen} />
+              </Stack.Navigator>
+            </NavigationContainer>
           )}
-        </LinearGradient>
+          </BrandedBackground>
+        </BrandingProvider>
       </SafeAreaView>
     );
   }
@@ -219,10 +219,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
-      <LinearGradient
-        colors={['#667eea', '#764ba2']}
-        style={styles.gradient}
-      >
+      <LinearGradient colors={['#667eea', '#764ba2']} style={styles.gradient}>
         <View style={styles.loginContainer}>
           <View style={styles.logoSection}>
             <Text style={styles.logo}>🎓</Text>
@@ -293,7 +290,22 @@ export default function App() {
       </LinearGradient>
     </SafeAreaView>
   );
-}
+  }
+
+  // Helper component for branded background
+  function BrandedBackground({ children }: { children: React.ReactNode }) {
+    // Lazy import to avoid hook usage before provider in other branches
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useBranding } = require('./contexts/BrandingContext');
+    const { branding } = useBranding();
+    const primary = branding?.branding?.primaryColor || '#667eea';
+    const secondary = branding?.branding?.secondaryColor || '#764ba2';
+    return (
+      <LinearGradient colors={[primary, secondary]} style={styles.gradient}>
+        {children}
+      </LinearGradient>
+    );
+  }
 
 const { width } = Dimensions.get('window');
 

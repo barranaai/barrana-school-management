@@ -123,6 +123,14 @@ interface ExtendedReport {
 }
 
 const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
+  const getBrandingColors = () => {
+    const primaryColor = schoolBranding?.branding?.primaryColor || schoolBranding?.primaryColor || '#667eea';
+    const secondaryColor = schoolBranding?.branding?.secondaryColor || schoolBranding?.secondaryColor || '#764ba2';
+    return { primaryColor, secondaryColor };
+  };
+  const { primaryColor, secondaryColor } = getBrandingColors();
+  const brandingGradient = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+  const brandingGradientHover = `linear-gradient(135deg, ${primaryColor}dd 0%, ${secondaryColor}dd 100%)`;
   const [reports, setReports] = useState<ExtendedReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -858,17 +866,12 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
         <Paper
           elevation={0}
           sx={{
-            background: getRandomCardColor(0),
+            background: 'rgba(255,255,255,0.95)',
             borderRadius: 4,
             backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255,255,255,0.3)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+            border: '1px solid rgba(0,0,0,0.06)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
             mb: 3,
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-            },
           }}
         >
           <CardContent sx={{ p: 3 }}>
@@ -886,10 +889,10 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     },
                   }}
@@ -906,13 +909,13 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                     sx={{
                       borderRadius: 3,
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.3)',
+                        borderColor: `${primaryColor}4D`,
                       },
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     }}
                   >
@@ -935,13 +938,13 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                     sx={{
                       borderRadius: 3,
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.3)',
+                        borderColor: `${primaryColor}4D`,
                       },
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     }}
                   >
@@ -968,10 +971,10 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                       '& .MuiOutlinedInput-root': {
                         borderRadius: 3,
                         '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(102, 126, 234, 0.5)',
+                          borderColor: `${primaryColor}80`,
                         },
                         '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: '#667eea',
+                          borderColor: primaryColor,
                         },
                       },
                     }}
@@ -984,11 +987,11 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                         minWidth: 'auto',
                         px: 1,
                         borderRadius: 2,
-                        color: '#f44336',
-                        borderColor: 'rgba(244, 67, 54, 0.3)',
+                        color: primaryColor,
+                        borderColor: `${primaryColor}4D`,
                         '&:hover': {
-                          borderColor: '#f44336',
-                          background: 'rgba(244, 67, 54, 0.05)',
+                          borderColor: primaryColor,
+                          background: `${primaryColor}0D`,
                         },
                       }}
                     >
@@ -1009,13 +1012,13 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                     sx={{
                       borderRadius: 3,
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.3)',
+                        borderColor: `${primaryColor}4D`,
                       },
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     }}
                   >
@@ -1034,37 +1037,22 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
 
       {/* Reports Table */}
       <Grow in timeout={1400}>
-        <Paper
-          elevation={0}
-          sx={{
-            background: getRandomCardColor(0),
-            borderRadius: 4,
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255,255,255,0.3)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-            },
-          }}
-        >
-          <CardContent sx={{ p: 3 }}>
-            <TableContainer component={Paper} sx={{ boxShadow: 'none', borderRadius: 3 }}>
+        <Box>
+          <TableContainer sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)' }}>
               <Table>
                 <TableHead>
-                  <TableRow sx={{ background: 'rgba(102, 126, 234, 0.05)' }}>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Student</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Teacher</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Report Title</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Date</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Status</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Audio</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Media</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Transcription</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Final Report</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Edit Report</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Send Report</TableCell>
+                  <TableRow sx={{ background: `${primaryColor}0D` }}>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Student</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Teacher</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Report Title</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Date</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Status</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Audio</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Media</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Transcription</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Final Report</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Edit Report</TableCell>
+                    <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Send Report</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1076,7 +1064,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                       sx={{
                         cursor: 'pointer',
                         '&:hover': {
-                          background: 'rgba(102, 126, 234, 0.05)',
+                          background: `${primaryColor}0D`,
                           transform: 'scale(1.01)',
                         },
                         transition: 'all 0.2s ease-in-out',
@@ -1087,7 +1075,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                           <Avatar 
                             sx={{ 
                               mr: 2, 
-                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                              background: brandingGradient,
                               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                             }}
                           >
@@ -1117,7 +1105,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                           <Avatar 
                             sx={{ 
                               mr: 2, 
-                              background: 'linear-gradient(135deg, #764ba2 0%, #f093fb 100%)',
+                              background: brandingGradient,
                               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                             }}
                           >
@@ -1390,7 +1378,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                 </TableBody>
               </Table>
             </TableContainer>
-            
+
             {filteredReports.length === 0 && (
               <Box sx={{ textAlign: 'center', py: 4 }}>
                 <Typography 
@@ -1408,8 +1396,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                 </Typography>
               </Box>
             )}
-          </CardContent>
-        </Paper>
+        </Box>
       </Grow>
 
       {/* Report Details Dialog */}
@@ -1430,7 +1417,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: brandingGradient,
             color: 'white',
             borderRadius: '12px 12px 0 0',
             pb: 4,
@@ -1476,7 +1463,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
             })()}
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ p: 4, pt: 6 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {selectedReport && (
             <Box>
               <Grid container spacing={3}>
@@ -1813,7 +1800,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
             </Typography>
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ p: 4, pt: 6 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           <Box sx={{ textAlign: 'center' }}>
             {/* Audio Player */}
             <Card
@@ -2019,7 +2006,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
             )}
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ p: 4, pt: 6 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {editingReport && (
             <Box>
               <Grid container spacing={3}>
@@ -2246,7 +2233,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
             )}
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ p: 4, pt: 6 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {selectedReportForMedia && selectedReportForMedia.media && selectedReportForMedia.media.length > 0 ? (
             <Grid container spacing={3}>
               {selectedReportForMedia.media.map((media, index) => (

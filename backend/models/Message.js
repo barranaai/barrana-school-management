@@ -78,6 +78,30 @@ const messageSchema = new mongoose.Schema({
     index: true
   },
 
+  // Scheduling fields
+  isScheduled: {
+    type: Boolean,
+    default: false
+  },
+
+  scheduledDateTime: {
+    type: Date,
+    index: true
+  },
+
+  scheduledDate: {
+    type: String
+  },
+
+  scheduledTime: {
+    type: String
+  },
+
+  timezone: {
+    type: String,
+    default: 'UTC'
+  },
+
   // Metadata
   metadata: {
     studentId: {
@@ -110,6 +134,7 @@ messageSchema.index({ conversationId: 1, sentAt: -1 });
 messageSchema.index({ senderId: 1, recipientId: 1, sentAt: -1 });
 messageSchema.index({ conversationId: 1, isRead: 1 });
 messageSchema.index({ schoolId: 1, sentAt: -1 });
+messageSchema.index({ isScheduled: 1, scheduledDateTime: 1, sentAt: 1 });
 
 // Virtual for time ago
 messageSchema.virtual('timeAgo').get(function() {

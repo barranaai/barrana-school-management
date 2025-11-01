@@ -56,6 +56,7 @@ import { useData } from '../../../contexts/DataContext';
 import apiService from '../../../services/apiService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import RichTextEditor from '../../common/RichTextEditor';
 
 interface CalendarManagementProps {
   schoolBranding?: any;
@@ -113,6 +114,25 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Helper function to get branding colors
+  const getBrandingColors = () => {
+    const primaryColor = schoolBranding?.branding?.primaryColor || schoolBranding?.primaryColor || '#667eea';
+    const secondaryColor = schoolBranding?.branding?.secondaryColor || schoolBranding?.secondaryColor || '#764ba2';
+    return { primaryColor, secondaryColor };
+  };
+
+  const { primaryColor, secondaryColor } = getBrandingColors();
+  const brandingGradient = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+  const brandingGradientHover = `linear-gradient(135deg, ${primaryColor}dd 0%, ${secondaryColor}dd 100%)`;
+  const brandingGradientActive = `linear-gradient(135deg, ${secondaryColor} 0%, ${primaryColor} 100%)`;
+  const brandingBgOpacity = (opacity: number) => {
+    const hex = primaryColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  };
 
   const [eventForm, setEventForm] = useState({
     title: '',
@@ -566,9 +586,12 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
             setOpenEventDialog(true);
           }}
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: brandingGradient,
             borderRadius: 3,
             px: 3,
+            '&:hover': {
+              background: brandingGradientHover,
+            },
           }}
         >
           Create Event
@@ -598,7 +621,7 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
       >
         <Box
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: brandingGradient,
             color: 'white',
             p: 2,
           }}
@@ -619,30 +642,31 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
               '& .fc-toolbar-title': {
                 fontSize: '1.5rem',
                 fontWeight: 700,
-                color: '#667eea',
+                color: primaryColor,
               },
               '& .fc-button': {
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: secondaryColor,
                 border: 'none',
                 borderRadius: '8px',
                 padding: '8px 16px',
                 fontWeight: 600,
                 textTransform: 'capitalize',
+                color: 'white',
                 '&:hover': {
-                  background: 'linear-gradient(135deg, #5568d3 0%, #653a8b 100%)',
+                  background: `${secondaryColor}dd`,
                 },
                 '&:disabled': {
                   opacity: 0.5,
                 },
               },
               '& .fc-button-active': {
-                background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important',
+                background: `${secondaryColor}cc !important`,
               },
               '& .fc-day-today': {
-                backgroundColor: 'rgba(102, 126, 234, 0.1) !important',
+                backgroundColor: `${brandingBgOpacity(0.1)} !important`,
               },
               '& .fc-daygrid-day:hover': {
-                backgroundColor: 'rgba(102, 126, 234, 0.05)',
+                backgroundColor: brandingBgOpacity(0.05),
                 cursor: 'pointer',
               },
               '& .fc-event': {
@@ -669,7 +693,7 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
                 backgroundColor: '#f3f4f6',
                 fontWeight: 700,
                 padding: '12px 0',
-                color: '#667eea',
+                color: primaryColor,
                 textTransform: 'uppercase',
                 fontSize: '0.75rem',
                 letterSpacing: '0.05em',
@@ -714,7 +738,7 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
       <TableContainer component={Paper} sx={{ borderRadius: 3, boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
         <Table>
           <TableHead>
-            <TableRow sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+            <TableRow sx={{ background: brandingGradient }}>
               <TableCell sx={{ color: 'white', fontWeight: 600 }}>Event</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 600 }}>Date</TableCell>
               <TableCell sx={{ color: 'white', fontWeight: 600 }}>Category</TableCell>
@@ -813,7 +837,7 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
       {/* Create Event Dialog */}
       <Dialog open={openEventDialog} onClose={() => setOpenEventDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ 
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: brandingGradient,
           color: 'white',
           display: 'flex',
           justifyContent: 'space-between',
@@ -826,7 +850,7 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
             <Close />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <TextField
@@ -844,14 +868,14 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
               />
             </Grid>
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Description"
-                multiline
-                rows={3}
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 500, color: 'text.secondary' }}>
+                Description
+              </Typography>
+              <RichTextEditor
                 value={eventForm.description}
-                onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
+                onChange={(value) => setEventForm({ ...eventForm, description: value })}
                 placeholder="Provide details about the event..."
+                minHeight={150}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -1221,8 +1245,11 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
             onClick={handleEventSubmit}
             disabled={!eventForm.title || !eventForm.startDate || !eventForm.endDate || (eventForm.startDate && eventForm.endDate && new Date(eventForm.endDate) < new Date(eventForm.startDate))}
             sx={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: brandingGradient,
               px: 3,
+              '&:hover': {
+                background: brandingGradientHover,
+              },
             }}
           >
             {isEditingEvent ? 'Update Event' : 'Create Event'}
@@ -1311,8 +1338,8 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
             </DialogTitle>
 
             {/* Content */}
-            <DialogContent sx={{ p: 0 }}>
-              <Box sx={{ p: 3 }}>
+            <DialogContent sx={{ p: 0, pt: 0 }}>
+              <Box sx={{ p: 3, pt: '24px !important' }}>
                 {/* Date and Time Section */}
                 <Box sx={{ 
                   display: 'flex', 
@@ -1329,7 +1356,7 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
                         width: 40,
                         height: 40,
                         borderRadius: 2,
-                        backgroundColor: '#667eea',
+                        backgroundColor: primaryColor,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -1422,10 +1449,44 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
                       backgroundColor: '#f9fafb', 
                       borderRadius: 3,
                       border: '1px solid #e5e7eb',
+                      '& .ql-editor': {
+                        padding: 0,
+                        fontSize: '1rem',
+                        lineHeight: 1.6,
+                        color: '#4b5563',
+                      },
+                      '& p': {
+                        margin: 0,
+                        marginBottom: '0.5rem',
+                        '&:last-child': {
+                          marginBottom: 0,
+                        },
+                      },
+                      '& ul, & ol': {
+                        margin: '0.5rem 0',
+                        paddingLeft: '1.5rem',
+                      },
+                      '& h1, & h2, & h3': {
+                        margin: '0.5rem 0',
+                        fontWeight: 600,
+                      },
+                      '& a': {
+                        color: primaryColor,
+                        textDecoration: 'none',
+                        '&:hover': {
+                          textDecoration: 'underline',
+                        },
+                      },
                     }}>
-                      <Typography variant="body1" color="#4b5563" sx={{ lineHeight: 1.6 }}>
-                        {selectedEvent.description}
-                      </Typography>
+                      <Box
+                        component="div"
+                        dangerouslySetInnerHTML={{ __html: selectedEvent.description }}
+                        sx={{
+                          fontSize: '1rem',
+                          lineHeight: 1.6,
+                          color: '#4b5563',
+                        }}
+                      />
                     </Box>
                   </Box>
                 )}

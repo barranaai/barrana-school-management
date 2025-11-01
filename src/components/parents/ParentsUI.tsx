@@ -1401,7 +1401,7 @@ const ParentsUI: React.FC = () => {
                 )}
               </Box>
             </Box>
-            <DialogContent sx={{ p: 3 }}>
+            <DialogContent sx={{ p: 3, pt: '24px !important' }}>
               {selectedEvent.description && (
                 <Box sx={{ mb: 3 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
@@ -2541,11 +2541,12 @@ const ParentsUI: React.FC = () => {
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ 
+          p: 3,
+          pt: 3,
           display: 'flex', 
           flexDirection: 'column',
           alignItems: 'center', 
           justifyContent: 'center',
-          p: 3,
           position: 'relative',
           minHeight: '60vh'
         }}>

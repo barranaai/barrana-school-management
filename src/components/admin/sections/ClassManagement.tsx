@@ -901,17 +901,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button
                     variant="outlined"
+                    color="primary"
                     startIcon={<Refresh />}
                     onClick={loadData}
-                    sx={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      color: 'white',
-                      border: 'none',
-                      '&:hover': {
-                        background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
-                        border: 'none',
-                      },
-                    }}
                   >
                     Refresh
                   </Button>

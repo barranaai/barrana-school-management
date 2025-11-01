@@ -101,6 +101,17 @@ interface TeacherManagementProps {
 }
 
 const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding }) => {
+  // Helper function to get branding colors
+  const getBrandingColors = () => {
+    const primaryColor = schoolBranding?.branding?.primaryColor || schoolBranding?.primaryColor || '#667eea';
+    const secondaryColor = schoolBranding?.branding?.secondaryColor || schoolBranding?.secondaryColor || '#764ba2';
+    return { primaryColor, secondaryColor };
+  };
+
+  const { primaryColor, secondaryColor } = getBrandingColors();
+  const brandingGradient = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+  const brandingGradientHover = `linear-gradient(135deg, ${primaryColor}dd 0%, ${secondaryColor}dd 100%)`;
+
   const [openTeacherDialog, setOpenTeacherDialog] = useState(false);
   const [openTrainingDialog, setOpenTrainingDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
@@ -511,7 +522,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
         return grade
           .toLowerCase()
           .replace(/[\s/]+/g, '_')
-          .replace(/[()'’]/g, '')
+          .replace(/[()'']/g, '')
           .replace(/__+/g, '_');
       }
     }
@@ -1245,8 +1256,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
           }}
         >
           <CardContent sx={{ p: 3 }}>
-            <Grid container spacing={3} alignItems="center">
-              <Grid item xs={12} md={4}>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
                   placeholder="Search teachers..."
@@ -1259,16 +1270,16 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     },
                   }}
                 />
               </Grid>
-              <Grid item xs={12} md={2}>
+              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth>
                   <InputLabel>Grade</InputLabel>
                   <Select
@@ -1278,13 +1289,13 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                     sx={{
                       borderRadius: 3,
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.3)',
+                        borderColor: `${primaryColor}4D`,
                       },
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     }}
                   >
@@ -1295,7 +1306,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={2}>
+              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth>
                   <InputLabel>Status</InputLabel>
                   <Select
@@ -1305,13 +1316,13 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                     sx={{
                       borderRadius: 3,
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.3)',
+                        borderColor: `${primaryColor}4D`,
                       },
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     }}
                   >
@@ -1321,7 +1332,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={2}>
+              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth>
                   <InputLabel>Email Permission</InputLabel>
                   <Select
@@ -1331,13 +1342,13 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                     sx={{
                       borderRadius: 3,
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.3)',
+                        borderColor: `${primaryColor}4D`,
                       },
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     }}
                   >
@@ -1347,10 +1358,11 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} sm={12} md={3}>
                 <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'flex-end' }}>
                   <Button
                     variant="outlined"
+                    color="primary"
                     startIcon={<Refresh />}
                     onClick={handleClearFilters}
                     disabled={!searchTerm && !filterGrade && !filterStatus && !filterEmailPermission}
@@ -1359,17 +1371,6 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                       px: 2,
                       py: 1.5,
                       fontWeight: 600,
-                      borderColor: 'rgba(102, 126, 234, 0.3)',
-                      color: '#667eea',
-                      '&:hover': {
-                        borderColor: '#667eea',
-                        background: 'rgba(102, 126, 234, 0.05)',
-                        transform: 'translateY(-2px)',
-                      },
-                      '&:disabled': {
-                        borderColor: 'rgba(0, 0, 0, 0.12)',
-                        color: 'rgba(0, 0, 0, 0.38)',
-                      },
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     }}
                   >
@@ -1380,45 +1381,21 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                     startIcon={<Add />}
                     onClick={() => handleOpenTeacherDialog('add')}
                     sx={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      background: brandingGradient,
                       borderRadius: 3,
                       px: 3,
                       py: 1.5,
                       fontWeight: 600,
-                      boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                      boxShadow: `0 4px 12px ${primaryColor}4D`,
                       '&:hover': {
-                        background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                        background: brandingGradientHover,
                         transform: 'translateY(-2px)',
-                        boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)',
+                        boxShadow: `0 6px 20px ${primaryColor}66`,
                       },
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     }}
                   >
                     Add Teacher
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Download />}
-                    onClick={() => {
-                      // Export functionality
-                      toast.success('Export functionality coming soon!');
-                    }}
-                    sx={{
-                      borderRadius: 3,
-                      px: 3,
-                      py: 1.5,
-                      fontWeight: 600,
-                      borderColor: 'rgba(102, 126, 234, 0.3)',
-                      color: '#667eea',
-                      '&:hover': {
-                        borderColor: '#667eea',
-                        background: 'rgba(102, 126, 234, 0.05)',
-                        transform: 'translateY(-2px)',
-                      },
-                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    }}
-                  >
-                    Export
                   </Button>
                 </Box>
               </Grid>
@@ -1494,262 +1471,266 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
 
       {/* Teacher Directory Table */}
       <Grow in timeout={1400}>
-        <Paper
-          elevation={0}
-          sx={{
-            background: 'rgba(255,255,255,0.8)',
-            borderRadius: 4,
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255,255,255,0.3)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-            },
-          }}
-        >
-          <CardContent sx={{ p: 3 }}>
-            <TableContainer component={Paper} sx={{ boxShadow: 'none', borderRadius: 3, overflowX: 'auto' }}>
-              <Table sx={{ minWidth: 800 }}>
-                <TableHead>
-                  <TableRow sx={{ background: 'rgba(102, 126, 234, 0.05)' }}>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Teacher</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Grade</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Students</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Last Login</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Status</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>
-                      <Tooltip title="Permission to send reports directly to parents">
-                        <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'help' }}>
-                          Email Reports
-                          <Info sx={{ ml: 0.5, fontSize: '0.875rem', opacity: 0.7 }} />
-                        </Box>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {sortedTeachers.map((teacher) => (
-                    <TableRow 
-                      key={teacher.id || teacher._id} 
-                      hover
-                      sx={{
-                        '&:hover': {
-                          background: 'rgba(102, 126, 234, 0.05)',
-                        },
-                        transition: 'all 0.2s ease-in-out',
-                      }}
-                    >
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Avatar 
+        <Box>
+          <TableContainer sx={{ overflowX: 'auto', borderRadius: 3, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)' }}>
+            <Table sx={{ minWidth: 800 }}>
+              <TableHead>
+                <TableRow sx={{ background: `${primaryColor}0D` }}>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Teacher</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Grade</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Students</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Last Login</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>
+                    <Tooltip title="Permission to send reports directly to parents">
+                      <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'help' }}>
+                        Email Reports
+                        <Info sx={{ ml: 0.5, fontSize: '0.875rem', opacity: 0.7 }} />
+                      </Box>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {sortedTeachers.map((teacher) => (
+                  <TableRow 
+                    key={teacher.id || teacher._id} 
+                    hover
+                    sx={{
+                      '&:hover': {
+                        background: `${primaryColor}0D`,
+                      },
+                      transition: 'all 0.2s ease-in-out',
+                    }}
+                  >
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Avatar 
+                          sx={{ 
+                            mr: 2, 
+                            background: brandingGradient,
+                            boxShadow: `0 4px 12px ${primaryColor}40`,
+                          }}
+                        >
+                          {teacher.avatar || `${(teacher.firstName || '').charAt(0).toUpperCase()}${(teacher.lastName || '').charAt(0).toUpperCase()}`}
+                        </Avatar>
+                        <Box>
+                       <Typography 
+                            variant="subtitle2"
+                            sx={{ fontWeight: 600 }}
+                          >
+                            {`${formatWordCase(teacher.firstName || '')} ${formatWordCase(teacher.lastName || '')}`.trim()}
+                          </Typography>
+                          <Typography 
+                            variant="caption" 
                             sx={{ 
-                              mr: 2, 
-                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                              color: 'text.secondary',
+                              opacity: 0.8,
                             }}
                           >
-                            {teacher.avatar || `${(teacher.firstName || '').charAt(0).toUpperCase()}${(teacher.lastName || '').charAt(0).toUpperCase()}`}
-                          </Avatar>
-                          <Box>
-                         <Typography 
-                              variant="subtitle2"
-                              sx={{ fontWeight: 600 }}
-                            >
-                              {`${formatWordCase(teacher.firstName || '')} ${formatWordCase(teacher.lastName || '')}`.trim()}
-                            </Typography>
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                color: 'text.secondary',
-                                opacity: 0.8,
-                              }}
-                            >
-                              {teacher.email}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography sx={{ fontWeight: 500 }}>
-                          {teacher.grade ? formatGradeForDisplay(teacher.grade) : 'N/A'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Tooltip title={`Students across all assigned classes`}>
-                          <Typography sx={{ fontWeight: 500 }}>
-                            {getTeacherStudentCount(teacher._id || teacher.id || '')}
+                            {teacher.email}
                           </Typography>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell>
+                        </Box>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 500 }}>
+                        {teacher.grade ? formatGradeForDisplay(teacher.grade) : 'N/A'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title={`Students across all assigned classes`}>
                         <Typography sx={{ fontWeight: 500 }}>
-                          {teacher.lastLogin || 'Never'}
+                          {getTeacherStudentCount(teacher._id || teacher.id || '')}
                         </Typography>
-                      </TableCell>
-                      <TableCell>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 500 }}>
+                        {teacher.lastLogin || 'Never'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={teacher.isActive ? 'Active' : 'Inactive'}
+                        color={teacher.isActive ? 'success' : 'default'}
+                        size="small"
+                        sx={{
+                          fontWeight: 600,
+                          borderRadius: 2,
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title={teacher.canEmailReports ? "Can send reports to parents" : "Cannot send reports to parents"}>
                         <Chip
-                          label={teacher.isActive ? 'Active' : 'Inactive'}
-                          color={teacher.isActive ? 'success' : 'default'}
+                          label={teacher.canEmailReports ? 'Allowed' : 'Not Allowed'}
+                          color={teacher.canEmailReports ? 'success' : 'default'}
                           size="small"
+                          icon={teacher.canEmailReports ? <CheckCircle sx={{ fontSize: 16 }} /> : <Warning sx={{ fontSize: 16 }} />}
                           sx={{
                             fontWeight: 600,
                             borderRadius: 2,
+                            backgroundColor: teacher.canEmailReports ? '#e8f5e8' : '#f5f5f5',
+                            color: teacher.canEmailReports ? '#2e7d32' : '#666',
+                            '& .MuiChip-icon': {
+                              color: teacher.canEmailReports ? '#4caf50' : '#ff9800',
+                            }
                           }}
                         />
-                      </TableCell>
-                      <TableCell>
-                        <Tooltip title={teacher.canEmailReports ? "Can send reports to parents" : "Cannot send reports to parents"}>
-                          <Chip
-                            label={teacher.canEmailReports ? 'Allowed' : 'Not Allowed'}
-                            color={teacher.canEmailReports ? 'success' : 'default'}
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Tooltip title="View Details">
+                          <IconButton
                             size="small"
-                            icon={teacher.canEmailReports ? <CheckCircle sx={{ fontSize: 16 }} /> : <Warning sx={{ fontSize: 16 }} />}
+                            onClick={() => handleOpenTeacherDialog('view', teacher.id || teacher._id)}
                             sx={{
-                              fontWeight: 600,
-                              borderRadius: 2,
-                              backgroundColor: teacher.canEmailReports ? '#e8f5e8' : '#f5f5f5',
-                              color: teacher.canEmailReports ? '#2e7d32' : '#666',
-                              '& .MuiChip-icon': {
-                                color: teacher.canEmailReports ? '#4caf50' : '#ff9800',
+                              color: primaryColor,
+                              '&:hover': {
+                                background: `${primaryColor}1A`,
+                                transform: 'scale(1.1)',
+                              },
+                              transition: 'all 0.2s ease-in-out',
+                            }}
+                          >
+                            <Visibility />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit Teacher">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenTeacherDialog('edit', teacher.id || teacher._id)}
+                            sx={{
+                              color: '#4caf50',
+                              '&:hover': {
+                                background: 'rgba(76, 175, 80, 0.1)',
+                                transform: 'scale(1.1)',
+                              },
+                              transition: 'all 0.2s ease-in-out',
+                            }}
+                          >
+                            <Edit />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Teacher">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteTeacher(teacher)}
+                            sx={{
+                              color: '#f44336',
+                              '&:hover': {
+                                background: 'rgba(244, 67, 54, 0.1)',
+                                transform: 'scale(1.1)',
+                              },
+                              transition: 'all 0.2s ease-in-out',
+                            }}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={teacher.canEmailReports ? "Disable email reports" : "Enable email reports"}>
+                          <IconButton
+                            size="small"
+                            onClick={async () => {
+                              try {
+                                await updateTeacher(teacher.id || teacher._id, {
+                                  canEmailReports: !teacher.canEmailReports
+                                });
+                                await refreshData();
+                                showSnackbar(
+                                  `Email reports ${teacher.canEmailReports ? 'disabled' : 'enabled'} for ${teacher.firstName} ${teacher.lastName}`,
+                                  'success'
+                                );
+                              } catch (error) {
+                                console.error('Error updating email permission:', error);
+                                showSnackbar('Error updating email permission', 'error');
                               }
                             }}
-                          />
+                            sx={{
+                              color: teacher.canEmailReports ? '#f44336' : '#4caf50',
+                              '&:hover': {
+                                background: teacher.canEmailReports 
+                                  ? 'rgba(244, 67, 54, 0.1)' 
+                                  : 'rgba(76, 175, 80, 0.1)',
+                                transform: 'scale(1.1)',
+                              },
+                              transition: 'all 0.2s ease-in-out',
+                            }}
+                          >
+                            {teacher.canEmailReports ? <Email /> : <Email sx={{ opacity: 0.5 }} />}
+                          </IconButton>
                         </Tooltip>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Tooltip title="View Details">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleOpenTeacherDialog('view', teacher.id || teacher._id)}
-                              sx={{
-                                color: '#667eea',
-                                '&:hover': {
-                                  background: 'rgba(102, 126, 234, 0.1)',
-                                  transform: 'scale(1.1)',
-                                },
-                                transition: 'all 0.2s ease-in-out',
-                              }}
-                            >
-                              <Visibility />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Edit Teacher">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleOpenTeacherDialog('edit', teacher.id || teacher._id)}
-                              sx={{
-                                color: '#4caf50',
-                                '&:hover': {
-                                  background: 'rgba(76, 175, 80, 0.1)',
-                                  transform: 'scale(1.1)',
-                                },
-                                transition: 'all 0.2s ease-in-out',
-                              }}
-                            >
-                              <Edit />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete Teacher">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => handleDeleteTeacher(teacher)}
-                              sx={{
-                                color: '#f44336',
-                                '&:hover': {
-                                  background: 'rgba(244, 67, 54, 0.1)',
-                                  transform: 'scale(1.1)',
-                                },
-                                transition: 'all 0.2s ease-in-out',
-                              }}
-                            >
-                              <Delete />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title={teacher.canEmailReports ? "Disable email reports" : "Enable email reports"}>
-                            <IconButton
-                              size="small"
-                              onClick={async () => {
-                                try {
-                                  await updateTeacher(teacher.id || teacher._id, {
-                                    canEmailReports: !teacher.canEmailReports
-                                  });
-                                  await refreshData();
-                                  showSnackbar(
-                                    `Email reports ${teacher.canEmailReports ? 'disabled' : 'enabled'} for ${teacher.firstName} ${teacher.lastName}`,
-                                    'success'
-                                  );
-                                } catch (error) {
-                                  console.error('Error updating email permission:', error);
-                                  showSnackbar('Error updating email permission', 'error');
-                                }
-                              }}
-                              sx={{
-                                color: teacher.canEmailReports ? '#f44336' : '#4caf50',
-                                '&:hover': {
-                                  background: teacher.canEmailReports 
-                                    ? 'rgba(244, 67, 54, 0.1)' 
-                                    : 'rgba(76, 175, 80, 0.1)',
-                                  transform: 'scale(1.1)',
-                                },
-                                transition: 'all 0.2s ease-in-out',
-                              }}
-                            >
-                              {teacher.canEmailReports ? <Email /> : <Email sx={{ opacity: 0.5 }} />}
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            
-            {sortedTeachers.length === 0 && (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    color: 'text.secondary',
-                    opacity: 0.8,
-                    fontWeight: 500,
-                    mb: 1,
-                  }}
-                >
-                  {searchTerm || filterGrade || filterStatus || filterEmailPermission 
-                    ? 'No teachers found matching your filters'
-                    : 'No teachers found'
-                  }
-                </Typography>
-                {(searchTerm || filterGrade || filterStatus || filterEmailPermission) && (
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          
+          {sortedTeachers.length === 0 && (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  color: 'text.secondary',
+                  opacity: 0.8,
+                  fontWeight: 500,
+                  mb: 1,
+                }}
+              >
+                {searchTerm || filterGrade || filterStatus || filterEmailPermission 
+                  ? 'No teachers found matching your filters'
+                  : 'No teachers found'
+                }
+              </Typography>
+              {(searchTerm || filterGrade || filterStatus || filterEmailPermission) && (
                   <Button
                     variant="outlined"
+                    color="primary"
                     size="small"
                     onClick={handleClearFilters}
                     sx={{ mt: 1 }}
                   >
-                    Clear all filters
-                  </Button>
-                )}
-              </Box>
-            )}
-          </CardContent>
-        </Paper>
+                  Clear all filters
+                </Button>
+              )}
+            </Box>
+          )}
+        </Box>
       </Grow>
 
       {/* Add/Edit Teacher Dialog */}
       <Dialog open={openTeacherDialog} onClose={handleCloseTeacherDialog} maxWidth="md" fullWidth>
-        <DialogTitle>
+        <DialogTitle
+          sx={{
+            background: brandingGradient,
+            color: 'white',
+            fontWeight: 700,
+            fontSize: '1.5rem',
+            textAlign: 'center',
+            py: 3,
+            position: 'relative',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '2px',
+              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)',
+            }
+          }}
+        >
           {dialogType === 'add' && 'Add New Teacher'}
           {dialogType === 'edit' && 'Edit Teacher'}
           {dialogType === 'view' && 'Teacher Details'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {dialogType === 'view' ? (
             <Box>
               {selectedTeacher && (
@@ -1846,6 +1827,16 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                   value={teacherForm.name}
                   onChange={(e) => handleFormChange('name', e.target.value)}
                   required
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: `${primaryColor}80`,
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: primaryColor,
+                      },
+                    },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1856,6 +1847,16 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                   value={teacherForm.email}
                   onChange={(e) => handleFormChange('email', e.target.value)}
                   required
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: `${primaryColor}80`,
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: primaryColor,
+                      },
+                    },
+                  }}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1873,6 +1874,17 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                     label="Grade Level"
                     value={teacherForm.grade}
                     onChange={(e) => handleFormChange('grade', e.target.value)}
+                    sx={{
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: `${primaryColor}4D`,
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: `${primaryColor}80`,
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: primaryColor,
+                      },
+                    }}
                   >
                     {grades.map(grade => (
                       <MenuItem key={grade} value={grade}>{grade}</MenuItem>
@@ -1965,13 +1977,39 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
             </Grid>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseTeacherDialog}>Cancel</Button>
+        <DialogActions sx={{ p: 3, gap: 2 }}>
+          <Button 
+            onClick={handleCloseTeacherDialog}
+            sx={{
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: '#ffebee',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                backgroundColor: '#ffcdd2',
+              },
+            }}
+          >
+            Cancel
+          </Button>
           {dialogType !== 'view' && (
             <Button 
               variant="contained" 
               onClick={handleSaveTeacher}
               disabled={!teacherForm.name || !teacherForm.email || !teacherForm.phone || !teacherForm.grade || (dialogType === 'add' && !teacherForm.password)}
+              sx={{
+                background: brandingGradient,
+                '&:hover': {
+                  background: brandingGradientHover,
+                },
+                '&:disabled': {
+                  background: 'rgba(0, 0, 0, 0.12)',
+                  color: 'rgba(0, 0, 0, 0.38)',
+                },
+              }}
             >
               {dialogType === 'add' ? 'Add Teacher' : 'Save Changes'}
             </Button>
@@ -1981,14 +2019,51 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Confirm Delete</DialogTitle>
-        <DialogContent>
+        <DialogTitle
+          sx={{
+            background: brandingGradient,
+            color: 'white',
+            fontWeight: 700,
+            fontSize: '1.5rem',
+            textAlign: 'center',
+            py: 3,
+            position: 'relative',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '2px',
+              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.5) 50%, transparent 100%)',
+            }
+          }}
+        >
+          Confirm Delete
+        </DialogTitle>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           <Typography variant="body1">
             Are you sure you want to delete {teacherToDelete?.name}? This action cannot be undone.
           </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenDeleteDialog(false)}>Cancel</Button>
+        <DialogActions sx={{ p: 3, gap: 2 }}>
+          <Button 
+            onClick={() => setOpenDeleteDialog(false)}
+            sx={{
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: '#ffebee',
+              },
+              '&:active': {
+                borderColor: '#c62828',
+                backgroundColor: '#ffcdd2',
+              },
+            }}
+          >
+            Cancel
+          </Button>
           <Button 
             variant="contained" 
             color="error" 

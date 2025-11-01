@@ -13,6 +13,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useBranding } from '../contexts/BrandingContext';
 import { Audio } from 'expo-av';
 import apiService, { User } from '../apiService';
 
@@ -65,6 +66,8 @@ interface Report {
 }
 
 const ReportsScreen: React.FC<ReportsScreenProps> = ({ user, onBack }) => {
+  const { branding } = useBranding();
+  const primaryColor = branding?.branding?.primaryColor || '#667eea';
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
@@ -507,7 +510,7 @@ const ReportsScreen: React.FC<ReportsScreenProps> = ({ user, onBack }) => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#667eea" />
+        <ActivityIndicator size="large" color={primaryColor} />
         <Text style={styles.loadingText}>Loading reports...</Text>
       </View>
     );
@@ -530,8 +533,8 @@ const ReportsScreen: React.FC<ReportsScreenProps> = ({ user, onBack }) => {
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={onRefresh}
-            colors={['#667eea']}
-            tintColor="#667eea"
+            colors={[primaryColor]}
+            tintColor={primaryColor}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -562,9 +565,9 @@ const ReportsScreen: React.FC<ReportsScreenProps> = ({ user, onBack }) => {
             style={styles.filterButton}
             onPress={() => setShowDateFilter(true)}
           >
-            <Ionicons name="filter" size={16} color="#667eea" />
+            <Ionicons name="filter" size={16} color={primaryColor} />
             <Text style={styles.filterButtonText}>{getSelectedFilterLabel()}</Text>
-            <Ionicons name="chevron-down" size={16} color="#667eea" />
+            <Ionicons name="chevron-down" size={16} color={primaryColor} />
           </TouchableOpacity>
         </View>
 
@@ -1128,7 +1131,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chip: {
-    backgroundColor: '#f8f9ff',
+    backgroundColor: '#e3f2fd', // MUI blue 50
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -1139,7 +1142,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 11,
-    color: '#667eea',
+    color: '#1976d2', // MUI blue 700
     fontWeight: '600',
     marginLeft: 4,
   },

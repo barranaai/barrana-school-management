@@ -31,7 +31,7 @@ const parentGroupRoutes = require('./routes/parentGroups');
 const messageRoutes = require('./routes/messages');
 
 // Import reminder scheduler
-const { initializeReminderScheduler, initializePDFCleanup } = require('./services/reminderScheduler');
+const { initializeReminderScheduler, initializePDFCleanup, initializeScheduledMessageProcessor, initializeDueReportChecker } = require('./services/reminderScheduler');
 
 const app = express();
 const server = http.createServer(app);
@@ -176,6 +176,12 @@ server.listen(PORT, '0.0.0.0', () => {
   
   // Initialize PDF cleanup scheduler
   initializePDFCleanup();
+  
+  // Initialize scheduled message processor
+  initializeScheduledMessageProcessor();
+  
+  // Initialize due report checker
+  initializeDueReportChecker();
 });
 
 // Graceful shutdown

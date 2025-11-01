@@ -35,9 +35,11 @@ import {
   FormLabel,
   Alert,
   Snackbar,
-  Popover
+  Popover,
+  Checkbox
 } from '@mui/material';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
+import moment from 'moment-timezone';
 import {
   Send,
   Search,
@@ -51,12 +53,14 @@ import {
   Person,
   Email as EmailIcon,
   School,
-  Group
+  Group,
+  Close
 } from '@mui/icons-material';
 import { useAuth } from '../../../contexts/AuthContext';
 import messagingService from '../../../services/messagingService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import RichTextEditor from '../../common/RichTextEditor';
 
 interface AdminCommunicationCenterProps {
   schoolBranding?: any;
@@ -131,12 +135,53 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
   const [chatEmojiPickerAnchor, setChatEmojiPickerAnchor] = useState<HTMLElement | null>(null);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [chatAttachments, setChatAttachments] = useState<File[]>([]);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper function to get branding colors
+  const getBrandingColors = () => {
+    const primaryColor = schoolBranding?.branding?.primaryColor || schoolBranding?.primaryColor || '#667eea';
+    const secondaryColor = schoolBranding?.branding?.secondaryColor || schoolBranding?.secondaryColor || '#764ba2';
+    return { primaryColor, secondaryColor };
+  };
+
+  const { primaryColor, secondaryColor } = getBrandingColors();
+  const brandingGradient = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+  const brandingGradientHover = `linear-gradient(135deg, ${primaryColor}dd 0%, ${secondaryColor}dd 100%)`;
+
+  // Get school timezone
+  const getSchoolTimezone = (): string => {
+    return schoolBranding?.settings?.timezone || 'UTC';
+  };
+
+  // Helper function to convert scheduled date/time in school timezone to UTC
+  const convertScheduleToUTC = (date: string, time: string): string => {
+    const schoolTimezone = getSchoolTimezone();
+    // Combine date and time, then parse in school timezone
+    const scheduledDateTime = moment.tz(`${date} ${time}`, 'YYYY-MM-DD HH:mm', schoolTimezone);
+    // Convert to UTC ISO string
+    return scheduledDateTime.utc().toISOString();
+  };
+
+  // Helper function to get current time in school timezone
+  const getCurrentTimeInSchoolTimezone = (): moment.Moment => {
+    const schoolTimezone = getSchoolTimezone();
+    return moment().tz(schoolTimezone);
+  };
+
+  // Helper function to strip HTML tags for previews
+  const stripHtml = (html: string) => {
+    const tmp = document.createElement('DIV');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+  };
 
   // Helper function to show snackbar
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info' = 'success') => {
@@ -424,6 +469,24 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       return;
     }
 
+    // Validate scheduling
+    if (isScheduled && (!scheduledDate || !scheduledTime)) {
+      showSnackbar('Please select both date and time for scheduling', 'warning');
+      return;
+    }
+
+    // Validate scheduled date/time is in the future
+    if (isScheduled && scheduledDate && scheduledTime) {
+      const schoolTimezone = getSchoolTimezone();
+      const scheduledDateTime = moment.tz(`${scheduledDate} ${scheduledTime}`, 'YYYY-MM-DD HH:mm', schoolTimezone);
+      const nowInSchoolTimezone = getCurrentTimeInSchoolTimezone();
+      
+      if (scheduledDateTime.isSameOrBefore(nowInSchoolTimezone)) {
+        showSnackbar('Scheduled date and time must be in the future', 'warning');
+        return;
+      }
+    }
+
     // Validate recipients
     if (recipientType === 'selected' && selectedRecipients.length === 0) {
       showSnackbar('Please select at least one parent', 'warning');
@@ -452,75 +515,57 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       let formattedMessage = '';
       let subject = '';
 
+      // Helper to escape HTML in titles to prevent XSS
+      const escapeHtml = (text: string): string => {
+        const map: { [key: string]: string } = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, (m) => map[m]);
+      };
+
+      // Ensure content is properly trimmed
+      const content = newMessageContent.trim();
+      const safeTitle = escapeHtml(messageTitle.trim());
+
       switch (messageType) {
         case 'notification':
-          subject = `🔔 ${messageTitle}`;
-          formattedMessage = `**NOTIFICATION** ${messagePriority === 'high' ? '⚠️ HIGH PRIORITY' : messagePriority === 'medium' ? '📌 MEDIUM PRIORITY' : '✓ LOW PRIORITY'}\n\n`;
-          formattedMessage += `**${messageTitle}**\n\n`;
-          formattedMessage += newMessageContent.trim();
-          formattedMessage += `\n\n---\nSent by: ${user?.firstName} ${user?.lastName}\nDate: ${new Date().toLocaleString()}`;
+          subject = messageTitle.trim();
+          // Format: Title as heading, then content with preserved HTML formatting
+          formattedMessage = `<h3 style="margin: 0 0 12px 0; font-size: 1.1rem; font-weight: 600; color: #1a1a1a;">${safeTitle}</h3>${content}`;
           break;
 
         case 'announcement':
-          subject = `📢 ${messageTitle}`;
-          formattedMessage = `**ANNOUNCEMENT**\n\n`;
-          formattedMessage += `**${messageTitle}**\n\n`;
-          formattedMessage += newMessageContent.trim();
-          formattedMessage += `\n\n---\nSent by: ${user?.firstName} ${user?.lastName}\nDate: ${new Date().toLocaleString()}`;
+          subject = messageTitle.trim();
+          // Format: Title as heading, then content with preserved HTML formatting
+          formattedMessage = `<h3 style="margin: 0 0 12px 0; font-size: 1.1rem; font-weight: 600; color: #1a1a1a;">${safeTitle}</h3>${content}`;
           break;
 
         case 'reminder':
-          subject = `⏰ ${messageTitle}`;
+          subject = messageTitle.trim();
           const reminderDateObj = new Date(reminderDate);
-          formattedMessage = `**REMINDER** ${messagePriority === 'high' ? '⚠️ HIGH PRIORITY' : messagePriority === 'medium' ? '📌 MEDIUM PRIORITY' : '✓ LOW PRIORITY'}\n\n`;
-          formattedMessage += `**${messageTitle}**\n\n`;
-          formattedMessage += `📅 Due: ${reminderDateObj.toLocaleString('en-US', { 
+          const formattedReminderDate = reminderDateObj.toLocaleDateString('en-US', { 
             weekday: 'long', 
             year: 'numeric', 
             month: 'long', 
             day: 'numeric',
             hour: '2-digit',
             minute: '2-digit'
-          })}\n\n`;
-          formattedMessage += newMessageContent.trim();
-          formattedMessage += `\n\n---\nSent by: ${user?.firstName} ${user?.lastName}`;
+          });
+          // Format: Title as heading, due date as paragraph, then content with preserved HTML formatting
+          formattedMessage = `<h3 style="margin: 0 0 12px 0; font-size: 1.1rem; font-weight: 600; color: #1a1a1a;">${safeTitle}</h3><p style="margin: 0 0 12px 0; color: #666; font-size: 0.95rem;"><strong>Due Date:</strong> ${escapeHtml(formattedReminderDate)}</p>${content}`;
           break;
 
         case 'personal':
         default:
-          subject = 'Personal Message from Admin';
-          formattedMessage = newMessageContent.trim();
+          subject = 'Message from School Administration';
+          // For personal messages, just use the content with preserved HTML formatting
+          formattedMessage = content;
           break;
       }
-
-      // Add recipient information to the message
-      let recipientInfo = '';
-      switch (recipientType) {
-        case 'all':
-          recipientInfo = `\n\n📢 Sent to: All Parents (${parents.length} recipients)`;
-          break;
-        case 'selected':
-          recipientInfo = `\n\n📢 Sent to: ${selectedRecipients.length} selected parent(s)`;
-          break;
-        case 'grade':
-          recipientInfo = `\n\n📢 Sent to: Parents of Grade ${selectedRecipients.join(', ')}`;
-          break;
-        case 'class':
-          const classNames = selectedRecipients.map(id => {
-            const classInfo = classes.find(c => c._id === id);
-            return classInfo ? `${classInfo.name} (Grade ${classInfo.grade})` : id;
-          });
-          recipientInfo = `\n\n📢 Sent to: Parents of ${classNames.join(', ')}`;
-          break;
-        case 'group':
-          const groupNames = selectedRecipients.map(id => {
-            const groupInfo = parentGroups.find(g => g._id === id);
-            return groupInfo ? `${groupInfo.name} (${groupInfo.members?.length || 0} members)` : id;
-          });
-          recipientInfo = `\n\n📢 Sent to: Parent Groups: ${groupNames.join(', ')}`;
-          break;
-      }
-      formattedMessage += recipientInfo;
 
       // For now, we'll create a single conversation with the first parent
       // In a full implementation, this would create multiple conversations
@@ -554,7 +599,13 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       const response = await messagingService.createConversation(
         targetParentId,
         formattedMessage,
-        subject
+        subject,
+        isScheduled ? {
+          scheduledDate: scheduledDate,
+          scheduledTime: scheduledTime,
+          scheduledDateTime: convertScheduleToUTC(scheduledDate, scheduledTime),
+          timezone: getSchoolTimezone()
+        } : undefined
       );
 
       if (response.success) {
@@ -569,6 +620,9 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         setRecipientType('selected');
         setSelectedRecipients([]);
         setParentGroups([]);
+        setIsScheduled(false);
+        setScheduledDate('');
+        setScheduledTime('');
         
         // Reload conversations
         await loadConversations();
@@ -605,7 +659,14 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
           break;
         }
 
-        showSnackbar(`Message sent successfully to ${recipientCount} recipient(s)!`, 'success');
+        if (isScheduled) {
+          const schoolTimezone = getSchoolTimezone();
+          const scheduledDateTime = moment.tz(`${scheduledDate} ${scheduledTime}`, 'YYYY-MM-DD HH:mm', schoolTimezone);
+          const timezoneAbbr = scheduledDateTime.format('z');
+          showSnackbar(`Message scheduled successfully for ${scheduledDateTime.format('MMM DD, YYYY [at] h:mm A')} (${timezoneAbbr})!`, 'success');
+        } else {
+          showSnackbar(`Message sent successfully to ${recipientCount} recipient(s)!`, 'success');
+        }
       }
     } catch (error) {
       console.error('Error creating conversation:', error);
@@ -994,7 +1055,7 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                                       whiteSpace: 'nowrap'
                                     }}
                                   >
-                                    {conv.lastMessage?.content || 'No messages yet'}
+                                    {conv.lastMessage?.content ? stripHtml(conv.lastMessage.content) : 'No messages yet'}
                                   </Typography>
                                 </>
                               }
@@ -1099,9 +1160,42 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                               borderBottomLeftRadius: isOwn ? 2 : 0
                             }}
                           >
-                            <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
-                              {message.content}
-                            </Typography>
+                            <Box
+                              component="div"
+                              dangerouslySetInnerHTML={{ __html: message.content }}
+                              sx={{
+                                fontSize: '0.875rem',
+                                wordBreak: 'break-word',
+                                '& p': {
+                                  margin: 0,
+                                  marginBottom: '0.5rem',
+                                  '&:last-child': {
+                                    marginBottom: 0,
+                                  },
+                                },
+                                '& ul, & ol': {
+                                  margin: '0.5rem 0',
+                                  paddingLeft: '1.5rem',
+                                },
+                                '& h1, & h2, & h3': {
+                                  margin: '0.5rem 0',
+                                  fontWeight: 600,
+                                },
+                                '& a': {
+                                  color: isOwn ? 'rgba(255,255,255,0.9)' : primaryColor,
+                                  textDecoration: 'underline',
+                                  '&:hover': {
+                                    textDecoration: 'none',
+                                  },
+                                },
+                                '& img': {
+                                  maxWidth: '100%',
+                                  height: 'auto',
+                                  borderRadius: 1,
+                                  marginTop: '0.5rem',
+                                },
+                              }}
+                            />
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
                               <Typography 
                                 variant="caption" 
@@ -1256,11 +1350,48 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
           </Grid>
 
           {/* New Conversation Dialog */}
-          <Dialog open={newConversationDialog} onClose={() => setNewConversationDialog(false)} maxWidth="md" fullWidth>
-            <DialogTitle>New Communication</DialogTitle>
-            <DialogContent>
+          <Dialog 
+            open={newConversationDialog} 
+            onClose={() => setNewConversationDialog(false)} 
+            maxWidth="md" 
+            fullWidth
+            PaperProps={{
+              sx: {
+                borderRadius: 4,
+                boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+                overflow: 'hidden',
+              }
+            }}
+          >
+            <DialogTitle sx={{ 
+              background: brandingGradient,
+              color: 'white',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              p: 3,
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <MessageIcon sx={{ fontSize: 28 }} />
+                <Typography variant="h6" fontWeight={600}>
+                  New Communication
+                </Typography>
+              </Box>
+              <IconButton 
+                onClick={() => setNewConversationDialog(false)} 
+                sx={{ 
+                  color: 'white',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  }
+                }}
+              >
+                <Close />
+              </IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ p: 3, pt: '24px !important' }}>
               {/* Message Type Selection */}
-              <FormControl component="fieldset" sx={{ mt: 2, mb: 3 }}>
+              <FormControl component="fieldset" sx={{ mb: 3 }}>
                 <FormLabel component="legend" sx={{ fontWeight: 600, color: 'text.primary', mb: 1 }}>
                   Message Type
                 </FormLabel>
@@ -1672,47 +1803,47 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                   </Box>
                 )}
                 
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={messageType === 'personal' ? 6 : 4}
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 500, color: 'text.secondary' }}>
+                  Message Content <span style={{ color: 'red' }}>*</span>
+                </Typography>
+                
+                {/* Attachment and Emoji Buttons */}
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 1 }}>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleNewConversationFileSelect}
+                    multiple
+                    style={{ display: 'none' }}
+                  />
+                  <IconButton
+                    onClick={() => fileInputRef.current?.click()}
+                    size="small"
+                    color="primary"
+                    title="Attach file"
+                  >
+                    <AttachFile />
+                  </IconButton>
+                  <IconButton
+                    onClick={(e) => setEmojiPickerAnchor(e.currentTarget)}
+                    size="small"
+                    color="primary"
+                    title="Add emoji"
+                  >
+                    <EmojiEmotions />
+                  </IconButton>
+                </Box>
+                
+                <RichTextEditor
+                  value={newMessageContent}
+                  onChange={(value) => setNewMessageContent(value)}
                   placeholder={
                     messageType === 'notification' ? 'Enter the notification details...' :
                     messageType === 'announcement' ? 'Enter the announcement details...' :
                     messageType === 'reminder' ? 'Enter reminder details and what action is needed...' :
                     'Type your personal message...'
                   }
-                  value={newMessageContent}
-                  onChange={(e) => setNewMessageContent(e.target.value)}
-                  label="Message Content"
-                  required
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          onChange={handleNewConversationFileSelect}
-                          multiple
-                          style={{ display: 'none' }}
-                        />
-                        <IconButton
-                          onClick={() => fileInputRef.current?.click()}
-                          size="small"
-                          color="primary"
-                        >
-                          <AttachFile />
-                        </IconButton>
-                        <IconButton
-                          onClick={(e) => setEmojiPickerAnchor(e.currentTarget)}
-                          size="small"
-                          color="primary"
-                        >
-                          <EmojiEmotions />
-                        </IconButton>
-                      </InputAdornment>
-                    )
-                  }}
+                  minHeight={messageType === 'personal' ? 200 : 150}
                 />
               </Box>
               
@@ -1732,27 +1863,110 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
               >
                 <EmojiPicker onEmojiClick={handleNewConversationEmojiClick} />
               </Popover>
+
+              {/* Schedule Option */}
+              <Box sx={{ mt: 2, mb: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={isScheduled}
+                      onChange={(e) => setIsScheduled(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label="Schedule this message"
+                />
+                {isScheduled && (
+                  <>
+                    <Grid container spacing={2} sx={{ mt: 1 }}>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          fullWidth
+                          label="Schedule Date"
+                          type="date"
+                          value={scheduledDate}
+                          onChange={(e) => setScheduledDate(e.target.value)}
+                          InputLabelProps={{ shrink: true }}
+                          required={isScheduled}
+                          inputProps={{
+                            min: getCurrentTimeInSchoolTimezone().format('YYYY-MM-DD')
+                          }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          fullWidth
+                          label="Schedule Time"
+                          type="time"
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value)}
+                          InputLabelProps={{ shrink: true }}
+                          required={isScheduled}
+                        />
+                      </Grid>
+                    </Grid>
+                    <Box sx={{ mt: 1.5, p: 1.5, bgcolor: '#f0f9ff', borderRadius: 1, border: '1px solid #bae6fd' }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <span>⏰</span>
+                        <span>
+                          Time will be scheduled in school timezone: <strong>{getSchoolTimezone()}</strong>
+                          {scheduledDate && scheduledTime && (
+                            <> • Scheduled for: {moment.tz(`${scheduledDate} ${scheduledTime}`, 'YYYY-MM-DD HH:mm', getSchoolTimezone()).format('MMM DD, YYYY [at] h:mm A z')}</>
+                          )}
+                        </span>
+                      </Typography>
+                    </Box>
+                  </>
+                )}
+              </Box>
             </DialogContent>
-            <DialogActions sx={{ px: 3, pb: 2 }}>
-              <Button onClick={() => {
-                setNewConversationDialog(false);
-                setMessageType('personal');
-                setMessageTitle('');
-                setNewMessageContent('');
-                setSelectedParent('');
-                setReminderDate('');
-                setMessagePriority('medium');
-                setRecipientType('selected');
-                setSelectedRecipients([]);
-                setParentGroups([]);
-                setAttachments([]);
-                setEmojiPickerAnchor(null);
-              }}>
+            <DialogActions sx={{ p: 3, pt: 0 }}>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setNewConversationDialog(false);
+                  setMessageType('personal');
+                  setMessageTitle('');
+                  setNewMessageContent('');
+                  setSelectedParent('');
+                  setReminderDate('');
+                  setMessagePriority('medium');
+                  setRecipientType('selected');
+                  setSelectedRecipients([]);
+                  setParentGroups([]);
+                  setAttachments([]);
+                  setEmojiPickerAnchor(null);
+                  setIsScheduled(false);
+                  setScheduledDate('');
+                  setScheduledTime('');
+                }}
+                sx={{
+                  borderRadius: 3,
+                  px: 4,
+                  py: 1.5,
+                  fontWeight: 600,
+                  borderColor: '#d32f2f',
+                  color: '#d32f2f',
+                  '&:hover': {
+                    borderColor: '#b71c1c',
+                    background: 'rgba(211, 47, 47, 0.05)',
+                    color: '#b71c1c',
+                    transform: 'translateY(-2px)',
+                  },
+                  '&:active': {
+                    borderColor: '#c62828',
+                    background: 'rgba(198, 40, 40, 0.1)',
+                    color: '#c62828',
+                  },
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+              >
                 Cancel
               </Button>
-              <Button 
-                variant="contained" 
+              <Button
+                variant="contained"
                 onClick={handleNewConversation}
+                startIcon={<Send />}
                 disabled={
                   (!newMessageContent.trim() && attachments.length === 0) || 
                   (messageType !== 'personal' && !messageTitle.trim()) ||
@@ -1761,14 +1975,29 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                   (recipientType === 'grade' && selectedRecipients.length === 0) ||
                   (recipientType === 'class' && selectedRecipients.length === 0) ||
                   (recipientType === 'group' && selectedRecipients.length === 0) ||
+                  (isScheduled && (!scheduledDate || !scheduledTime)) ||
                   sending
                 }
-                startIcon={<Send />}
                 sx={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                  background: brandingGradient,
+                  borderRadius: 3,
+                  px: 4,
+                  py: 1.5,
+                  fontWeight: 600,
+                  boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                  '&:hover': {
+                    background: brandingGradientHover,
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 6px 16px rgba(102, 126, 234, 0.4)',
+                  },
+                  '&:disabled': {
+                    background: '#e0e0e0',
+                    color: '#9e9e9e',
+                  },
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 }}
               >
-                {sending ? 'Sending...' : 'Send Message'}
+                {sending ? 'Sending...' : (isScheduled ? 'Schedule Message' : 'Send Message')}
               </Button>
             </DialogActions>
           </Dialog>

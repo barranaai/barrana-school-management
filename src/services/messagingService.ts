@@ -279,18 +279,31 @@ class MessagingService {
     recipientId: string, 
     initialMessage: string, 
     subject?: string,
-    studentId?: string
+    studentId?: string,
+    schedulingData?: {
+      scheduledDate?: string;
+      scheduledTime?: string;
+      scheduledDateTime?: string;
+      timezone?: string;
+    }
   ): Promise<{ success: boolean; data: { conversation: Conversation; message: Message } }> {
     try {
+      const body: any = {
+        recipientId,
+        initialMessage,
+        subject,
+        studentId
+      };
+      
+      // Add scheduling data if provided
+      if (schedulingData && schedulingData.scheduledDateTime) {
+        body.schedulingData = schedulingData;
+      }
+      
       const response = await fetch(`${this.baseUrl}/api/messages/conversation`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({
-          recipientId,
-          initialMessage,
-          subject,
-          studentId
-        })
+        body: JSON.stringify(body)
       });
       
       const data = await response.json();

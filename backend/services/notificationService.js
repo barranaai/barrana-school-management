@@ -52,6 +52,72 @@ try {
 }
 
 /**
+ * Build professional, branded email shell
+ */
+const buildBrandedEmail = ({
+  school,
+  title,
+  subtitle,
+  bodyHtml,
+}) => {
+  const primary = school?.branding?.primaryColor || '#667eea';
+  const secondary = school?.branding?.secondaryColor || '#764ba2';
+  const schoolName = school?.name || 'Your School';
+
+  const headerLogoHtml = school?.logoCid
+    ? `<img src="cid:${school.logoCid}" alt="${schoolName} Logo" style="height:40px; object-fit:contain; margin-right:12px; vertical-align:middle;" />`
+    : '';
+
+  return `
+  <div style="font-family: Arial, Helvetica, sans-serif; max-width: 640px; margin: 0 auto; padding: 0; background-color: #f8fafc;">
+    <div style="background: linear-gradient(135deg, ${primary} 0%, ${secondary} 100%); color: white; padding: 22px; border-radius: 12px 12px 0 0;">
+      <div style="display:flex; align-items:center; justify-content:center; gap:12px;">
+        ${headerLogoHtml}
+        <div>
+          <div style="font-size: 20px; font-weight: 700; letter-spacing:.2px;">${title}</div>
+          ${subtitle ? `<div style=\"margin-top:4px; font-size:14px; opacity:.95;\">${subtitle}</div>` : ''}
+        </div>
+      </div>
+    </div>
+    <div style="background: #ffffff; padding: 24px; border-radius: 0 0 12px 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.06);">
+      ${bodyHtml}
+      <div style="text-align:center; color:#6b7280; font-size:12px; margin-top:28px; padding-top:16px; border-top:1px solid #e5e7eb;">
+        <div style="font-weight:600;">${schoolName}</div>
+        <div>This is an automated message. Please contact the school for questions.</div>
+      </div>
+    </div>
+  </div>`;
+};
+
+/** Fetch school with branding and prepare inline logo (CID) if available */
+const getSchoolWithBranding = async (schoolId) => {
+  try {
+    const path = require('path');
+    const fs = require('fs');
+    const School = require('../models/School');
+    const school = await School.findById(schoolId).select('name branding logo');
+    if (!school) return null;
+    // Attach logo as inline image (if local file path)
+    const logoPath = school.logo;
+    if (logoPath) {
+      const absolute = path.join(__dirname, '..', logoPath);
+      if (fs.existsSync(absolute)) {
+        school.logoAttachment = {
+          filename: 'school-logo.png',
+          path: absolute,
+          cid: `school-logo-${school._id}@barrana`
+        };
+        school.logoCid = school.logoAttachment.cid;
+      }
+    }
+    return school;
+  } catch (e) {
+    logger.warn('Unable to load school branding for email:', e.message);
+    return null;
+  }
+};
+
+/**
  * Send event reminder via email
  */
 const sendEmailReminder = async (event, recipient, reminderType) => {
@@ -61,10 +127,12 @@ const sendEmailReminder = async (event, recipient, reminderType) => {
   }
 
   try {
+    const school = await getSchoolWithBranding(event.schoolId);
+    const schoolName = school?.name || 'Your School';
     const reminderMessages = {
-      immediate: 'A new event has been added',
-      twoDaysBefore: 'Reminder: Event in 2 days',
-      oneDayBefore: 'Reminder: Event tomorrow'
+      immediate: schoolName,
+      twoDaysBefore: `${schoolName} - Reminder: Event in 2 days`,
+      oneDayBefore: `${schoolName} - Reminder: Event tomorrow`
     };
 
     // Prepare attachments
@@ -92,36 +160,44 @@ const sendEmailReminder = async (event, recipient, reminderType) => {
       }
     }
 
+    // Build body
+    const detailsHtml = `
+      <h3 style="margin: 0 0 12px 0; color: #374151; font-size: 18px;">Event Details</h3>
+      <div style="background: #f9fafb; padding: 16px; border-radius: 8px; border-left: 4px solid ${(school?.branding?.primaryColor || '#667eea')};">
+        <p style="margin: 0 0 8px 0;"><strong>Event:</strong> ${event.title}</p>
+        ${event.description ? `<p style=\"margin:0 0 8px 0;\"><strong>Description:</strong> ${event.description}</p>` : ''}
+        <p style="margin: 0 0 8px 0;"><strong>Date:</strong> ${new Date(event.startDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        ${event.isMultiDay ? `<p style=\"margin:0 0 8px 0;\"><strong>End Date:</strong> ${new Date(event.endDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>` : ''}
+        ${event.location ? `<p style=\"margin:0 0 8px 0;\"><strong>Location:</strong> ${event.location}</p>` : ''}
+        ${emailAttachments.length > 0 ? `<p style=\"margin:0;\"><strong>📎 Attachments:</strong> ${emailAttachments.length} file(s) attached</p>` : ''}
+      </div>`;
+
+    const html = buildBrandedEmail({
+      school,
+      title: 'New Event',
+      subtitle: event.title,
+      bodyHtml: detailsHtml,
+    });
+
+    // Prepare attachments array with logo first (for inline CID reference)
+    const allAttachments = [];
+    
+    // Add school logo first as inline attachment (CID)
+    if (school?.logoAttachment) {
+      allAttachments.push(school.logoAttachment);
+    }
+    
+    // Add event attachments
+    if (emailAttachments.length > 0) {
+      allAttachments.push(...emailAttachments);
+    }
+
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: recipient.email,
       subject: `${reminderMessages[reminderType]}: ${event.title}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #667eea;">${reminderMessages[reminderType]}</h2>
-          <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0;">${event.title}</h3>
-            <p><strong>Date:</strong> ${new Date(event.startDate).toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}${event.isMultiDay ? ` - ${new Date(event.endDate).toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}` : ''}</p>
-            ${event.location ? `<p><strong>Location:</strong> ${event.location}</p>` : ''}
-            ${event.description ? `<p><strong>Details:</strong> ${event.description}</p>` : ''}
-            ${emailAttachments.length > 0 ? `<p><strong>📎 Attachments:</strong> ${emailAttachments.length} file(s) attached</p>` : ''}
-          </div>
-          <p style="color: #666; font-size: 14px;">
-            This is an automated reminder from ${recipient.schoolName || 'your school'}.
-          </p>
-        </div>
-      `,
-      attachments: emailAttachments
+      html,
+      attachments: allAttachments
     };
 
     await emailTransporter.sendMail(mailOptions);
@@ -344,7 +420,7 @@ const sendEventUpdateNotification = async (event, recipients, changes) => {
         subject: `Event Updated: ${event.title}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+            <div style="background: linear-gradient(135deg, ${(school?.branding?.primaryColor || '#667eea')} 0%, ${(school?.branding?.secondaryColor || '#764ba2')} 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
               <h1 style="margin: 0; font-size: 28px; font-weight: 600;">📅 Event Updated</h1>
               <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">${event.title}</p>
             </div>

@@ -1,3 +1,4 @@
+import { useBranding } from '../contexts/BrandingContext';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
@@ -1901,8 +1902,8 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={onRefresh}
-            colors={['#667eea']}
-            tintColor="#667eea"
+            colors={[useBranding().branding?.branding?.primaryColor || '#667eea']}
+            tintColor={useBranding().branding?.branding?.primaryColor || '#667eea'}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -2796,7 +2797,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   chip: {
-    backgroundColor: '#f8f9ff',
+    backgroundColor: '#e3f2fd',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
@@ -2808,7 +2809,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 11,
-    color: '#667eea',
+    color: '#1976d2',
     fontWeight: '600',
     marginLeft: 4,
   },

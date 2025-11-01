@@ -1309,7 +1309,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
           </Typography>
         </DialogTitle>
         
-        <DialogContent sx={{ p: 3, pt: 4 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {selectedReport && (
             <Box>
               <Grid container spacing={3}>
@@ -1557,7 +1557,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
           </IconButton>
         </DialogTitle>
         
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {selectedAudioReport && (
             <Box sx={{ mt: 2 }}>
               
@@ -1833,7 +1833,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
           </IconButton>
         </DialogTitle>
         
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {selectedTranscriptionReport && (
             <Box sx={{ mt: 2 }}>
               {selectedTranscriptionReport.voiceRecording?.transcription ? (
@@ -1948,7 +1948,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
           </IconButton>
         </DialogTitle>
         
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {selectedAIReport && (
             <Box sx={{ mt: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -2149,7 +2149,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
           </IconButton>
         </DialogTitle>
         
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {selectedMediaReport && (
             <Box sx={{ mt: 2 }}>
               {hasMediaAttachments(selectedMediaReport) ? (

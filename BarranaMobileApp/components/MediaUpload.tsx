@@ -12,6 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useBranding } from '../contexts/BrandingContext';
 import * as ImagePicker from 'expo-image-picker';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import apiService from '../apiService';
@@ -44,6 +45,8 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
   maxFiles = 10,
   disabled = false,
 }) => {
+  const { branding } = useBranding();
+  const primaryColor = branding?.branding?.primaryColor || '#667eea';
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [uploadedMedia, setUploadedMedia] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -261,8 +264,8 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
         onPress={() => !disabled && setShowOptions(true)}
         disabled={disabled}
       >
-        <Ionicons name="cloud-upload" size={32} color="#667eea" />
-        <Text style={styles.uploadText}>Add Photos & Videos</Text>
+        <Ionicons name="cloud-upload" size={32} color={primaryColor} />
+        <Text style={[styles.uploadText, { color: primaryColor }]}>Add Photos & Videos</Text>
         <Text style={styles.uploadSubtext}>
           {totalFiles}/{maxFiles} files • Max 50MB each
         </Text>
@@ -383,12 +386,12 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
             <Text style={styles.modalTitle}>Add Media</Text>
             
             <TouchableOpacity style={styles.modalOption} onPress={takePhoto}>
-              <Ionicons name="camera" size={24} color="#667eea" />
+              <Ionicons name="camera" size={24} color={primaryColor} />
               <Text style={styles.modalOptionText}>Take Photo/Video</Text>
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.modalOption} onPress={pickFromGallery}>
-              <Ionicons name="images" size={24} color="#667eea" />
+              <Ionicons name="images" size={24} color={primaryColor} />
               <Text style={styles.modalOptionText}>Choose from Gallery</Text>
             </TouchableOpacity>
             
@@ -595,13 +598,14 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   cancelOption: {
-    backgroundColor: '#f1f1f1',
+    backgroundColor: '#ffebee', // MUI error light
     justifyContent: 'center',
   },
   cancelText: {
     fontSize: 16,
-    color: '#666',
+    color: '#d32f2f', // MUI error main
     textAlign: 'center',
+    fontWeight: '600',
   },
   previewOverlay: {
     flex: 1,

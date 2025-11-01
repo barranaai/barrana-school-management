@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useBranding } from './contexts/BrandingContext';
 import apiService, { User } from './apiService';
 
 interface TeacherDashboardProps {
@@ -47,6 +48,8 @@ interface Report {
 }
 
 const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout, onNavigateToStudents, onNavigateToReports }) => {
+  const { branding } = useBranding();
+  const primaryColor = branding?.branding?.primaryColor || '#667eea';
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
@@ -83,7 +86,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout, onN
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#667eea" />
+        <ActivityIndicator size="large" color={primaryColor} />
         <Text style={styles.loadingText}>Loading dashboard...</Text>
       </View>
     );
@@ -97,8 +100,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout, onN
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={onRefresh}
-            colors={['#667eea']}
-            tintColor="#667eea"
+            colors={[primaryColor]}
+            tintColor={primaryColor}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -107,7 +110,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout, onN
         <View style={styles.statsSection}>
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
-              <Ionicons name="people" size={20} color="#667eea" />
+              <Ionicons name="people" size={20} color={primaryColor} />
               <Text style={styles.statValue}>{students.length}</Text>
               <Text style={styles.statLabel}>Students</Text>
             </View>
@@ -136,7 +139,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout, onN
         {/* Quick Access Cards */}
         <View style={styles.quickAccessSection}>
           <TouchableOpacity style={styles.quickAccessCard} onPress={onNavigateToStudents}>
-            <Ionicons name="people" size={32} color="#667eea" />
+            <Ionicons name="people" size={32} color={primaryColor} />
             <Text style={styles.quickAccessTitle}>My Students</Text>
             <Text style={styles.quickAccessCount}>{students.length} students</Text>
           </TouchableOpacity>

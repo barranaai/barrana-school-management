@@ -105,6 +105,17 @@ const ParentGroupManagement: React.FC<ParentGroupManagementProps> = ({ schoolBra
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedParents, setSelectedParents] = useState<Parent[]>([]);
 
+  // Helper function to get branding colors
+  const getBrandingColors = () => {
+    const primaryColor = schoolBranding?.branding?.primaryColor || schoolBranding?.primaryColor || '#667eea';
+    const secondaryColor = schoolBranding?.branding?.secondaryColor || schoolBranding?.secondaryColor || '#764ba2';
+    return { primaryColor, secondaryColor };
+  };
+
+  const { primaryColor, secondaryColor } = getBrandingColors();
+  const brandingGradient = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+  const brandingGradientHover = `linear-gradient(135deg, ${primaryColor}dd 0%, ${secondaryColor}dd 100%)`;
+
   useEffect(() => {
     loadData();
   }, []);
@@ -400,9 +411,12 @@ const ParentGroupManagement: React.FC<ParentGroupManagementProps> = ({ schoolBra
           startIcon={<Add />}
           onClick={() => handleOpenGroupDialog()}
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: brandingGradient,
             borderRadius: 2,
             px: 3,
+            '&:hover': {
+              background: brandingGradientHover,
+            },
           }}
         >
           Create Group
@@ -427,7 +441,7 @@ const ParentGroupManagement: React.FC<ParentGroupManagementProps> = ({ schoolBra
           <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Avatar sx={{ bgcolor: '#667eea', width: 56, height: 56 }}>
+                <Avatar sx={{ bgcolor: primaryColor, width: 56, height: 56 }}>
                   <Group />
                 </Avatar>
                 <Box>
@@ -591,7 +605,7 @@ const ParentGroupManagement: React.FC<ParentGroupManagementProps> = ({ schoolBra
       {/* Create/Edit Group Dialog */}
       <Dialog open={openGroupDialog} onClose={handleCloseGroupDialog} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ 
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: brandingGradient,
           color: 'white',
           display: 'flex',
           justifyContent: 'space-between',
@@ -604,7 +618,7 @@ const ParentGroupManagement: React.FC<ParentGroupManagementProps> = ({ schoolBra
             <Close />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <TextField
@@ -655,8 +669,11 @@ const ParentGroupManagement: React.FC<ParentGroupManagementProps> = ({ schoolBra
             onClick={handleSubmitGroup}
             disabled={!groupForm.name.trim()}
             sx={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: brandingGradient,
               px: 3,
+              '&:hover': {
+                background: brandingGradientHover,
+              },
             }}
           >
             {isEditingGroup ? 'Update Group' : 'Create Group'}
@@ -693,7 +710,7 @@ const ParentGroupManagement: React.FC<ParentGroupManagementProps> = ({ schoolBra
                 <Close />
               </IconButton>
             </DialogTitle>
-            <DialogContent sx={{ mt: 2 }}>
+            <DialogContent sx={{ p: 3, pt: '24px !important' }}>
               {/* Add Members Section */}
               <Box sx={{ mb: 3 }}>
                 <Typography variant="subtitle1" fontWeight={600} gutterBottom>
@@ -747,7 +764,7 @@ const ParentGroupManagement: React.FC<ParentGroupManagementProps> = ({ schoolBra
                           mb: 1,
                         }}
                       >
-                        <Avatar sx={{ mr: 2, bgcolor: '#667eea' }}>
+                        <Avatar sx={{ mr: 2, bgcolor: primaryColor }}>
                           {member.parentId.firstName[0]}{member.parentId.lastName[0]}
                         </Avatar>
                         <ListItemText

@@ -88,6 +88,10 @@ interface Statistics {
 }
 
 const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) => {
+  const primaryColor = schoolBranding?.branding?.primaryColor || schoolBranding?.primaryColor || '#667eea';
+  const secondaryColor = schoolBranding?.branding?.secondaryColor || schoolBranding?.secondaryColor || '#764ba2';
+  const brandingGradient = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+  const brandingGradientHover = `linear-gradient(135deg, ${primaryColor}dd 0%, ${secondaryColor}dd 100%)`;
   const [logs, setLogs] = useState<NotificationLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -367,7 +371,7 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
       {statistics && (
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} sm={6} md={3}>
-            <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+            <Card sx={{ background: brandingGradient, color: 'white' }}>
               <CardContent>
                 <Typography variant="h6" sx={{ opacity: 0.9, mb: 1 }}>
                   Total Sent
@@ -433,7 +437,7 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <FilterIcon sx={{ mr: 1, color: '#667eea' }} />
+          <FilterIcon sx={{ mr: 1, color: primaryColor }} />
           <Typography variant="h6">Filters</Typography>
         </Box>
 
@@ -537,14 +541,16 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
             variant="contained"
             onClick={handleSearch}
             sx={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderRadius: 2
+              background: brandingGradient,
+              borderRadius: 2,
+              '&:hover': { background: brandingGradientHover }
             }}
           >
             Apply Filters
           </Button>
           <Button
             variant="outlined"
+            color="primary"
             onClick={handleClearFilters}
             startIcon={<ClearIcon />}
           >
@@ -552,6 +558,7 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
           </Button>
           <Button
             variant="outlined"
+            color="primary"
             onClick={fetchLogs}
             startIcon={<RefreshIcon />}
           >
@@ -576,17 +583,11 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
       )}
 
       {/* Logs Table */}
-      <Paper
-        sx={{
-          borderRadius: 3,
-          overflow: 'hidden',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
-        }}
-      >
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
         <TableContainer>
           <Table>
             <TableHead>
-              <TableRow sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+              <TableRow sx={{ background: brandingGradient }}>
                 <TableCell sx={{ color: 'white', fontWeight: 700 }}>Date & Time</TableCell>
                 <TableCell sx={{ color: 'white', fontWeight: 700 }}>Channel</TableCell>
                 <TableCell sx={{ color: 'white', fontWeight: 700 }}>Type</TableCell>
@@ -624,9 +625,7 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
                     key={log._id}
                     hover
                     sx={{
-                      '&:hover': {
-                        background: 'rgba(102, 126, 234, 0.05)'
-                      }
+                      '&:hover': { background: `${primaryColor}0D` }
                     }}
                   >
                     <TableCell>
@@ -729,13 +728,13 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <DialogTitle sx={{ background: brandingGradient, color: 'white' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {selectedLog && getChannelIcon(selectedLog.channel)}
             Notification Details
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {selectedLog && (
             <Grid container spacing={2}>
               <Grid item xs={6}>

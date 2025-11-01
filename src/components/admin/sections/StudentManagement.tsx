@@ -804,6 +804,17 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     return themeColors.cardColors[index % themeColors.cardColors.length];
   };
 
+  // Helper function to get branding colors
+  const getBrandingColors = () => {
+    const primaryColor = schoolBranding?.branding?.primaryColor || schoolBranding?.primaryColor || '#667eea';
+    const secondaryColor = schoolBranding?.branding?.secondaryColor || schoolBranding?.secondaryColor || '#764ba2';
+    return { primaryColor, secondaryColor };
+  };
+
+  const { primaryColor, secondaryColor } = getBrandingColors();
+  const brandingGradient = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+  const brandingGradientHover = `linear-gradient(135deg, ${primaryColor}dd 0%, ${secondaryColor}dd 100%)`;
+
   return (
     <Container maxWidth="xl">
       {/* School Banner */}
@@ -914,7 +925,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         <Paper
           elevation={0}
           sx={{
-            background: getRandomCardColor(0),
+            background: 'rgba(255,255,255,0.95)',
             borderRadius: 4,
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255,255,255,0.3)',
@@ -942,10 +953,10 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     },
                   }}
@@ -961,13 +972,13 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     sx={{
                       borderRadius: 3,
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.3)',
+                        borderColor: `${primaryColor}4D`,
                       },
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     }}
                   >
@@ -992,13 +1003,13 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     sx={{
                       borderRadius: 3,
                       '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.3)',
+                        borderColor: `${primaryColor}4D`,
                       },
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(102, 126, 234, 0.5)',
+                        borderColor: `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#667eea',
+                        borderColor: primaryColor,
                       },
                     }}
                   >
@@ -1018,16 +1029,16 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     startIcon={<Add />}
                     onClick={() => handleOpenDialog('add')}
                     sx={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      background: brandingGradient,
                       borderRadius: 3,
                       px: 3,
                       py: 1.5,
                       fontWeight: 600,
-                      boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                      boxShadow: `0 4px 12px ${primaryColor}4D`,
                       '&:hover': {
-                        background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                        background: brandingGradientHover,
                         transform: 'translateY(-2px)',
-                        boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)',
+                        boxShadow: `0 6px 20px ${primaryColor}66`,
                       },
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     }}
@@ -1043,11 +1054,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                       px: 3,
                       py: 1.5,
                       fontWeight: 600,
-                      borderColor: 'rgba(102, 126, 234, 0.3)',
-                      color: '#667eea',
+                      borderColor: `${primaryColor}4D`,
+                      color: primaryColor,
                       '&:hover': {
-                        borderColor: '#667eea',
-                        background: 'rgba(102, 126, 234, 0.05)',
+                        borderColor: primaryColor,
+                        background: `${primaryColor}0D`,
                         transform: 'translateY(-2px)',
                       },
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1064,11 +1075,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                       px: 3,
                       py: 1.5,
                       fontWeight: 600,
-                      borderColor: 'rgba(102, 126, 234, 0.3)',
-                      color: '#667eea',
+                      borderColor: `${primaryColor}4D`,
+                      color: primaryColor,
                       '&:hover': {
-                        borderColor: '#667eea',
-                        background: 'rgba(102, 126, 234, 0.05)',
+                        borderColor: primaryColor,
+                        background: `${primaryColor}0D`,
                         transform: 'translateY(-2px)',
                       },
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1109,7 +1120,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                   variant="body2"
                   sx={{ 
                     fontWeight: 600,
-                    color: '#667eea',
+                    color: primaryColor,
                   }}
                 >
                   {selectedStudents.length} student(s) selected
@@ -1145,11 +1156,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     px: 3,
                     py: 1.5,
                     fontWeight: 600,
-                    borderColor: 'rgba(102, 126, 234, 0.3)',
-                    color: '#667eea',
+                    borderColor: `${primaryColor}4D`,
+                    color: primaryColor,
                     '&:hover': {
-                      borderColor: '#667eea',
-                      background: 'rgba(102, 126, 234, 0.05)',
+                      borderColor: primaryColor,
+                      background: `${primaryColor}0D`,
                       transform: 'translateY(-2px)',
                     },
                     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -1165,148 +1176,75 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
       {/* Student Directory Table */}
       <Grow in timeout={1400}>
-        <Paper
-          elevation={0}
-          sx={{
-            background: getRandomCardColor(1),
-            borderRadius: 4,
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255,255,255,0.3)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-            },
-          }}
-        >
-          <CardContent sx={{ p: 3 }}>
-            <TableContainer component={Paper} sx={{ boxShadow: 'none', borderRadius: 3 }}>
-              <Table>
-                <TableHead>
-                  <TableRow sx={{ background: 'rgba(102, 126, 234, 0.05)' }}>
+        <Box>
+          <TableContainer component={Paper} sx={{ boxShadow: 'none', borderRadius: 3 }}>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ background: `${primaryColor}0D` }}>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0}
+                      indeterminate={selectedStudents.length > 0 && selectedStudents.length < filteredStudents.length}
+                      onChange={handleSelectAll}
+                      sx={{
+                        color: primaryColor,
+                        '&.Mui-checked': {
+                          color: primaryColor,
+                        },
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Student</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Student ID</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Grade</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Class</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Last Report</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Parent Contact</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredStudents.map((student, index) => (
+                  <TableRow 
+                    key={student.id || student._id} 
+                    hover
+                    sx={{
+                      '&:hover': {
+                        background: `${primaryColor}0D`,
+                      },
+                      transition: 'all 0.2s ease-in-out',
+                    }}
+                  >
                     <TableCell padding="checkbox">
                       <Checkbox
-                        checked={selectedStudents.length === filteredStudents.length && filteredStudents.length > 0}
-                        indeterminate={selectedStudents.length > 0 && selectedStudents.length < filteredStudents.length}
-                        onChange={handleSelectAll}
+                        checked={selectedStudents.includes(student.id || student._id || '')}
+                        onChange={() => handleSelectStudent(student.id || student._id || '')}
                         sx={{
-                          color: '#667eea',
+                          color: primaryColor,
                           '&.Mui-checked': {
-                            color: '#667eea',
+                            color: primaryColor,
                           },
                         }}
                       />
                     </TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Student</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Student ID</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Grade</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Class</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Status</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Last Report</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Parent Contact</TableCell>
-                    <TableCell sx={{ fontWeight: 600, color: '#667eea' }}>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredStudents.map((student, index) => (
-                    <TableRow 
-                      key={student.id || student._id} 
-                      hover
-                      sx={{
-                        '&:hover': {
-                          background: 'rgba(102, 126, 234, 0.05)',
-                        },
-                        transition: 'all 0.2s ease-in-out',
-                      }}
-                    >
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={selectedStudents.includes(student.id || student._id || '')}
-                          onChange={() => handleSelectStudent(student.id || student._id || '')}
-                          sx={{
-                            color: '#667eea',
-                            '&.Mui-checked': {
-                              color: '#667eea',
-                            },
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Avatar 
-                            sx={{ 
-                              mr: 2, 
-                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                            }}
-                          >
-                            {student.avatar}
-                          </Avatar>
-                          <Box>
-                            <Typography 
-                              variant="subtitle2"
-                              sx={{ fontWeight: 600 }}
-                            >
-                              {student.firstName} {student.lastName}
-                            </Typography>
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                color: 'text.secondary',
-                                opacity: 0.8,
-                              }}
-                            >
-                              ID: {student.id || student._id}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography 
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Avatar 
                           sx={{ 
-                            fontWeight: 600, 
-                            fontFamily: 'monospace',
-                            color: '#667eea',
-                            fontSize: '0.875rem'
+                            mr: 2, 
+                            background: brandingGradient,
+                            boxShadow: `0 4px 12px ${primaryColor}40`,
                           }}
                         >
-                          {(student as any).studentId || 'N/A'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography sx={{ fontWeight: 500 }}>
-                          {student.grade}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography sx={{ fontWeight: 500 }}>
-                          {student.class}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={student.status}
-                          color={getStatusColor(student.status || 'active') as any}
-                          size="small"
-                          sx={{
-                            fontWeight: 600,
-                            borderRadius: 2,
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Typography sx={{ fontWeight: 500 }}>
-                          {student.lastReport}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
+                          {student.avatar}
+                        </Avatar>
                         <Box>
                           <Typography 
-                            variant="body2"
-                            sx={{ fontWeight: 500 }}
+                            variant="subtitle2"
+                            sx={{ fontWeight: 600 }}
                           >
-                            {student.parentEmail}
+                            {student.firstName} {student.lastName}
                           </Typography>
                           <Typography 
                             variant="caption" 
@@ -1315,88 +1253,145 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                               opacity: 0.8,
                             }}
                           >
-                            {student.parentPhone}
+                            ID: {student.id || student._id}
                           </Typography>
                         </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Tooltip title="View Details">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleOpenDialog('view', student.id || student._id)}
-                              sx={{
-                                color: '#667eea',
-                                '&:hover': {
-                                  background: 'rgba(102, 126, 234, 0.1)',
-                                  transform: 'scale(1.1)',
-                                },
-                                transition: 'all 0.2s ease-in-out',
-                              }}
-                            >
-                              <Visibility />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Edit Student">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleOpenDialog('edit', student.id || student._id)}
-                              sx={{
-                                color: '#4caf50',
-                                '&:hover': {
-                                  background: 'rgba(76, 175, 80, 0.1)',
-                                  transform: 'scale(1.1)',
-                                },
-                                transition: 'all 0.2s ease-in-out',
-                              }}
-                            >
-                              <Edit />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete Student">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => {
-                                setSelectedStudents([student.id || student._id]);
-                                handleDeleteStudents();
-                              }}
-                              sx={{
-                                color: '#f44336',
-                                '&:hover': {
-                                  background: 'rgba(244, 67, 54, 0.1)',
-                                  transform: 'scale(1.1)',
-                                },
-                                transition: 'all 0.2s ease-in-out',
-                              }}
-                            >
-                              <Delete />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            
-            {filteredStudents.length === 0 && (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    color: 'text.secondary',
-                    opacity: 0.8,
-                    fontWeight: 500,
-                  }}
-                >
-                  No students found matching your criteria
-                </Typography>
-              </Box>
-            )}
-          </CardContent>
-        </Paper>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Typography 
+                        sx={{ 
+                          fontWeight: 600, 
+                          fontFamily: 'monospace',
+                          color: primaryColor,
+                          fontSize: '0.875rem'
+                        }}
+                      >
+                        {(student as any).studentId || 'N/A'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 500 }}>
+                        {student.grade}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 500 }}>
+                        {student.class}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={student.status}
+                        color={getStatusColor(student.status || 'active') as any}
+                        size="small"
+                        sx={{
+                          fontWeight: 600,
+                          borderRadius: 2,
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography sx={{ fontWeight: 500 }}>
+                        {student.lastReport}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Box>
+                        <Typography 
+                          variant="body2"
+                          sx={{ fontWeight: 500 }}
+                        >
+                          {student.parentEmail}
+                        </Typography>
+                        <Typography 
+                          variant="caption" 
+                          sx={{ 
+                            color: 'text.secondary',
+                            opacity: 0.8,
+                          }}
+                        >
+                          {student.parentPhone}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Tooltip title="View Details">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenDialog('view', student.id || student._id)}
+                            sx={{
+                              color: primaryColor,
+                              '&:hover': {
+                                background: `${primaryColor}1A`,
+                                transform: 'scale(1.1)',
+                              },
+                              transition: 'all 0.2s ease-in-out',
+                            }}
+                          >
+                            <Visibility />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit Student">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenDialog('edit', student.id || student._id)}
+                            sx={{
+                              color: '#4caf50',
+                              '&:hover': {
+                                background: 'rgba(76, 175, 80, 0.1)',
+                                transform: 'scale(1.1)',
+                              },
+                              transition: 'all 0.2s ease-in-out',
+                            }}
+                          >
+                            <Edit />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Student">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              setSelectedStudents([student.id || student._id]);
+                              handleDeleteStudents();
+                            }}
+                            sx={{
+                              color: '#f44336',
+                              '&:hover': {
+                                background: 'rgba(244, 67, 54, 0.1)',
+                                transform: 'scale(1.1)',
+                              },
+                              transition: 'all 0.2s ease-in-out',
+                            }}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          
+          {filteredStudents.length === 0 && (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  color: 'text.secondary',
+                  opacity: 0.8,
+                  fontWeight: 500,
+                }}
+              >
+                No students found matching your criteria
+              </Typography>
+            </Box>
+          )}
+        </Box>
       </Grow>
 
       {/* Student Dialog */}
@@ -1418,7 +1413,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: brandingGradient,
             color: 'white',
             fontWeight: 700,
             fontSize: '1.5rem',
@@ -1440,30 +1435,30 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           {dialogType === 'edit' && 'Edit Student'}
           {dialogType === 'view' && 'Student Details'}
         </DialogTitle>
-        <DialogContent sx={{ p: 4, background: 'rgba(255,255,255,0.8)' }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important', background: 'rgba(255,255,255,0.8)' }}>
           {dialogType === 'view' ? (
             <Box>
               {selectedStudentData && (
                 <>
                   {/* Student Avatar and Basic Info Header */}
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    mb: 4, 
-                    p: 3, 
-                    background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
-                    borderRadius: 3,
-                    border: '1px solid rgba(102, 126, 234, 0.2)',
-                  }}>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      mb: 4, 
+                      p: 3, 
+                      background: `linear-gradient(135deg, ${primaryColor}1A 0%, ${secondaryColor}1A 100%)`,
+                      borderRadius: 3,
+                      border: `1px solid ${primaryColor}33`,
+                    }}>
                     <Avatar 
                       sx={{ 
                         mr: 3, 
                         width: 80, 
                         height: 80,
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: brandingGradient,
                         fontSize: '2rem',
                         fontWeight: 700,
-                        boxShadow: '0 8px 24px rgba(102, 126, 234, 0.3)',
+                        boxShadow: `0 8px 24px ${primaryColor}4D`,
                       }}
                     >
                       {selectedStudentData.avatar || `${selectedStudentData.firstName?.[0]}${selectedStudentData.lastName?.[0]}`}
@@ -1473,7 +1468,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                         variant="h4" 
                         sx={{ 
                           fontWeight: 700,
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          background: brandingGradient,
                           backgroundClip: 'text',
                           WebkitBackgroundClip: 'text',
                           WebkitTextFillColor: 'transparent',
@@ -1496,7 +1491,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                         <Chip
                           label={selectedStudentData.grade}
                           sx={{
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            background: brandingGradient,
                             color: 'white',
                             fontWeight: 600,
                             borderRadius: 2,
@@ -1506,8 +1501,8 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                           label={selectedStudentData.class}
                           variant="outlined"
                           sx={{
-                            borderColor: '#667eea',
-                            color: '#667eea',
+                            borderColor: primaryColor,
+                            color: primaryColor,
                             fontWeight: 600,
                             borderRadius: 2,
                           }}
@@ -1539,7 +1534,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                         }}
                       >
                         <Box sx={{
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          background: brandingGradient,
                           color: 'white',
                           p: 2,
                           textAlign: 'center',
@@ -1570,7 +1565,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                         }}
                       >
                         <Box sx={{
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          background: brandingGradient,
                           color: 'white',
                           p: 2,
                           textAlign: 'center',
@@ -1580,8 +1575,8 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                           </Typography>
                         </Box>
                         <Box sx={{ p: 3 }}>
-                          <InfoRow label="Parent Email" value={selectedStudentData.parentEmail} icon={<Email sx={{ fontSize: 16, color: '#667eea' }} />} />
-                          <InfoRow label="Parent Phone" value={selectedStudentData.parentPhone} icon={<Phone sx={{ fontSize: 16, color: '#667eea' }} />} />
+                          <InfoRow label="Parent Email" value={selectedStudentData.parentEmail} icon={<Email sx={{ fontSize: 16, color: primaryColor }} />} />
+                          <InfoRow label="Parent Phone" value={selectedStudentData.parentPhone} icon={<Phone sx={{ fontSize: 16, color: primaryColor }} />} />
                           <InfoRow label="Address" value={selectedStudentData.address || 'No address provided'} />
                           <InfoRow label="Emergency Contact" value={selectedStudentData.emergencyContact || 'No emergency contact provided'} />
                         </Box>
@@ -1601,7 +1596,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                         }}
                       >
                         <Box sx={{
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          background: brandingGradient,
                           color: 'white',
                           p: 2,
                           textAlign: 'center',
@@ -1639,7 +1634,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                           }}
                         >
                           <Box sx={{
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            background: brandingGradient,
                             color: 'white',
                             p: 2,
                             textAlign: 'center',
@@ -1682,14 +1677,14 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: fieldErrors.firstName ? '#f44336' : 'rgba(102, 126, 234, 0.5)',
+                        borderColor: fieldErrors.firstName ? '#f44336' : `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: fieldErrors.firstName ? '#f44336' : '#667eea',
+                        borderColor: fieldErrors.firstName ? '#f44336' : primaryColor,
                       },
                     },
                     '& .MuiInputLabel-root.Mui-focused': {
-                      color: fieldErrors.firstName ? '#f44336' : '#667eea',
+                      color: fieldErrors.firstName ? '#f44336' : primaryColor,
                     },
                   }}
                 />
@@ -1707,14 +1702,14 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: fieldErrors.lastName ? '#f44336' : 'rgba(102, 126, 234, 0.5)',
+                        borderColor: fieldErrors.lastName ? '#f44336' : `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: fieldErrors.lastName ? '#f44336' : '#667eea',
+                        borderColor: fieldErrors.lastName ? '#f44336' : primaryColor,
                       },
                     },
                     '& .MuiInputLabel-root.Mui-focused': {
-                      color: fieldErrors.lastName ? '#f44336' : '#667eea',
+                      color: fieldErrors.lastName ? '#f44336' : primaryColor,
                     },
                   }}
                 />
@@ -1733,14 +1728,14 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 3,
                       '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: fieldErrors.lastName ? '#f44336' : 'rgba(102, 126, 234, 0.5)',
+                        borderColor: fieldErrors.studentId ? '#f44336' : `${primaryColor}80`,
                       },
                       '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: fieldErrors.lastName ? '#f44336' : '#667eea',
+                        borderColor: fieldErrors.studentId ? '#f44336' : primaryColor,
                       },
                     },
                     '& .MuiInputLabel-root.Mui-focused': {
-                      color: fieldErrors.lastName ? '#f44336' : '#667eea',
+                      color: fieldErrors.studentId ? '#f44336' : primaryColor,
                     },
                   }}
                 />
@@ -1922,42 +1917,42 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           borderTop: '1px solid rgba(102, 126, 234, 0.1)',
           gap: 2,
         }}>
-          <Button 
-            onClick={handleCloseDialog}
-            sx={{
-              borderRadius: 3,
-              px: 4,
-              py: 1.5,
-              fontWeight: 600,
-              borderColor: 'rgba(102, 126, 234, 0.3)',
-              color: '#667eea',
-              '&:hover': {
-                borderColor: '#667eea',
-                background: 'rgba(102, 126, 234, 0.05)',
-                transform: 'translateY(-2px)',
-              },
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
-            variant="outlined"
-          >
-            Close
-          </Button>
+            <Button 
+              onClick={handleCloseDialog}
+              sx={{
+                borderRadius: 3,
+                px: 4,
+                py: 1.5,
+                fontWeight: 600,
+                borderColor: `${primaryColor}4D`,
+                color: primaryColor,
+                '&:hover': {
+                  borderColor: primaryColor,
+                  background: `${primaryColor}0D`,
+                  transform: 'translateY(-2px)',
+                },
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+              variant="outlined"
+            >
+              Close
+            </Button>
           {dialogType !== 'view' && (
             <Button 
               variant="contained" 
               onClick={handleSaveStudent}
               disabled={!formData.firstName || !formData.lastName || !formData.studentId || !formData.grade || !formData.parentName || !formData.parentEmail}
               sx={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: brandingGradient,
                 borderRadius: 3,
                 px: 4,
                 py: 1.5,
                 fontWeight: 600,
-                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+                boxShadow: `0 4px 12px ${primaryColor}4D`,
                 '&:hover': {
-                  background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                  background: brandingGradientHover,
                   transform: 'translateY(-2px)',
-                  boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)',
+                  boxShadow: `0 6px 20px ${primaryColor}66`,
                 },
                 '&:disabled': {
                   background: 'rgba(0,0,0,0.12)',

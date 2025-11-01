@@ -12,6 +12,7 @@ import {
   Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useBranding } from './contexts/BrandingContext';
 import { Ionicons } from '@expo/vector-icons';
 import apiService, { User } from './apiService';
 
@@ -386,10 +387,14 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ user, onLogout }) => 
     }
   };
 
+  const { branding } = useBranding();
+  const primaryColor = branding?.branding?.primaryColor || '#667eea';
+  const secondaryColor = branding?.branding?.secondaryColor || '#764ba2';
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#667eea" />
+        <ActivityIndicator size="large" color={primaryColor} />
         <Text style={styles.loadingText}>Loading dashboard...</Text>
       </View>
     );
@@ -399,7 +404,7 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ user, onLogout }) => 
     <View style={styles.container}>
       {/* Enhanced Header */}
       <LinearGradient 
-        colors={['#667eea', '#764ba2']} 
+        colors={[primaryColor, secondaryColor]} 
         style={styles.modernHeader}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -453,7 +458,7 @@ const ParentDashboard: React.FC<ParentDashboardProps> = ({ user, onLogout }) => 
                 <Ionicons 
                   name={tab.icon as any} 
                   size={22} 
-                  color={activeTab === tab.key ? '#667eea' : '#8e8e93'} 
+                  color={activeTab === tab.key ? primaryColor : '#8e8e93'} 
                 />
                 {tab.badge !== null && tab.badge > 0 && (
                   <View style={styles.tabBadge}>

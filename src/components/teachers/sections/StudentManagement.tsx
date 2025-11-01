@@ -2875,7 +2875,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           </Box>
         </DialogTitle>
         
-        <DialogContent sx={{ p: 4, pt: 6 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {selectedStudent && (
             <Box>
               {/* Due Reports Section */}
@@ -3251,7 +3251,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {!aiService.isConfigured() && (
             <Alert severity="warning" sx={{ mb: 3 }}>
               OpenAI API key not configured. Set it using: aiService.setApiKey('your-key')
