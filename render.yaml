@@ -1,0 +1,66 @@
+services:
+  # Backend API Service
+  - type: web
+    name: barrana-backend
+    runtime: node
+    region: oregon
+    plan: starter
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # MongoDB - Use Render's MongoDB or external (MongoDB Atlas recommended)
+      - key: MONGODB_URI
+        sync: false  # Set this in Render dashboard
+      # JWT Configuration
+      - key: JWT_SECRET
+        sync: false  # Set this in Render dashboard - generate a secure random string
+      - key: JWT_EXPIRE
+        value: 7d
+      # Email Configuration
+      - key: EMAIL_USER
+        sync: false  # Set this in Render dashboard
+      - key: EMAIL_PASSWORD
+        sync: false  # Set this in Render dashboard
+      # OpenAI Configuration
+      - key: OPENAI_API_KEY
+        sync: false  # Set this in Render dashboard
+      # AWS Configuration (if using S3 for file uploads)
+      - key: AWS_ACCESS_KEY_ID
+        sync: false  # Set this in Render dashboard if using AWS
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false  # Set this in Render dashboard if using AWS
+      - key: AWS_REGION
+        value: us-east-1
+      - key: AWS_S3_BUCKET
+        sync: false  # Set this in Render dashboard if using AWS
+      # Google Cloud Speech (optional)
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        sync: false  # Set this in Render dashboard if using Google Cloud
+      # Stripe Configuration (optional)
+      - key: STRIPE_SECRET_KEY
+        sync: false  # Set this in Render dashboard if using Stripe
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false  # Set this in Render dashboard if using Stripe
+      # Security
+      - key: BCRYPT_ROUNDS
+        value: 12
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+      # Logging
+      - key: LOG_LEVEL
+        value: info
+      # CORS - Allow frontend domain
+      - key: CORS_ORIGIN
+        sync: false  # Set this to your frontend URL in Render dashboard after deploying frontend
+
+# Note: Frontend static site must be configured manually via Render dashboard
+# Render doesn't support static sites in render.yaml
+# Follow the deployment guide to create the frontend static site
+
