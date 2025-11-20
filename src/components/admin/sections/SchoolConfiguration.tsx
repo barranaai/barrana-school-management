@@ -58,6 +58,12 @@ import {
 } from '@mui/icons-material';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import {
+  formatGradeForDisplay,
+  getGradeDisplayNamesForSchoolType,
+  getGradeCodesForSchoolType,
+  formatGradesForDisplay
+} from '../../../utils/gradeDisplayUtils';
 
 interface SchoolConfigurationProps {
   schoolBranding?: any;
@@ -136,52 +142,40 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
     return spaced.replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  // Fixed grade options list (display values) - fallback when no school grades available
-  const DEFAULT_GRADE_OPTIONS: string[] = [
-    'Infant',
-    'Toddler',
-    'Preschool',
-    'Kindergarten',
-    'Primary/Junior School',
-    'Junior School',
-    'Infant Community / Nido',
-    'Pre Casa/Toddler',
-    "Casa / Children's House",
-    'Sr Casa',
-    'Lower Elementary',
-    'Upper Elementary',
-    'Secondary',
-    'Junior Kindergarten (JK)',
-    'Senior Kindergarten (SK)',
-    'Grade 1',
-    'Grade 2',
-    'Grade 3',
-    'Grade 4',
-    'Grade 5',
-    'Grade 6',
-    'Grade 7',
-    'Grade 8',
-    'Grade 9',
-    'Grade 10',
-    'Grade 11',
-    'Grade 12',
-  ];
+  // Get all possible grade display names from all school types (fallback when no school grades available)
+  // Use centralized utility to ensure consistency
+  const getAllPossibleGradeDisplays = (): string[] => {
+    const allGrades = new Set<string>();
+    
+    // Get grades from all school types
+    ['licensed_daycare', 'montessori_school', 'public_private_school'].forEach(schoolType => {
+      const displayNames = getGradeDisplayNamesForSchoolType(schoolType);
+      displayNames.forEach(grade => allGrades.add(grade));
+    });
+    
+    return Array.from(allGrades).sort();
+  };
+  
+  const DEFAULT_GRADE_OPTIONS: string[] = getAllPossibleGradeDisplays();
 
   // Get grade options based on user role and selected school
+  // Use centralized utility to ensure consistent formatting
   const getGradeOptions = (): string[] => {
     if (isSuperAdmin) {
       // For super admin, use selected school's grades if available
       if (selectedSchoolGrades.length > 0) {
-        return selectedSchoolGrades.map(grade => toProperCase(grade));
+        // Format raw codes to display format using centralized utility
+        return formatGradesForDisplay(selectedSchoolGrades);
       }
-      // Fallback to default options
+      // Fallback to default options (already in display format)
       return DEFAULT_GRADE_OPTIONS;
     } else {
       // For school admin, use current school's grades if available
       if (school?.gradeLevels && school.gradeLevels.length > 0) {
-        return school.gradeLevels.map(grade => toProperCase(grade));
+        // Format raw codes to display format using centralized utility
+        return formatGradesForDisplay(school.gradeLevels);
       }
-      // Fallback to default options
+      // Fallback to default options (already in display format)
       return DEFAULT_GRADE_OPTIONS;
     }
   };

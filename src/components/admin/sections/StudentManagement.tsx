@@ -53,6 +53,12 @@ import toast from 'react-hot-toast';
 import PhoneNumberInput from '../../common/PhoneNumberInput';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import {
+  formatGradeForDisplay as formatGradeDisplay,
+  convertDisplayToRawGrade as convertDisplayToRaw,
+  normalizeGradeFormat,
+  areGradesEqual
+} from '../../../utils/gradeDisplayUtils';
 
 interface StudentManagementProps {
   schoolBranding?: any;
@@ -161,104 +167,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   console.log('StudentManagement - school object:', school);
   console.log('StudentManagement - availableGrades:', availableGrades);
   
-  const formatGradeForDisplay = (grade: string) => {
-    if (!grade) return grade;
-    const lower = grade.toLowerCase();
-    switch (lower) {
-      // Daycare / early childhood
-      case 'infant': return 'Infant';
-      case 'toddler': return 'Toddler';
-      case 'preschool': return 'Preschool';
-      case 'kindergarten': return 'Kindergarten';
-      case 'primary_junior_school_age': return 'Primary/Junior School Age';
-      case 'junior_school_age': return 'Junior School Age';
-
-      // Montessori
-      case 'infant_community_nido': return 'Infant Community (Nido)';
-      case 'pre_casa_toddler': return 'Pre-Casa (Toddler)';
-      case 'casa_childrens_house': return "Casa (Children's House)";
-      case 'sr_casa': return 'Sr. Casa';
-      case 'lower_elementary': return 'Lower Elementary';
-      case 'upper_elementary': return 'Upper Elementary';
-      case 'secondary': return 'Secondary';
-
-      // Public/Private
-      case 'junior_kindergarten_jk': return 'Junior Kindergarten (JK)';
-      case 'senior_kindergarten_sk': return 'Senior Kindergarten (SK)';
-
-      // Standard grades
-      case 'grade1': return 'Grade 1';
-      case 'grade2': return 'Grade 2';
-      case 'grade3': return 'Grade 3';
-      case 'grade4': return 'Grade 4';
-      case 'grade5': return 'Grade 5';
-      case 'grade6': return 'Grade 6';
-      case 'grade7': return 'Grade 7';
-      case 'grade8': return 'Grade 8';
-      case 'grade9': return 'Grade 9';
-      case 'grade10': return 'Grade 10';
-      case 'grade11': return 'Grade 11';
-      case 'grade12': return 'Grade 12';
-      default: {
-        // Title-case unknown codes, replacing underscores
-        const title = lower
-          .replace(/_/g, ' ')
-          .split(' ')
-          .map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
-          .join(' ');
-        return title;
-      }
-    }
-  };
-
-  // Function to normalize any grade format to display format
-  const normalizeGradeForDisplay = (grade: string) => {
-    // If it's already in display format, return as is
-    if (grade.startsWith('Grade ') || grade === 'Preschool' || grade === 'Kindergarten') {
-      return grade;
-    }
-    // Otherwise, convert from raw format to display format
-    return formatGradeForDisplay(grade);
-  };
-
-  // Function to convert display format back to raw format
-  const convertDisplayToRawGrade = (displayGrade: string) => {
-    switch (displayGrade) {
-      // Daycare / early childhood (display -> raw)
-      case 'Infant': return 'infant';
-      case 'Toddler': return 'toddler';
-      case 'Preschool': return 'preschool';
-      case 'Kindergarten': return 'kindergarten';
-      case 'Primary/Junior School Age': return 'primary_junior_school_age';
-      case 'Junior School Age': return 'junior_school_age';
-
-      // Montessori
-      case 'Infant Community (Nido)': return 'infant_community_nido';
-      case 'Pre-Casa (Toddler)': return 'pre_casa_toddler';
-      case "Casa (Children's House)": return 'casa_childrens_house';
-      case 'Sr. Casa': return 'sr_casa';
-      case 'Lower Elementary': return 'lower_elementary';
-      case 'Upper Elementary': return 'upper_elementary';
-      case 'Secondary': return 'secondary';
-
-      // Public/Private
-      case 'Junior Kindergarten (JK)': return 'junior_kindergarten_jk';
-      case 'Senior Kindergarten (SK)': return 'senior_kindergarten_sk';
-
-      // Standard grades
-      case 'Preschool ': return 'preschool';
-      default:
-        if (displayGrade.startsWith('Grade ')) {
-          return displayGrade.toLowerCase().replace(' ', '');
-        }
-        // Generic fallback: lowercase and replace spaces/slashes with underscores, remove punctuation
-        return displayGrade
-          .toLowerCase()
-          .replace(/[\s/]+/g, '_')
-          .replace(/[()'’]/g, '')
-          .replace(/__+/g, '_');
-    }
-  };
+  // Use centralized grade display utilities for consistency across the application
+  // This ensures all components use the same grade format, preventing mismatches
+  const formatGradeForDisplay = formatGradeDisplay;
+  const normalizeGradeForDisplay = normalizeGradeFormat;
+  const convertDisplayToRawGrade = convertDisplayToRaw;
   
   const grades = availableGrades.length > 0 
     ? availableGrades.map(formatGradeForDisplay) 
@@ -465,28 +378,44 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       setFieldErrors({}); // Clear validation errors
       setSelectedStudentData(null);
     } else if (studentId) {
-      const student = students.find(s => s.id === studentId);
+      // Find student by either id or _id
+      const student = students.find(s => (s.id === studentId) || (s._id === studentId) || ((s as any)._id === studentId));
+      
+      console.log('🔍 Looking for student with ID:', studentId);
+      console.log('🔍 Available students:', students.map(s => ({ id: s.id, _id: (s as any)._id, name: s.firstName })));
+      
       if (student) {
+        console.log('✅ Found student for editing:', student);
         setSelectedStudentData(student);
+        
+        // Handle different field name variations from backend
+        const studentGrade = student.grade || (student as any).studentGrade || '';
+        const studentClass = student.class || (student as any).studentClass || '';
+        const studentStatus = student.status || ((student as any).isActive ? 'active' : 'inactive');
+        
         setFormData({
-          firstName: student.firstName,
-          lastName: student.lastName,
+          firstName: student.firstName || '',
+          lastName: student.lastName || '',
           email: (student as any).email || '',
           studentId: (student as any).studentId || '',
-          grade: student.grade,
-          class: student.class || '',
-          status: student.status || 'active',
+          grade: studentGrade,
+          class: studentClass,
+          status: studentStatus,
           parentName: (student as any).parentName || '',
-          parentEmail: student.parentEmail || '',
-          parentPhone: student.parentPhone || '',
-          enrollmentDate: student.enrollmentDate || '',
-          dateOfBirth: student.dateOfBirth || '',
-          address: student.address || '',
-          emergencyContact: student.emergencyContact || '',
+          parentEmail: student.parentEmail || (student as any).parentEmail || '',
+          parentPhone: student.parentPhone || (student as any).parentPhone || '',
+          enrollmentDate: student.enrollmentDate ? new Date(student.enrollmentDate).toISOString().split('T')[0] : '',
+          dateOfBirth: student.dateOfBirth ? new Date(student.dateOfBirth).toISOString().split('T')[0] : '',
+          address: student.address || (student as any).address || '',
+          emergencyContact: student.emergencyContact || (student as any).emergencyContact || '',
           medicalInfo: formatMedicalInfo(student.medicalInfo),
-          academicLevel: student.academicLevel || '',
-          notes: student.notes || '',
+          academicLevel: student.academicLevel || (student as any).academicLevel || 'beginner',
+          notes: student.notes || (student as any).notes || '',
         });
+      } else {
+        console.error('❌ Student not found with ID:', studentId);
+        toast.error('Student not found. Please refresh the page.');
+        return;
       }
     }
   };
@@ -497,6 +426,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       firstName: '',
       lastName: '',
       email: '',
+      studentId: '',
       grade: '',
       class: '',
       status: 'active' as 'active' | 'pending' | 'inactive',
@@ -558,11 +488,20 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   const handleSaveStudent = async () => {
     console.log('StudentManagement - handleSaveStudent called');
     if (dialogType === 'add') {
-      // Generate avatar initials from name
-      const nameParts = formData.firstName.split(' ');
-      const avatar = nameParts.length >= 2 
-        ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
-        : formData.firstName.substring(0, 2).toUpperCase();
+      // Generate avatar initials from name (with null safety)
+      const firstName = formData.firstName || '';
+      const lastName = formData.lastName || '';
+      
+      let avatar = '';
+      if (firstName && lastName) {
+        avatar = `${firstName[0]}${lastName[0]}`.toUpperCase();
+      } else if (firstName && firstName.length >= 2) {
+        avatar = firstName.substring(0, 2).toUpperCase();
+      } else if (firstName) {
+        avatar = firstName[0].toUpperCase();
+      } else {
+        avatar = 'ST'; // Default avatar for Student
+      }
 
       // Map form data to backend expectations
       const studentData = {
@@ -594,11 +533,18 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       // If a class is selected, get the teachers from that class
       if (formData.class) {
         const selectedClass = availableClasses.find(cls => cls.name === formData.class);
-        if (selectedClass && selectedClass.assignedTeachers.length > 0) {
+        if (selectedClass) {
+          // Add classId reference
+          if (selectedClass._id) {
+            (studentData as any).classId = selectedClass._id;
+          }
+          
           // Add the primary teacher as assignedTeacher
-          const primaryTeacher = selectedClass.assignedTeachers.find(t => t.role === 'primary');
-          if (primaryTeacher && primaryTeacher.teacherId && primaryTeacher.teacherId._id) {
-            (studentData as any).assignedTeacher = primaryTeacher.teacherId._id;
+          if (selectedClass.assignedTeachers && selectedClass.assignedTeachers.length > 0) {
+            const primaryTeacher = selectedClass.assignedTeachers.find(t => t.role === 'primary');
+            if (primaryTeacher && primaryTeacher.teacherId && primaryTeacher.teacherId._id) {
+              (studentData as any).assignedTeacher = primaryTeacher.teacherId._id;
+            }
           }
         }
       }
@@ -687,8 +633,16 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       setFieldErrors({}); // Clear validation errors
     } else if (dialogType === 'edit' && selectedStudentData) {
       try {
+        console.log('📝 Current formData state:', formData);
+        
+        // Validate required fields
+        if (!formData.firstName || !formData.lastName) {
+          toast.error('First name and last name are required');
+          return;
+        }
+        
         // Map form data to backend expectations for update
-        const updateData = {
+        const updateData: any = {
           firstName: formData.firstName,
           lastName: formData.lastName,
           // Only include email if it's not empty
@@ -708,6 +662,25 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           notes: formData.notes,
           isActive: formData.status === 'active', // Convert status to isActive boolean
         };
+        
+        // If a class is selected, update classId and assignedTeacher
+        if (formData.class) {
+          const selectedClass = availableClasses.find(cls => cls.name === formData.class);
+          if (selectedClass) {
+            // Add classId reference
+            if (selectedClass._id) {
+              updateData.classId = selectedClass._id;
+            }
+            
+            // Add the primary teacher as assignedTeacher
+            if (selectedClass.assignedTeachers && selectedClass.assignedTeachers.length > 0) {
+              const primaryTeacher = selectedClass.assignedTeachers.find(t => t.role === 'primary');
+              if (primaryTeacher && primaryTeacher.teacherId && primaryTeacher.teacherId._id) {
+                updateData.assignedTeacher = primaryTeacher.teacherId._id;
+              }
+            }
+          }
+        }
 
         console.log('StudentManagement - About to update student with:', {
           studentId: selectedStudentData._id || selectedStudentData.id,
@@ -743,13 +716,23 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     setOpenDeleteDialog(true);
   };
 
-  const confirmDeleteStudents = () => {
-    selectedStudents.forEach(studentId => {
-      deleteStudent(studentId);
-    });
-    toast.success('Students deleted successfully!');
-    setSelectedStudents([]);
-    setOpenDeleteDialog(false);
+  const confirmDeleteStudents = async () => {
+    try {
+      // Delete all selected students
+      const deletePromises = selectedStudents.map(studentId => deleteStudent(studentId));
+      await Promise.all(deletePromises);
+      
+      const count = selectedStudents.length;
+      toast.success(`${count} student${count > 1 ? 's' : ''} deleted successfully!`);
+      setSelectedStudents([]);
+      setOpenDeleteDialog(false);
+      
+      // Refresh the students list
+      await refreshData();
+    } catch (error) {
+      console.error('Error deleting students:', error);
+      toast.error('Failed to delete some students. Please try again.');
+    }
   };
 
   const handleExportStudents = () => {

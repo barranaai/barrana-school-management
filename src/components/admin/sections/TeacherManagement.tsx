@@ -95,6 +95,10 @@ import toast from 'react-hot-toast';
 import PhoneNumberInput from '../../common/PhoneNumberInput';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import {
+  formatGradeForDisplay as formatGradeDisplay,
+  convertDisplayToRawGrade as convertDisplayToRaw
+} from '../../../utils/gradeDisplayUtils';
 
 interface TeacherManagementProps {
   schoolBranding?: any;
@@ -128,6 +132,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [generatedPassword, setGeneratedPassword] = useState<string>('');
+  const [saving, setSaving] = useState(false);
 
   // State for teacher form
   const [teacherForm, setTeacherForm] = useState({
@@ -135,7 +141,6 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
     email: '',
     phone: '',
     grade: '',
-    password: '',
     sendWelcomeEmail: true,
     canEmailReports: false,
     hireDate: '',
@@ -431,107 +436,9 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
   
   console.log('TeacherManagement - school object:', school);
   console.log('TeacherManagement - availableGrades:', availableGrades);
-  const formatGradeForDisplay = (grade: string) => {
-    if (!grade) return grade;
-    const lower = grade.toLowerCase();
-    switch (lower) {
-      // Daycare / early childhood
-      case 'infant': return 'Infant';
-      case 'toddler': return 'Toddler';
-      case 'preschool': return 'Preschool';
-      case 'kindergarten': return 'Kindergarten';
-      case 'primary_junior_school_age': return 'Primary/Junior School Age';
-      case 'junior_school_age': return 'Junior School Age';
-
-      // Montessori
-      case 'infant_community_nido': return 'Infant Community (Nido)';
-      case 'pre_casa_toddler': return 'Pre-Casa (Toddler)';
-      case 'casa_childrens_house': return "Casa (Children's House)";
-      case 'sr_casa': return 'Sr. Casa';
-      case 'lower_elementary': return 'Lower Elementary';
-      case 'upper_elementary': return 'Upper Elementary';
-      case 'secondary': return 'Secondary';
-
-      // Public/Private
-      case 'junior_kindergarten_jk': return 'Junior Kindergarten (JK)';
-      case 'senior_kindergarten_sk': return 'Senior Kindergarten (SK)';
-
-      // Standard grades
-      case 'grade1': return 'Grade 1';
-      case 'grade2': return 'Grade 2';
-      case 'grade3': return 'Grade 3';
-      case 'grade4': return 'Grade 4';
-      case 'grade5': return 'Grade 5';
-      case 'grade6': return 'Grade 6';
-      case 'grade7': return 'Grade 7';
-      case 'grade8': return 'Grade 8';
-      case 'grade9': return 'Grade 9';
-      case 'grade10': return 'Grade 10';
-      case 'grade11': return 'Grade 11';
-      case 'grade12': return 'Grade 12';
-      default: {
-        // Generic prettifier for unforeseen raw codes
-        const title = lower
-          .replace(/_/g, ' ')
-          .split(' ')
-          .map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
-          .join(' ');
-        return title;
-      }
-    }
-  };
-
-  const formatGradeForDatabase = (grade: string) => {
-    if (!grade) return grade as any;
-    switch (grade) {
-      // Daycare / early childhood (display -> raw)
-      case 'Infant': return 'infant';
-      case 'Toddler': return 'toddler';
-      case 'Preschool': return 'preschool';
-      case 'Kindergarten': return 'kindergarten';
-      case 'Primary/Junior School Age': return 'primary_junior_school_age';
-      case 'Junior School Age': return 'junior_school_age';
-
-      // Montessori
-      case 'Infant Community (Nido)': return 'infant_community_nido';
-      case 'Pre-Casa (Toddler)': return 'pre_casa_toddler';
-      case "Casa (Children's House)": return 'casa_childrens_house';
-      case 'Sr. Casa': return 'sr_casa';
-      case 'Lower Elementary': return 'lower_elementary';
-      case 'Upper Elementary': return 'upper_elementary';
-      case 'Secondary': return 'secondary';
-
-      // Public/Private
-      case 'Junior Kindergarten (JK)': return 'junior_kindergarten_jk';
-      case 'Senior Kindergarten (SK)': return 'senior_kindergarten_sk';
-
-      // Standard grades
-      case 'Grade 1': return 'grade1';
-      case 'Grade 2': return 'grade2';
-      case 'Grade 3': return 'grade3';
-      case 'Grade 4': return 'grade4';
-      case 'Grade 5': return 'grade5';
-      case 'Grade 6': return 'grade6';
-      case 'Grade 7': return 'grade7';
-      case 'Grade 8': return 'grade8';
-      case 'Grade 9': return 'grade9';
-      case 'Grade 10': return 'grade10';
-      case 'Grade 11': return 'grade11';
-      case 'Grade 12': return 'grade12';
-      default: {
-        return grade
-          .toLowerCase()
-          .replace(/[\s/]+/g, '_')
-          .replace(/[()'']/g, '')
-          .replace(/__+/g, '_');
-      }
-    }
-  };
-
-  // Function to normalize any grade format to display format
-  const normalizeGradeForDisplay = (grade: string) => {
-    return formatGradeForDisplay(grade);
-  };
+  // Use centralized grade display utilities for consistency
+  const formatGradeForDisplay = formatGradeDisplay;
+  const formatGradeForDatabase = convertDisplayToRaw;
 
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
@@ -752,7 +659,6 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
         email: '',
         phone: '',
         grade: '',
-        password: '',
         sendWelcomeEmail: true,
         canEmailReports: false,
         hireDate: '',
@@ -772,7 +678,6 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
           email: teacher.email,
           phone: teacher.phone || '',
           grade: teacher.grade || '',
-          password: '',
           sendWelcomeEmail: false,
           canEmailReports: !!teacher.canEmailReports,
           hireDate: teacher.hireDate ? new Date(teacher.hireDate).toISOString().split('T')[0] : '',
@@ -792,7 +697,6 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
       email: '',
       phone: '',
       grade: '',
-      password: '',
       sendWelcomeEmail: true,
       canEmailReports: false,
       hireDate: '',
@@ -802,6 +706,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
       isActive: true,
     });
     setSelectedTeacher(null);
+    setGeneratedPassword(''); // Clear generated password
   };
 
   const handleFormChange = (field: string, value: string | boolean) => {
@@ -813,9 +718,12 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
 
   const handleSaveTeacher = async () => {
     try {
+      setSaving(true);
+      
       // Validate required fields
       if (!teacherForm.name.trim()) {
         showSnackbar('Teacher name is required', 'error');
+        setSaving(false);
         return;
       }
       
@@ -838,21 +746,13 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
           schoolId: school.id,
         });
 
-        // Prepare teacher data
-        const generatedPassword = (teacherForm.password && teacherForm.password.length >= 8) 
-          ? teacherForm.password 
-          : 'TeacherPass123';
-        console.log('TeacherManagement - teacherForm.password:', teacherForm.password);
-        console.log('TeacherManagement - Generated password:', generatedPassword);
-        console.log('TeacherManagement - Password length:', generatedPassword.length);
-        
+        // Prepare teacher data (password will be auto-generated by backend)
         const teacherData: any = {
           firstName: firstName,
           lastName: lastName,
           email: teacherForm.email,
           phone: teacherForm.phone,
           grade: teacherForm.grade,
-          password: generatedPassword,
           canEmailReports: teacherForm.canEmailReports,
           students: 0,
           reportsGenerated: 0,
@@ -890,11 +790,40 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
 
         const result = await addTeacher(teacherData);
         console.log('TeacherManagement - addTeacher result:', result);
+        console.log('TeacherManagement - Has generatedPassword?:', !!result?.generatedPassword);
+        console.log('TeacherManagement - generatedPassword value:', result?.generatedPassword);
         
         // Force refresh the data to ensure we have the latest teachers
         await refreshData();
         
         showSnackbar('Teacher added successfully!', 'success');
+        
+        // Show generated password in the dialog
+        if (result && result.generatedPassword) {
+          console.log('✅ Setting generatedPassword:', result.generatedPassword);
+          setGeneratedPassword(result.generatedPassword);
+          
+          // Set the newly created teacher as selectedTeacher
+          const newlyCreatedTeacher = result.data;
+          if (newlyCreatedTeacher) {
+            const teacherForView = {
+              ...newlyCreatedTeacher,
+              id: newlyCreatedTeacher._id,
+              name: `${newlyCreatedTeacher.firstName} ${newlyCreatedTeacher.lastName}`,
+              status: 'active',
+              hireDate: newlyCreatedTeacher.hireDate || 'N/A'
+            };
+            console.log('✅ Setting selectedTeacher:', teacherForView);
+            setSelectedTeacher(teacherForView);
+          }
+          
+          setDialogType('view');
+          console.log('✅ Dialog type set to view');
+          // Don't close the dialog - keep it open to show password
+        } else {
+          console.log('❌ No generatedPassword in result, closing dialog');
+          handleCloseTeacherDialog();
+        }
       } else if (dialogType === 'edit' && selectedTeacher) {
         console.log('TeacherManagement - Updating teacher:', {
           firstName: teacherForm.name.split(' ')[0] || '',
@@ -944,6 +873,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
       
       console.error('Detailed error:', errorMessage);
       showSnackbar(errorMessage, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1705,7 +1636,12 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
       </Grow>
 
       {/* Add/Edit Teacher Dialog */}
-      <Dialog open={openTeacherDialog} onClose={handleCloseTeacherDialog} maxWidth="md" fullWidth>
+      <Dialog 
+        open={openTeacherDialog} 
+        onClose={saving ? undefined : handleCloseTeacherDialog} 
+        maxWidth="md" 
+        fullWidth
+      >
         <DialogTitle
           sx={{
             background: brandingGradient,
@@ -1733,6 +1669,74 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
         <DialogContent sx={{ p: 3, pt: '24px !important' }}>
           {dialogType === 'view' ? (
             <Box>
+              {/* Show Generated Password if available */}
+              {(() => {
+                console.log('🔍 Dialog render - generatedPassword state:', generatedPassword);
+                console.log('🔍 Dialog render - dialogType:', dialogType);
+                console.log('🔍 Dialog render - teacherForm.email:', teacherForm.email);
+                return null;
+              })()}
+              {generatedPassword && (
+                <Alert severity="success" sx={{ mb: 3 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                    🎉 Teacher Account Created Successfully!
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    Please share these login credentials with the teacher:
+                  </Typography>
+                  <Box sx={{ 
+                    p: 2, 
+                    bgcolor: 'rgba(255,255,255,0.9)', 
+                    borderRadius: 1,
+                    border: '2px dashed',
+                    borderColor: primaryColor,
+                    mb: 2
+                  }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      <strong>Email:</strong>
+                    </Typography>
+                    <Typography variant="body1" sx={{ fontFamily: 'monospace', mb: 2 }}>
+                      {teacherForm.email}
+                    </Typography>
+                    
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      <strong>Password:</strong>
+                    </Typography>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        fontWeight: 700, 
+                        color: primaryColor,
+                        fontFamily: 'monospace',
+                        letterSpacing: '2px'
+                      }}
+                    >
+                      {generatedPassword}
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`Email: ${teacherForm.email}\nPassword: ${generatedPassword}`);
+                      showSnackbar('Credentials copied to clipboard!', 'success');
+                    }}
+                    sx={{
+                      borderColor: primaryColor,
+                      color: primaryColor,
+                      '&:hover': {
+                        borderColor: primaryColor,
+                        bgcolor: `${primaryColor}10`,
+                      },
+                    }}
+                  >
+                    📋 Copy Credentials
+                  </Button>
+                  <Typography variant="caption" display="block" sx={{ mt: 2, color: 'warning.main' }}>
+                    ⚠️ Save this password now - it will not be shown again!
+                  </Typography>
+                </Alert>
+              )}
               {selectedTeacher && (
                 <Grid container spacing={3} sx={{ mt: 1 }}>
                   <Grid item xs={12} md={6}>
@@ -1949,18 +1953,6 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                   </Typography>
                 </Grid>
               )}
-              {dialogType === 'add' && (
-                <Grid item xs={12}>
-                  <TextField 
-                    fullWidth 
-                    label="Password" 
-                    type="password" 
-                    value={teacherForm.password}
-                    onChange={(e) => handleFormChange('password', e.target.value)}
-                    required
-                  />
-                </Grid>
-              )}
               {(dialogType === 'add' || dialogType === 'edit') && (
                 <Grid item xs={12}>
                   <FormControlLabel
@@ -1980,6 +1972,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
         <DialogActions sx={{ p: 3, gap: 2 }}>
           <Button 
             onClick={handleCloseTeacherDialog}
+            disabled={saving}
             sx={{
               borderColor: '#d32f2f',
               color: '#d32f2f',
@@ -1991,6 +1984,10 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                 borderColor: '#c62828',
                 backgroundColor: '#ffcdd2',
               },
+              '&:disabled': {
+                borderColor: 'rgba(0, 0, 0, 0.12)',
+                color: 'rgba(0, 0, 0, 0.38)',
+              },
             }}
           >
             Cancel
@@ -1999,7 +1996,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
             <Button 
               variant="contained" 
               onClick={handleSaveTeacher}
-              disabled={!teacherForm.name || !teacherForm.email || !teacherForm.phone || !teacherForm.grade || (dialogType === 'add' && !teacherForm.password)}
+              disabled={saving || !teacherForm.name || !teacherForm.email || !teacherForm.phone || !teacherForm.grade}
+              startIcon={saving ? <CircularProgress size={20} sx={{ color: 'white' }} /> : null}
               sx={{
                 background: brandingGradient,
                 '&:hover': {
@@ -2011,7 +2009,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
                 },
               }}
             >
-              {dialogType === 'add' ? 'Add Teacher' : 'Save Changes'}
+              {saving ? 'Saving...' : (dialogType === 'add' ? 'Add Teacher' : 'Save Changes')}
             </Button>
           )}
         </DialogActions>

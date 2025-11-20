@@ -50,6 +50,10 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { apiService, CreateClassData } from '../../../services/apiService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import {
+  formatGradeForDisplay as formatGradeDisplay,
+  convertDisplayToRawGrade as convertDisplayToRaw
+} from '../../../utils/gradeDisplayUtils';
 
 interface ClassManagementProps {
   schoolBranding?: any;
@@ -227,108 +231,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     avgEnrollment: classes.length > 0 ? Math.round(classes.reduce((sum, c) => sum + c.currentEnrollment, 0) / classes.length) : 0,
   };
 
-  const formatGradeForDisplay = (grade: string) => {
-    if (!grade) return grade;
-    const lower = grade.toLowerCase();
-    switch (lower) {
-      // Daycare and general early childhood
-      case 'infant': return 'Infant';
-      case 'toddler': return 'Toddler';
-      case 'preschool': return 'Preschool';
-      case 'kindergarten': return 'Kindergarten';
-      case 'primary_junior_school_age': return 'Primary/Junior School Age';
-      case 'junior_school_age': return 'Junior School Age';
-
-      // Montessori
-      case 'infant_community_nido': return 'Infant Community (Nido)';
-      case 'pre_casa_toddler': return 'Pre-Casa (Toddler)';
-      case 'casa_childrens_house': return "Casa (Children's House)";
-      case 'sr_casa': return 'Sr. Casa';
-      case 'lower_elementary': return 'Lower Elementary';
-      case 'upper_elementary': return 'Upper Elementary';
-      case 'secondary': return 'Secondary';
-
-      // Public/Private
-      case 'junior_kindergarten_jk': return 'Junior Kindergarten (JK)';
-      case 'senior_kindergarten_sk': return 'Senior Kindergarten (SK)';
-
-      // Standard grades
-      case 'grade1': return 'Grade 1';
-      case 'grade2': return 'Grade 2';
-      case 'grade3': return 'Grade 3';
-      case 'grade4': return 'Grade 4';
-      case 'grade5': return 'Grade 5';
-      case 'grade6': return 'Grade 6';
-      case 'grade7': return 'Grade 7';
-      case 'grade8': return 'Grade 8';
-      case 'grade9': return 'Grade 9';
-      case 'grade10': return 'Grade 10';
-      case 'grade11': return 'Grade 11';
-      case 'grade12': return 'Grade 12';
-      default: {
-        // Generic prettifier for unforeseen raw codes: underscore to spaces + title case
-        const title = lower
-          .replace(/_/g, ' ')
-          .split(' ')
-          .map(w => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
-          .join(' ');
-        return title;
-      }
-    }
-  };
-
-  const formatGradeForDatabase = (grade: string) => {
-    if (!grade) return grade as any;
-    switch (grade) {
-      // Daycare and general early childhood (display -> raw)
-      case 'Infant': return 'infant';
-      case 'Toddler': return 'toddler';
-      case 'Preschool': return 'preschool';
-      case 'Kindergarten': return 'kindergarten';
-      case 'Primary/Junior School Age': return 'primary_junior_school_age';
-      case 'Junior School Age': return 'junior_school_age';
-
-      // Montessori
-      case 'Infant Community (Nido)': return 'infant_community_nido';
-      case 'Pre-Casa (Toddler)': return 'pre_casa_toddler';
-      case "Casa (Children's House)": return 'casa_childrens_house';
-      case 'Sr. Casa': return 'sr_casa';
-      case 'Lower Elementary': return 'lower_elementary';
-      case 'Upper Elementary': return 'upper_elementary';
-      case 'Secondary': return 'secondary';
-
-      // Public/Private
-      case 'Junior Kindergarten (JK)': return 'junior_kindergarten_jk';
-      case 'Senior Kindergarten (SK)': return 'senior_kindergarten_sk';
-
-      // Standard grades
-      case 'Grade 1': return 'grade1';
-      case 'Grade 2': return 'grade2';
-      case 'Grade 3': return 'grade3';
-      case 'Grade 4': return 'grade4';
-      case 'Grade 5': return 'grade5';
-      case 'Grade 6': return 'grade6';
-      case 'Grade 7': return 'grade7';
-      case 'Grade 8': return 'grade8';
-      case 'Grade 9': return 'grade9';
-      case 'Grade 10': return 'grade10';
-      case 'Grade 11': return 'grade11';
-      case 'Grade 12': return 'grade12';
-      default: {
-        // Generic fallback: lowercase, replace spaces and slashes with underscores, remove punctuation
-        return grade
-          .toLowerCase()
-          .replace(/[\s/]+/g, '_')
-          .replace(/[()'’]/g, '')
-          .replace(/__+/g, '_');
-      }
-    }
-  };
-
-  // Function to normalize any grade format to display format
-  const normalizeGradeForDisplay = (grade: string) => {
-    return formatGradeForDisplay(grade);
-  };
+  // Use centralized grade display utilities for consistency
+  const formatGradeForDisplay = formatGradeDisplay;
+  const formatGradeForDatabase = convertDisplayToRaw;
   
   console.log('ClassManagement - availableGrades (raw):', availableGrades);
   const grades = availableGrades.length > 0 

@@ -90,6 +90,11 @@ import SchoolConfiguration from '../admin/sections/SchoolConfiguration';
 import apiService from '../../services/apiService';
 import { getTimezoneOptions } from '../../utils/timezoneUtils';
 import TimezoneSelector from '../common/TimezoneSelector';
+import {
+  getGradeCodesForSchoolType,
+  formatGradeForDisplay,
+  getGradeDisplayNamesForSchoolType
+} from '../../utils/gradeDisplayUtils';
 
 // Get countries from the library
 const COUNTRIES = Country.getAllCountries().sort((a, b) => a.name.localeCompare(b.name));
@@ -109,86 +114,15 @@ const getCitiesForCountry = (countryCode: string, stateCode?: string) => {
   return City.getCitiesOfCountry(countryCode)?.sort((a, b) => a.name.localeCompare(b.name)) || [];
 };
 
-// Grade levels for each school type
-const GRADE_LEVELS_BY_SCHOOL_TYPE = {
-  licensed_daycare: [
-    'infant',
-    'toddler', 
-    'preschool',
-    'kindergarten',
-    'primary_junior_school_age',
-    'junior_school_age'
-  ],
-  montessori_school: [
-    'infant_community_nido',
-    'pre_casa_toddler',
-    'casa_childrens_house',
-    'sr_casa',
-    'lower_elementary',
-    'upper_elementary',
-    'secondary'
-  ],
-  public_private_school: [
-    'junior_kindergarten_jk',
-    'senior_kindergarten_sk',
-    'grade1',
-    'grade2',
-    'grade3',
-    'grade4',
-    'grade5',
-    'grade6',
-    'grade7',
-    'grade8',
-    'grade9',
-    'grade10',
-    'grade11',
-    'grade12'
-  ]
-};
-
-// Helper function to get grade levels for a school type
+// Helper function to get grade levels for a school type (raw codes)
 const getGradeLevelsForSchoolType = (schoolType: string) => {
-  return GRADE_LEVELS_BY_SCHOOL_TYPE[schoolType as keyof typeof GRADE_LEVELS_BY_SCHOOL_TYPE] || [];
+  return getGradeCodesForSchoolType(schoolType);
 };
 
 // Helper function to get display name for grade level
+// Now uses centralized utility for consistency
 const getGradeLevelDisplayName = (gradeLevel: string) => {
-  const displayNames: { [key: string]: string } = {
-    // Licensed Daycare
-    'infant': 'Infant',
-    'toddler': 'Toddler',
-    'preschool': 'Preschool',
-    'kindergarten': 'Kindergarten',
-    'primary_junior_school_age': 'Primary/Junior School Age',
-    'junior_school_age': 'Junior School Age',
-    
-    // Montessori Schools
-    'infant_community_nido': 'Infant Community / Nido',
-    'pre_casa_toddler': 'Pre Casa/Toddler',
-    'casa_childrens_house': 'Casa / Children\'s House',
-    'sr_casa': 'Sr Casa',
-    'lower_elementary': 'Lower Elementary',
-    'upper_elementary': 'Upper Elementary',
-    'secondary': 'Secondary',
-    
-    // Public & Private Schools
-    'junior_kindergarten_jk': 'Junior Kindergarten (JK)',
-    'senior_kindergarten_sk': 'Senior Kindergarten (SK)',
-    'grade1': 'Grade 1',
-    'grade2': 'Grade 2',
-    'grade3': 'Grade 3',
-    'grade4': 'Grade 4',
-    'grade5': 'Grade 5',
-    'grade6': 'Grade 6',
-    'grade7': 'Grade 7',
-    'grade8': 'Grade 8',
-    'grade9': 'Grade 9',
-    'grade10': 'Grade 10',
-    'grade11': 'Grade 11',
-    'grade12': 'Grade 12'
-  };
-  
-  return displayNames[gradeLevel] || gradeLevel;
+  return formatGradeForDisplay(gradeLevel);
 };
 
 const SuperAdminDashboard: React.FC = () => {
