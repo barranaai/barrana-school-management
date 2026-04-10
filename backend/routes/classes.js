@@ -24,10 +24,36 @@ router.get('/', protect, authorize('school_admin', 'super_admin'), async (req, r
       .populate('createdBy', 'firstName lastName')
       .sort({ createdAt: -1 });
 
-    // Clean up null teacher references (teachers that were deleted)
+    // Build live enrollment count: count active students whose classId or studentClass matches
+    const classIds = classes.map(c => c._id);
+    const enrollmentAgg = await User.aggregate([
+      {
+        $match: {
+          role: 'student',
+          isActive: true,
+          classId: { $in: classIds }
+        }
+      },
+      {
+        $group: {
+          _id: '$classId',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    const enrollmentMap = {};
+    enrollmentAgg.forEach(e => { enrollmentMap[e._id.toString()] = e.count; });
+
+    // Clean up null teacher references and inject live enrollment
     const cleanedClasses = classes.map(classDoc => {
       const classObj = classDoc.toObject();
       classObj.assignedTeachers = classObj.assignedTeachers.filter(at => at.teacherId);
+      const liveCount = enrollmentMap[classObj._id.toString()] || 0;
+      classObj.currentEnrollment = liveCount;
+      // Also keep the DB field in sync (fire-and-forget, don't await)
+      if (classObj.currentEnrollment !== classDoc.currentEnrollment) {
+        Class.findByIdAndUpdate(classObj._id, { currentEnrollment: liveCount }).catch(() => {});
+      }
       return classObj;
     });
 

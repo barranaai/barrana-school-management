@@ -172,13 +172,11 @@ const AdminDashboard: React.FC = () => {
         justifyContent: 'center', 
         alignItems: 'center', 
         minHeight: '100vh',
-        bgcolor: '#F8F9FA'
+        background: 'linear-gradient(135deg, #17437b 0%, #26aea6 100%)',
       }}>
         <Box sx={{ textAlign: 'center' }}>
-          <CircularProgress size={60} sx={{ color: '#667eea', mb: 2 }} />
-          <Typography variant="h6" color="text.secondary">
-            Loading...
-          </Typography>
+          <img src="/kidsible-logo.png" alt="Kidsible" style={{ height: '60px', width: 'auto', marginBottom: '16px', filter: 'brightness(0) invert(1)' }} />
+          <CircularProgress size={36} sx={{ color: '#bbca1f', display: 'block', margin: '0 auto' }} />
         </Box>
       </Box>
     );
@@ -298,7 +296,7 @@ const AdminDashboard: React.FC = () => {
               </List>
             </Box>
 
-            {/* School Logo and Logout at Bottom */}
+            {/* School Logo, Kidsible Branding and Logout at Bottom */}
             <Box sx={{ p: 2, borderTop: '1px solid rgba(0,0,0,0.08)' }}>
               {schoolBranding?.logo && (
                 <Box sx={{ mb: 2, textAlign: 'center' }}>
@@ -314,6 +312,18 @@ const AdminDashboard: React.FC = () => {
                   />
                 </Box>
               )}
+
+              {/* Kidsible Platform Branding */}
+              <Box sx={{ mb: 1.5, textAlign: 'center', py: 1, borderRadius: 2, bgcolor: 'rgba(23,67,123,0.04)' }}>
+                <Typography variant="caption" sx={{ color: '#727272', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', mb: 0.5 }}>
+                  Powered by
+                </Typography>
+                <img
+                  src="/kidsible-logo.png"
+                  alt="Kidsible"
+                  style={{ height: '28px', width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto' }}
+                />
+              </Box>
               
               <ListItem disablePadding>
                 <ListItemButton

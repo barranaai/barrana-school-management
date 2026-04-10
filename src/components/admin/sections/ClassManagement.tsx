@@ -52,7 +52,9 @@ import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import {
   formatGradeForDisplay as formatGradeDisplay,
-  convertDisplayToRawGrade as convertDisplayToRaw
+  convertDisplayToRawGrade as convertDisplayToRaw,
+  areGradesEqual,
+  normalizeGradeFormat as normalizeGradeForDisplay,
 } from '../../../utils/gradeDisplayUtils';
 
 interface ClassManagementProps {
@@ -216,7 +218,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
       classItem.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       classItem.grade.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesGrade = filterGrade === '' || classItem.grade === filterGrade;
+    const matchesGrade = filterGrade === '' || areGradesEqual(classItem.grade, filterGrade);
     const matchesStatus = filterStatus === '' || classItem.status === filterStatus;
     
     return matchesSearch && matchesGrade && matchesStatus;
@@ -914,7 +916,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Chip label={classItem.grade} color="primary" size="small" />
+                          <Chip label={formatGradeDisplay(classItem.grade)} color="primary" size="small" />
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>

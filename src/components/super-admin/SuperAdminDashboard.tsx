@@ -1500,10 +1500,13 @@ const SuperAdminDashboard: React.FC = () => {
     <Box sx={{ display: 'flex' }}>
       {/* App Bar */}
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-        <Toolbar>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Barrana.ai Super Admin Dashboard
-          </Typography>
+        <Toolbar sx={{ background: 'linear-gradient(135deg, #17437b 0%, #26aea6 100%)' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1 }}>
+            <img src="/kidsible-logo.png" alt="Kidsible" style={{ height: '32px', width: 'auto', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+            <Typography variant="body2" noWrap sx={{ color: 'rgba(255,255,255,0.75)', fontStyle: 'italic' }}>
+              Super Admin
+            </Typography>
+          </Box>
           <IconButton
             size="large"
             edge="end"
@@ -1548,8 +1551,8 @@ const SuperAdminDashboard: React.FC = () => {
         anchor="left"
       >
         <Toolbar />
-        <Box sx={{ overflow: 'auto' }}>
-          <List>
+        <Box sx={{ overflow: 'auto', display: 'flex', flexDirection: 'column', height: 'calc(100% - 64px)' }}>
+          <List sx={{ flex: 1 }}>
             {menuItems.map((item) => (
               <ListItem key={item.text} disablePadding>
                 <ListItemButton
@@ -1562,6 +1565,17 @@ const SuperAdminDashboard: React.FC = () => {
               </ListItem>
             ))}
           </List>
+          {/* Kidsible Platform Branding */}
+          <Box sx={{ p: 2, borderTop: '1px solid rgba(0,0,0,0.08)', textAlign: 'center' }}>
+            <Typography variant="caption" sx={{ color: '#727272', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', mb: 0.5 }}>
+              Powered by
+            </Typography>
+            <img
+              src="/kidsible-logo.png"
+              alt="Kidsible"
+              style={{ height: '28px', width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto' }}
+            />
+          </Box>
         </Box>
       </Drawer>
 

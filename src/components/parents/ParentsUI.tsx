@@ -76,7 +76,9 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import NotificationIcon from '../common/NotificationIcon';
+import { formatGradeForDisplay } from '../../utils/gradeDisplayUtils';
 import notificationService from '../../services/notificationService';
+import messagingService from '../../services/messagingService';
 import CommunicationPage from './CommunicationPage';
 
 const drawerWidth = 250;
@@ -317,6 +319,41 @@ const ParentsUI: React.FC = () => {
     initNotifications();
   }, [user]);
 
+  // Listen for message read events to update notifications
+  React.useEffect(() => {
+    if (user?.role === 'parent') {
+      // Set up Socket.io listener for message read events
+      messagingService.onMessageRead((data) => {
+        console.log('✅ Message marked as read, refreshing notifications');
+        
+        // Remove message notifications for this conversation
+        setNotifications(prev => {
+          const filtered = prev.filter(n => {
+            // Keep non-message notifications
+            if (n.type !== 'message') return true;
+            // Remove message notifications from this conversation
+            return n.data?.conversationId !== data.conversationId;
+          });
+          return filtered;
+        });
+        
+        // Update unread count
+        setUnreadCount(prev => {
+          const messageNotificationsRemoved = notifications.filter(n => 
+            n.type === 'message' && 
+            !n.isRead && 
+            n.data?.conversationId === data.conversationId
+          ).length;
+          return Math.max(0, prev - messageNotificationsRemoved);
+        });
+      });
+    }
+    
+    return () => {
+      // Cleanup listeners if needed
+    };
+  }, [user, notifications]);
+
   const handleLogout = () => {
     logout();
   };
@@ -542,7 +579,7 @@ const ParentsUI: React.FC = () => {
 
     return (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 700, mb: 3, textTransform: 'capitalize' }}>
+      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 3, textTransform: 'capitalize' }}>
         Welcome Back, {user?.firstName}!
       </Typography>
       
@@ -851,7 +888,7 @@ const ParentsUI: React.FC = () => {
                   </Badge>
                 )}
               </Box>
-              <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+              <Box sx={{ maxHeight: 400, overflowY: 'auto', overflowX: 'hidden' }}>
                 {loading ? (
                   <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
                     <CircularProgress size={24} />
@@ -892,7 +929,7 @@ const ParentsUI: React.FC = () => {
                           cursor: 'pointer',
                           transition: 'all 0.2s',
                           '&:hover': {
-                            transform: 'translateX(4px)',
+                            transform: 'translateY(-2px)',
                             boxShadow: 1
                           }
                         }}
@@ -907,10 +944,14 @@ const ParentsUI: React.FC = () => {
                                 }
                               });
                               
-                              // Update local state
-                              setNotifications(prev => prev.map(n => 
-                                n.id === notification.id ? { ...n, isRead: true } : n
-                              ));
+                              // Update local state - remove message notifications immediately
+                              if (notification.type === 'message') {
+                                setNotifications(prev => prev.filter(n => n.id !== notification.id && n._id !== notification._id));
+                              } else {
+                                setNotifications(prev => prev.map(n => 
+                                  (n.id === notification.id || n._id === notification._id) ? { ...n, isRead: true } : n
+                                ));
+                              }
                               setUnreadCount(prev => Math.max(0, prev - 1));
                             } catch (error) {
                               console.error('Error marking notification as read:', error);
@@ -920,6 +961,9 @@ const ParentsUI: React.FC = () => {
                           // Navigate based on notification type
                           if (notification.type === 'report' && notification.data?.reportId) {
                             setCurrentSection('reports');
+                          } else if (notification.type === 'message' && notification.data?.conversationId) {
+                            // Navigate to communication section for message notifications
+                            setCurrentSection('communication');
                           } else if (notification.data?.eventId) {
                             setCurrentSection('dashboard');
                           }
@@ -1672,7 +1716,7 @@ const ParentsUI: React.FC = () => {
 
   const ChildrenSection = () => (
     <Box>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
         My Children
       </Typography>
       
@@ -1718,7 +1762,7 @@ const ParentsUI: React.FC = () => {
                           <strong>Student ID:</strong> {child.studentId || 'N/A'}
                     </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ textTransform: 'capitalize' }}>
-                          <strong>Class:</strong> {child.classId?.name || 'Not assigned'} {child.classId?.grade ? `(Grade: ${child.classId.grade})` : ''}
+                          <strong>Class:</strong> {child.classId?.name || 'Not assigned'} {child.classId?.grade ? `(Grade: ${formatGradeForDisplay(child.classId.grade)})` : ''}
                   </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ textTransform: 'capitalize' }}>
                           <strong>Teacher:</strong> {child.teacher?.name || 'Not assigned'}
@@ -1874,7 +1918,7 @@ const ParentsUI: React.FC = () => {
     <Box>
         {/* Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 0 }}>
         Reports
       </Typography>
           {hasActiveFilters && (
@@ -2168,11 +2212,18 @@ const ParentsUI: React.FC = () => {
   );
   };
 
-  const CommunicationSection = () => <CommunicationPage />;
+  const CommunicationSection = () => (
+    <Box>
+      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+        Communication
+      </Typography>
+      <CommunicationPage />
+    </Box>
+  );
 
   const SettingsSection = () => (
     <Box>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
         Settings
       </Typography>
       <Card>
@@ -2309,8 +2360,19 @@ const ParentsUI: React.FC = () => {
           ))}
         </List>
 
-            {/* Logout at Bottom */}
+            {/* Kidsible Platform Branding + Logout at Bottom */}
             <Box sx={{ mt: 'auto', pb: 2, px: 2 }}>
+              {/* Powered by Kidsible */}
+              <Box sx={{ mb: 1.5, textAlign: 'center', py: 1, borderRadius: 2, bgcolor: 'rgba(23,67,123,0.04)' }}>
+                <Typography variant="caption" sx={{ color: '#727272', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', mb: 0.5 }}>
+                  Powered by
+                </Typography>
+                <img
+                  src="/kidsible-logo.png"
+                  alt="Kidsible"
+                  style={{ height: '26px', width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto' }}
+                />
+              </Box>
               <Divider sx={{ mb: 2 }} />
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                 <ListItem

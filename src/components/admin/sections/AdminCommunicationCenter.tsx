@@ -54,10 +54,16 @@ import {
   Email as EmailIcon,
   School,
   Group,
-  Close
+  Close,
+  Description,
+  Image as ImageIcon,
+  VideoLibrary,
+  InsertDriveFile,
+  Download
 } from '@mui/icons-material';
 import { useAuth } from '../../../contexts/AuthContext';
 import messagingService from '../../../services/messagingService';
+import notificationService from '../../../services/notificationService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import RichTextEditor from '../../common/RichTextEditor';
@@ -183,6 +189,52 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
     return tmp.textContent || tmp.innerText || '';
   };
 
+  // Show browser notification
+  const showBrowserNotification = (payload: any) => {
+    try {
+      const title = payload.notification?.title || '💬 New Message';
+      const body = payload.notification?.body || 'You have a new message';
+      const conversationId = payload.data?.conversationId;
+
+      // Check if browser supports notifications
+      if (!('Notification' in window)) {
+        console.warn('Browser does not support notifications');
+        return;
+      }
+
+      // Only show if user has granted permission
+      if (Notification.permission === 'granted') {
+        const notification = new Notification(title, {
+          body: body,
+          icon: '/logo192.png',
+          badge: '/logo192.png',
+          tag: `message-${conversationId}`,
+          requireInteraction: false,
+          silent: false
+        });
+
+        // Handle notification click
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+          
+          // If conversation ID exists, try to open that conversation
+          if (conversationId && conversations.length > 0) {
+            const conv = conversations.find(c => c._id === conversationId);
+            if (conv) {
+              handleSelectConversation(conv);
+            }
+          }
+        };
+
+        // Auto-close after 5 seconds
+        setTimeout(() => notification.close(), 5000);
+      }
+    } catch (error) {
+      console.error('Error showing browser notification:', error);
+    }
+  };
+
   // Helper function to show snackbar
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info' = 'success') => {
     setSnackbar({
@@ -210,6 +262,17 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         await messagingService.connect();
         console.log('✅ Admin messaging service connected');
 
+        // Initialize Firebase push notifications
+        try {
+          await notificationService.initializePushNotifications((payload) => {
+            console.log('🔔 Admin push notification received in foreground:', payload);
+            showBrowserNotification(payload);
+          });
+          console.log('✅ Push notifications initialized for admin messaging');
+        } catch (notifError) {
+          console.warn('Push notifications not available:', notifError);
+        }
+
         // Fetch conversations
         await loadConversations();
 
@@ -235,6 +298,7 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       }
       messagingService.removeAllListeners();
       messagingService.disconnect();
+      notificationService.cleanup();
     };
   }, [user]);
 
@@ -276,6 +340,24 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
     // New message received
     messagingService.onNewMessage((message: Message) => {
       console.log('📨 Admin received new message:', message);
+      
+      // Show browser notification if message is from someone else
+      if (message.senderId !== user?._id) {
+        const cleanContent = stripHtml(message.content);
+        const notificationBody = cleanContent.length > 100 ? cleanContent.substring(0, 100) + '...' : cleanContent;
+        
+        showBrowserNotification({
+          notification: {
+            title: `💬 New Message from ${message.senderName}`,
+            body: notificationBody
+          },
+          data: {
+            conversationId: message.conversationId,
+            senderId: message.senderId,
+            senderName: message.senderName
+          }
+        });
+      }
       
       // Add to messages if current conversation
       if (selectedConversation && message.conversationId === selectedConversation._id) {
@@ -567,106 +649,111 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
           break;
       }
 
-      // For now, we'll create a single conversation with the first parent
-      // In a full implementation, this would create multiple conversations
-      let targetParentId = '';
+      // Determine which parents to send to
+      let targetParentIds: string[] = [];
       
       console.log('Recipient type:', recipientType);
       console.log('Selected recipients:', selectedRecipients);
       console.log('Parents data:', parents);
       
       if (recipientType === 'all') {
-        // Use first parent as representative for demo
-        targetParentId = parents[0]?._id;
-        console.log('All parents - using first parent:', targetParentId);
+        // Send to all parents
+        targetParentIds = parents.map(p => p._id);
+        console.log('All parents selected - sending to:', targetParentIds.length, 'parents');
       } else if (recipientType === 'selected') {
-        targetParentId = selectedRecipients[0];
-        console.log('Selected parents - using first selected:', targetParentId);
+        // Send to selected parents
+        targetParentIds = selectedRecipients;
+        console.log('Selected parents:', targetParentIds.length);
       } else {
         // For grade/class/group, we'd need to find parents of students in those grades/classes/groups
-        // For now, use first parent as demo
-        targetParentId = parents[0]?._id;
-        console.log('Other type - using first parent:', targetParentId);
+        // For now, use all parents as fallback
+        targetParentIds = parents.map(p => p._id);
+        console.log('Other type - using all parents:', targetParentIds.length);
       }
 
-      console.log('Final target parent ID:', targetParentId);
-
-      if (!targetParentId) {
+      if (!targetParentIds || targetParentIds.length === 0) {
         showSnackbar('No valid recipients found', 'error');
+        setSending(false);
         return;
       }
 
-      const response = await messagingService.createConversation(
-        targetParentId,
-        formattedMessage,
-        subject,
-        isScheduled ? {
-          scheduledDate: scheduledDate,
-          scheduledTime: scheduledTime,
-          scheduledDateTime: convertScheduleToUTC(scheduledDate, scheduledTime),
-          timezone: getSchoolTimezone()
-        } : undefined
-      );
-
-      if (response.success) {
-        // Reset all fields
-        setNewConversationDialog(false);
-        setSelectedParent('');
-        setNewMessageContent('');
-        setMessageTitle('');
-        setMessageType('personal');
-        setReminderDate('');
-        setMessagePriority('medium');
-        setRecipientType('selected');
-        setSelectedRecipients([]);
-        setParentGroups([]);
-        setIsScheduled(false);
-        setScheduledDate('');
-        setScheduledTime('');
-        
-        // Reload conversations
-        await loadConversations();
-        
-        // Select the new conversation
-        const newConv = conversations.find(c => c._id === response.data.conversation._id);
-        if (newConv) {
-          handleSelectConversation(newConv);
+      // Upload attachments first if any
+      let uploadedAttachments: any[] = [];
+      if (attachments.length > 0) {
+        try {
+          uploadedAttachments = await messagingService.uploadAttachments(attachments);
+          console.log('Attachments uploaded:', uploadedAttachments);
+        } catch (error) {
+          console.error('Error uploading attachments:', error);
+          showSnackbar('Failed to upload attachments', 'error');
+          setSending(false);
+          return;
         }
+      }
 
-        // Show success message with recipient count
-        let recipientCount = 0;
-        switch (recipientType) {
-          case 'all':
-            recipientCount = parents.length;
-            break;
-          case 'selected':
-            recipientCount = selectedRecipients.length;
-            break;
-          case 'grade':
-            // In real implementation, count parents of students in selected grades
-            recipientCount = selectedRecipients.length;
-            break;
-        case 'class':
-          // In real implementation, count parents of students in selected classes
-          recipientCount = selectedRecipients.length;
-          break;
-        case 'group':
-          // In real implementation, count all members in selected groups
-          recipientCount = selectedRecipients.reduce((total, groupId) => {
-            const group = parentGroups.find(g => g._id === groupId);
-            return total + (group?.members?.length || 0);
-          }, 0);
-          break;
+      // Send message to each parent (create separate conversations)
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const parentId of targetParentIds) {
+        try {
+          const response = await messagingService.createConversation(
+            parentId,
+            formattedMessage,
+            subject,
+            undefined, // studentId
+            isScheduled ? {
+              scheduledDate: scheduledDate,
+              scheduledTime: scheduledTime,
+              scheduledDateTime: convertScheduleToUTC(scheduledDate, scheduledTime),
+              timezone: getSchoolTimezone()
+            } : undefined,
+            true, // forceNewThread - always create a new conversation thread
+            uploadedAttachments // pass attachments
+          );
+          
+          if (response.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (error) {
+          console.error('Error sending to parent:', parentId, error);
+          failCount++;
         }
+      }
 
-        if (isScheduled) {
-          const schoolTimezone = getSchoolTimezone();
-          const scheduledDateTime = moment.tz(`${scheduledDate} ${scheduledTime}`, 'YYYY-MM-DD HH:mm', schoolTimezone);
-          const timezoneAbbr = scheduledDateTime.format('z');
-          showSnackbar(`Message scheduled successfully for ${scheduledDateTime.format('MMM DD, YYYY [at] h:mm A')} (${timezoneAbbr})!`, 'success');
+      console.log(`Messages sent: ${successCount} success, ${failCount} failed`);
+
+      // Reset all fields
+      setNewConversationDialog(false);
+      setSelectedParent('');
+      setNewMessageContent('');
+      setMessageTitle('');
+      setMessageType('personal');
+      setReminderDate('');
+      setMessagePriority('medium');
+      setRecipientType('selected');
+      setSelectedRecipients([]);
+      setParentGroups([]);
+      setIsScheduled(false);
+      setScheduledDate('');
+      setScheduledTime('');
+      setAttachments([]);
+      setChatAttachments([]);
+      
+      // Reload conversations
+      await loadConversations();
+      
+      // Show success message with counts
+      if (successCount > 0) {
+        if (failCount > 0) {
+          showSnackbar(`Messages sent to ${successCount} parent(s). ${failCount} failed.`, 'warning');
         } else {
-          showSnackbar(`Message sent successfully to ${recipientCount} recipient(s)!`, 'success');
+          showSnackbar(`Messages sent successfully to ${successCount} parent(s)!`, 'success');
         }
+      } else {
+        showSnackbar('Failed to send messages to any parent', 'error');
       }
     } catch (error) {
       console.error('Error creating conversation:', error);
@@ -680,8 +767,8 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load parents
-        const parentsResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5050'}/students`, {
+        // Load all parents directly (more efficient than querying by email)
+        const parentsResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5050'}/users?role=parent`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
@@ -689,35 +776,8 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         
         const parentsData = await parentsResponse.json();
         if (parentsData.success) {
-          // Get unique parents by email and find their actual parent user records
-          const studentsWithParents = parentsData.data.filter((student: any) => student.parentEmail);
-          console.log('Students with parent emails:', studentsWithParents);
-          
-          // For each unique parent email, find the actual parent user record
-          const uniqueParentEmails = [...new Set(studentsWithParents.map((student: any) => student.parentEmail))];
-          console.log('Unique parent emails:', uniqueParentEmails);
-          
-          const parentPromises = uniqueParentEmails.map(async (email: string) => {
-            try {
-              const parentResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5050'}/users?email=${email}&role=parent`, {
-                headers: {
-                  'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-              });
-              const parentData = await parentResponse.json();
-              if (parentData.success && parentData.data.length > 0) {
-                return parentData.data[0]; // Return the parent user record
-              }
-              return null;
-            } catch (error) {
-              console.error('Error fetching parent:', error);
-              return null;
-            }
-          });
-          
-          const parentUsers = (await Promise.all(parentPromises)).filter(Boolean);
-          console.log('Found parent users:', parentUsers);
-          setParents(parentUsers);
+          console.log('Loaded all parent users:', parentsData.data);
+          setParents(parentsData.data);
         }
 
         // Load grades and classes
@@ -1196,6 +1256,135 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                                 },
                               }}
                             />
+                            
+                            {/* Attachments Display */}
+                            {message.metadata?.attachments && message.metadata.attachments.length > 0 && (
+                              <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                {message.metadata.attachments.map((attachment, idx) => {
+                                  const isImage = attachment.mimeType?.startsWith('image/');
+                                  const isVideo = attachment.mimeType?.startsWith('video/');
+                                  const isPDF = attachment.mimeType === 'application/pdf';
+                                  const attachmentUrl = `${process.env.REACT_APP_API_URL?.replace('/api', '')}${attachment.url}`;
+
+                                  // Show preview for images and videos
+                                  if (isImage) {
+                                    return (
+                                      <Box key={idx}>
+                                        <Box
+                                          component="img"
+                                          src={attachmentUrl}
+                                          alt={attachment.originalName}
+                                          sx={{
+                                            maxWidth: '100%',
+                                            maxHeight: 300,
+                                            borderRadius: 2,
+                                            cursor: 'pointer',
+                                            display: 'block',
+                                            '&:hover': {
+                                              opacity: 0.9
+                                            }
+                                          }}
+                                          onClick={() => window.open(attachmentUrl, '_blank')}
+                                        />
+                                        <Typography
+                                          variant="caption"
+                                          sx={{
+                                            display: 'block',
+                                            color: isOwn ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                                            fontSize: '0.7rem',
+                                            mt: 0.5
+                                          }}
+                                        >
+                                          {attachment.originalName} • {(attachment.size / 1024).toFixed(1)} KB
+                                        </Typography>
+                                      </Box>
+                                    );
+                                  }
+
+                                  if (isVideo) {
+                                    return (
+                                      <Box key={idx}>
+                                        <Box
+                                          component="video"
+                                          controls
+                                          src={attachmentUrl}
+                                          sx={{
+                                            maxWidth: '100%',
+                                            maxHeight: 300,
+                                            borderRadius: 2,
+                                            display: 'block',
+                                          }}
+                                        />
+                                        <Typography
+                                          variant="caption"
+                                          sx={{
+                                            display: 'block',
+                                            color: isOwn ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                                            fontSize: '0.7rem',
+                                            mt: 0.5
+                                          }}
+                                        >
+                                          {attachment.originalName} • {(attachment.size / 1024).toFixed(1)} KB
+                                        </Typography>
+                                      </Box>
+                                    );
+                                  }
+
+                                  // For other files (PDFs, documents), show as card
+                                  return (
+                                    <Box
+                                      key={idx}
+                                      sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 1,
+                                        p: 1,
+                                        bgcolor: isOwn ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.05)',
+                                        borderRadius: 1,
+                                        cursor: 'pointer',
+                                        '&:hover': {
+                                          bgcolor: isOwn ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.08)',
+                                        }
+                                      }}
+                                      onClick={() => window.open(attachmentUrl, '_blank')}
+                                    >
+                                      {isPDF ? (
+                                        <Description sx={{ fontSize: 20, color: isOwn ? 'white' : primaryColor }} />
+                                      ) : (
+                                        <InsertDriveFile sx={{ fontSize: 20, color: isOwn ? 'white' : primaryColor }} />
+                                      )}
+                                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Typography
+                                          variant="caption"
+                                          sx={{
+                                            display: 'block',
+                                            color: isOwn ? 'white' : 'text.primary',
+                                            fontWeight: 500,
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                          }}
+                                        >
+                                          {attachment.originalName}
+                                        </Typography>
+                                        <Typography
+                                          variant="caption"
+                                          sx={{
+                                            display: 'block',
+                                            color: isOwn ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                                            fontSize: '0.65rem'
+                                          }}
+                                        >
+                                          {(attachment.size / 1024).toFixed(1)} KB
+                                        </Typography>
+                                      </Box>
+                                      <Download sx={{ fontSize: 18, color: isOwn ? 'white' : primaryColor }} />
+                                    </Box>
+                                  );
+                                })}
+                              </Box>
+                            )}
+
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
                               <Typography 
                                 variant="caption" 
@@ -1255,7 +1444,7 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                       </Box>
                     )}
                     
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                       <input
                         type="file"
                         ref={chatFileInputRef}
@@ -1265,16 +1454,26 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                       />
                       <IconButton
                         onClick={() => chatFileInputRef.current?.click()}
-                        size="small"
-                        color="primary"
+                        size="medium"
+                        sx={{ 
+                          color: primaryColor,
+                          '&:hover': {
+                            bgcolor: `${primaryColor}15`
+                          }
+                        }}
                       >
                         <AttachFile />
                       </IconButton>
                       
                       <IconButton
                         onClick={(e) => setChatEmojiPickerAnchor(e.currentTarget)}
-                        size="small"
-                        color="primary"
+                        size="medium"
+                        sx={{ 
+                          color: primaryColor,
+                          '&:hover': {
+                            bgcolor: `${primaryColor}15`
+                          }
+                        }}
                       >
                         <EmojiEmotions />
                       </IconButton>
@@ -1294,6 +1493,11 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                         }}
                         disabled={sending}
                         inputRef={messageInputRef}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            alignItems: 'center'
+                          }
+                        }}
                       />
                       <Button
                         variant="contained"
@@ -1303,7 +1507,12 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                           minWidth: 'auto',
                           px: 3,
                           py: 1.5,
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                          height: '56px',
+                          background: brandingGradient,
+                          '&:hover': {
+                            background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor || primaryColor} 100%)`,
+                            opacity: 0.9
+                          }
                         }}
                       >
                         {sending ? <CircularProgress size={20} sx={{ color: 'white' }} /> : <Send />}

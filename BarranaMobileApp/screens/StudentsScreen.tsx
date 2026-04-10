@@ -172,6 +172,22 @@ interface CreateReportData {
 }
 
 const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
+  // Get dynamic school branding
+  const { branding } = useBranding();
+  const primaryColor = branding?.branding?.primaryColor || '#667eea';
+  const secondaryColor = branding?.branding?.secondaryColor || '#764ba2';
+  
+  // Dynamic styles based on branding
+  const dynamicStyles = {
+    studentAvatar: { backgroundColor: primaryColor },
+    generateReportButton: { backgroundColor: primaryColor },
+    generateReportButtonDue: { backgroundColor: primaryColor },
+    reportsCount: { color: primaryColor },
+    sectionHeaderIcon: { backgroundColor: primaryColor },
+    sendButton: { backgroundColor: primaryColor },
+    saveButton: { backgroundColor: primaryColor },
+  };
+  
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
@@ -892,6 +908,14 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
     return dueDate;
   };
 
+  // ============================================================================
+  // DEPRECATED: Local Due Date Calculation (Keep as Emergency Fallback Only)
+  // ============================================================================
+  // ⚠️ This function is DEPRECATED and should NOT be used for primary calculations.
+  // ⚠️ The mobile app now uses the centralized backend calculator via apiService.getDueReports()
+  // ⚠️ This remains here ONLY as an emergency fallback if the backend API fails.
+  // ⚠️ DO NOT modify this logic - any changes should be made to backend/services/dueReportsCalculator.js
+  //
   // Helper function to calculate due date for current period
   // FIXED: Use moment-timezone to preserve timezone info (see TIMEZONE_BUG_FIX.md)
   const calculateDueDateForFrequency = (frequency: string, currentDate: Date): Date => {
@@ -1224,121 +1248,62 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
     }
   };
 
+  // ============================================================================
+  // PRIMARY METHOD: Use Centralized Backend Due Reports Calculator
+  // ============================================================================
+  // ✅ This is the SINGLE SOURCE OF TRUTH for due reports calculations
+  // ✅ All platforms (web, mobile) use the same backend logic
+  // ✅ Located at: backend/services/dueReportsCalculator.js
+  // ✅ API Endpoint: GET /api/reports/due
+  //
+  // Use centralized backend due reports calculator (single source of truth)
   const calculateDueReports = async (studentsData: Student[], reportsData: StudentReport[]) => {
     try {
-      const dueReportsArray: DueReport[] = [];
-      
-      // Safety checks
-      if (!studentsData || !Array.isArray(studentsData)) {
-        console.log('📱 No valid students data for due reports calculation');
-        return [];
-      }
-      
-      if (!reportTemplates || !Array.isArray(reportTemplates)) {
-        console.log('📱 No report templates available for due reports calculation');
-        return [];
-      }
-      
-      addDebugLog('📱 Starting backend API due status calculations...');
-      addDebugLog(`📱 Students count: ${studentsData.length}`);
-      addDebugLog(`📱 Templates count: ${reportTemplates.length}`);
+      addDebugLog('📱 ✨ Fetching due reports from centralized backend calculator...');
       addDebugLog(`📱 Current user: ${user?.firstName} ${user?.lastName} (ID: ${user?.id})`);
-      addDebugLog(`📱 School data available: ${schoolData ? 'Yes' : 'No'}`);
       
-      // Use backend API to check due status for each student-template combination
-      for (const student of studentsData) {
-        const studentGrade = student.studentGrade || student.grade || '';
-        const gradeTemplates = reportTemplates.filter(template => 
-          template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
-        );
+      // Call centralized backend API - it handles ALL the complex logic
+      const response = await apiService.getDueReports();
+      
+      if (response.success && response.data) {
+        const { dueReports: backendDueReports, count, calculatedAt } = response.data;
         
-        addDebugLog(`📱 Student ${getStudentFullName(student)} (${studentGrade}): ${gradeTemplates.length} matching templates`);
+        addDebugLog(`📱 ✅ Received ${count} due reports from backend`);
+        addDebugLog(`📱 Calculated at: ${calculatedAt}`);
         
-        for (const template of gradeTemplates) {
-          try {
-            addDebugLog(`📱 Checking due status for ${getStudentFullName(student)} - ${template.name} (${template.reportFrequency})`);
-            // Use backend API for accurate due status calculation
-            const dueStatusResponse = await apiService.checkDueStatus(student._id, template._id);
-            addDebugLog(`📱 Due status response for ${getStudentFullName(student)} - ${template.name}: ${JSON.stringify(dueStatusResponse)}`);
-            
-            if (dueStatusResponse.success && dueStatusResponse.data) {
-              const { due, hasExistingReportInPeriod, existingReportInPeriod, nextDueDate } = dueStatusResponse.data;
-              
-              addDebugLog(`📱 ${getStudentFullName(student)} - ${template.name}: due=${due}, hasExisting=${hasExistingReportInPeriod}, nextDue=${nextDueDate}`);
-              
-              // Check if report was generated by another teacher
-              if (hasExistingReportInPeriod && existingReportInPeriod) {
-                const currentTeacherId = user?.id;
-                const reportTeacherId = existingReportInPeriod.teacherName;
-                const currentTeacherName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
-                
-                addDebugLog(`📱 ${getStudentFullName(student)} - ${template.name}: Existing report by ${reportTeacherId}, current teacher: ${currentTeacherName}`);
-                
-                if (reportTeacherId && reportTeacherId !== currentTeacherName) {
-                  addDebugLog(`📱 ${getStudentFullName(student)} - ${template.name}: Report exists by another teacher (${reportTeacherId})`);
-                  continue; // Skip - not due for current teacher
-                }
-              }
-              
-              if (due) {
-                // Calculate days overdue
-                const dueDate = nextDueDate ? new Date(nextDueDate) : new Date();
-                const now = new Date();
-                const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-                
-                // Determine report status
-                let reportStatus: 'draft' | 'completed' | 'sent' | 'missing' = 'missing';
-                if (hasExistingReportInPeriod && existingReportInPeriod) {
-                  if (existingReportInPeriod.status === 'draft') {
-                    reportStatus = 'draft';
-                  } else if (existingReportInPeriod.status === 'completed' || existingReportInPeriod.status === 'review') {
-                    reportStatus = 'completed';
-                  } else if (existingReportInPeriod.status === 'sent' || existingReportInPeriod.status === 'approved') {
-                    continue; // Skip sent/approved reports
-                  }
-                }
-                
-                dueReportsArray.push({
-                  studentId: student._id,
-                  studentName: getStudentFullName(student),
-                  templateName: template.name,
-                  frequency: template.reportFrequency,
-                  dueDate: dueDate.toISOString(),
-                  daysOverdue: Math.max(0, daysOverdue),
-                  templateId: template._id,
-                  reportStatus: reportStatus,
-                  reportId: existingReportInPeriod?.reportId || null
-                });
-                
-                addDebugLog(`⚠️ ${getStudentFullName(student)} - ${template.name}: Due (${Math.max(0, daysOverdue)} days overdue) - Status: ${reportStatus}`);
-              } else {
-                addDebugLog(`✅ ${getStudentFullName(student)} - ${template.name}: Not due yet`);
-              }
-            } else {
-              addDebugLog(`❌ ${getStudentFullName(student)} - ${template.name}: API call failed: ${JSON.stringify(dueStatusResponse)}`);
-            }
-          } catch (error) {
-            addDebugLog(`📱 Error checking due status for ${getStudentFullName(student)} - ${template.name}: ${error}`);
-            addDebugLog(`📱 Error details: ${JSON.stringify(error)}`);
-            // Continue with next template on error
-          }
+        // Transform backend response to match mobile app's DueReport interface
+        const dueReportsArray: DueReport[] = backendDueReports.map((dr: any) => ({
+          studentId: dr.student._id,
+          studentName: `${dr.student.firstName} ${dr.student.lastName}`,
+          templateName: dr.template.name,
+          frequency: dr.template.reportFrequency,
+          dueDate: dr.dueDate,
+          daysOverdue: dr.daysOverdue,
+          templateId: dr.template._id,
+          reportStatus: dr.existingReport ? (dr.existingReport.status === 'draft' ? 'draft' : 'completed') : 'missing',
+          reportId: dr.existingReport?._id || null
+        }));
+        
+        // Sort by most overdue first
+        dueReportsArray.sort((a, b) => b.daysOverdue - a.daysOverdue);
+        setDueReports(dueReportsArray);
+        
+        addDebugLog(`📱 Final due reports count: ${dueReportsArray.length}`);
+        
+        if (dueReportsArray.length > 0) {
+          addDebugLog(`📱 Due reports: ${dueReportsArray.map(d => `${d.studentName} - ${d.templateName} (${d.daysOverdue}d overdue)`).join(', ')}`);
+        } else {
+          addDebugLog(`📱 ✅ No due reports - all students are up to date!`);
         }
-      }
-    
-      // Sort by most overdue first
-      dueReportsArray.sort((a, b) => b.daysOverdue - a.daysOverdue);
-      setDueReports(dueReportsArray);
-      addDebugLog(`📱 Final due reports count: ${dueReportsArray.length}`);
-      
-      if (dueReportsArray.length > 0) {
-        addDebugLog(`📱 Due reports details: ${dueReportsArray.map(d => `${d.studentName} - ${d.templateName} (${d.frequency})`).join(', ')}`);
+        
+        return dueReportsArray;
       } else {
-        addDebugLog(`📱 No due reports found - all students are up to date!`);
+        addDebugLog(`📱 ❌ Failed to fetch due reports: ${response.error}`);
+        setDueReports([]);
+        return [];
       }
-      
-      return dueReportsArray;
     } catch (error) {
-      addDebugLog(`📱 Error calculating due reports: ${error}`);
+      addDebugLog(`📱 ❌ Error fetching due reports from backend: ${error}`);
       setDueReports([]);
       return [];
     }
@@ -1869,7 +1834,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#667eea" />
+        <ActivityIndicator size="large" color={primaryColor} />
         <Text style={styles.loadingText}>Loading students...</Text>
       </View>
     );
@@ -1887,7 +1852,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
           onPress={() => setShowDebugPanel(true)} 
           style={styles.debugButton}
         >
-          <Ionicons name="bug" size={24} color="#667eea" />
+          <Ionicons name="bug" size={24} color={primaryColor} />
           {debugLogs.length > 0 && (
             <View style={styles.debugBadge}>
               <Text style={styles.debugBadgeText}>{debugLogs.length}</Text>
@@ -1902,8 +1867,8 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={onRefresh}
-            colors={[useBranding().branding?.branding?.primaryColor || '#667eea']}
-            tintColor={useBranding().branding?.branding?.primaryColor || '#667eea'}
+            colors={[primaryColor]}
+            tintColor={primaryColor}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -1947,7 +1912,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
             return (
               <TouchableOpacity key={student._id} style={styles.studentCard}>
                 <View style={styles.cardHeader}>
-                  <View style={styles.studentAvatar}>
+                  <View style={[styles.studentAvatar, dynamicStyles.studentAvatar]}>
                     <Text style={styles.avatarText}>
                       {getStudentFullName(student).split(' ').map(n => n[0]).join('').toUpperCase()}
                     </Text>
@@ -2034,13 +1999,13 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                 <View style={styles.cardBody}>
                   <View style={styles.chipsContainer}>
                     <View style={styles.chip}>
-                      <Ionicons name="school" size={12} color="#667eea" />
+                      <Ionicons name="school" size={12} color={primaryColor} />
                       <Text style={styles.chipText}>
                         Grade {student.studentGrade || student.grade || 'Unknown'}
                       </Text>
                     </View>
                     <View style={styles.chip}>
-                      <Ionicons name="people" size={12} color="#667eea" />
+                      <Ionicons name="people" size={12} color={primaryColor} />
                       <Text style={styles.chipText}>
                         {student.studentClass || 'Not assigned'}
                       </Text>
@@ -2153,7 +2118,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                   
                   {/* View Details Button */}
                   <TouchableOpacity style={styles.enhancedViewDetailsButton}>
-                    <Ionicons name="chevron-forward" size={20} color="#667eea" />
+                    <Ionicons name="chevron-forward" size={20} color={primaryColor} />
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
@@ -2201,7 +2166,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
             <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
               {/* Student Info */}
               <View style={styles.studentInfoSection}>
-                <View style={styles.studentAvatar}>
+                <View style={[styles.studentAvatar, dynamicStyles.studentAvatar]}>
                   <Text style={styles.avatarText}>
                     {getStudentFullName(selectedStudent).split(' ').map(n => n[0]).join('').toUpperCase()}
                   </Text>
@@ -2228,30 +2193,59 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                 <View style={styles.templateSelector}>
                   <Picker
                     selectedValue={selectedTemplate?._id || ''}
-                    onValueChange={(itemValue: string) => {
+                    onValueChange={async (itemValue: string) => {
                       const template = reportTemplates.find(t => t._id === itemValue);
-                      if (template) {
-                        const isDue = isTemplateDueForStudent(selectedStudent, template);
-                        if (!isDue) {
-                          Alert.alert(
-                            'Report Not Due', 
-                            `${template.name} (${template.reportFrequency}) is not due yet. Only due reports can be generated according to your school's frequency settings.`,
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              { 
-                                text: 'Generate Anyway', 
-                                style: 'destructive',
-                                onPress: () => {
-                                  setSelectedTemplate(template);
-                                  console.log('📱 Template selected (manual override):', template.name);
+                      if (template && selectedStudent) {
+                        // NEW: Use centralized backend validation (single source of truth)
+                        addDebugLog(`📱 Validating template selection: ${template.name} for ${getStudentFullName(selectedStudent)}`);
+                        const validation = await apiService.canGenerateReport(selectedStudent._id, template._id);
+                        
+                        if (validation.success && validation.data) {
+                          const { canGenerate, reason, isDue, existingReport } = validation.data;
+                          
+                          addDebugLog(`📱 Validation result: canGenerate=${canGenerate}, isDue=${isDue}, reason=${reason || 'none'}`);
+                          
+                          if (!canGenerate) {
+                            // Teacher is blocked from generating this report
+                            Alert.alert(
+                              '❌ Cannot Generate Report',
+                              reason || 'Report already exists for the current period.',
+                              [{ text: 'OK', style: 'cancel' }]
+                            );
+                            return;
+                          }
+                          
+                          if (!isDue) {
+                            // Report not due but can be generated manually
+                            Alert.alert(
+                              'Report Not Due', 
+                              `${template.name} (${template.reportFrequency}) is not due yet. Only due reports can be generated according to your school's frequency settings.`,
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { 
+                                  text: 'Generate Anyway', 
+                                  style: 'destructive',
+                                  onPress: () => {
+                                    setSelectedTemplate(template);
+                                    addDebugLog(`📱 Template selected (manual override): ${template.name}`);
+                                  }
                                 }
-                              }
-                            ]
+                              ]
+                            );
+                            return;
+                          }
+                          
+                          // Report is due and can be generated
+                          setSelectedTemplate(template);
+                          addDebugLog(`📱 ✅ Template selected: ${template.name}`);
+                        } else {
+                          // API error
+                          Alert.alert(
+                            'Validation Error',
+                            validation.error || 'Failed to validate report generation. Please try again.',
+                            [{ text: 'OK', style: 'cancel' }]
                           );
-                          return;
                         }
-                        setSelectedTemplate(template);
-                        console.log('📱 Due template selected:', template.name);
                       }
                     }}
                     style={styles.picker}
@@ -2354,7 +2348,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
               {selectedTemplate && (
                 <View style={styles.sectionContainer}>
                   <Text style={styles.sectionTitle}>
-                    <Ionicons name="mic" size={20} color="#667eea" /> Voice Recording
+                    <Ionicons name="mic" size={20} color={primaryColor} /> Voice Recording
                   </Text>
                 
                 <View style={styles.recordingControls}>
@@ -2412,7 +2406,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                             <Ionicons 
                               name={playingRecordingId === recording.id && isPlayingAudio ? "stop" : "play"} 
                               size={16} 
-                              color="#667eea" 
+                              color={primaryColor} 
                             />
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -2453,7 +2447,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
               {selectedTemplate && transcription && (
                 <View style={styles.sectionContainer}>
                   <Text style={styles.sectionTitle}>
-                    <Ionicons name="text" size={20} color="#667eea" /> Transcription
+                    <Ionicons name="text" size={20} color={primaryColor} /> Transcription
                   </Text>
                   <TextInput
                     style={styles.transcriptionInput}
@@ -2481,7 +2475,7 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
               {selectedTemplate && (
                 <View style={styles.sectionContainer}>
                   <Text style={styles.sectionTitle}>
-                    <Ionicons name="document-text" size={20} color="#667eea" /> Report Content
+                    <Ionicons name="document-text" size={20} color={primaryColor} /> Report Content
                   </Text>
                 <TextInput
                   style={styles.reportContentInput}

@@ -163,6 +163,12 @@ const reportSchema = new mongoose.Schema({
     }
   }],
   
+  // PDF URL for generated report
+  pdfUrl: {
+    type: String,
+    default: null
+  },
+  
   // Version Control
   version: {
     type: Number,

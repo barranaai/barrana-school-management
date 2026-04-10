@@ -39,10 +39,16 @@ import {
   Add,
   Message as MessageIcon,
   CheckCircle,
-  Circle
+  Circle,
+  Description,
+  Image as ImageIcon,
+  VideoLibrary,
+  InsertDriveFile,
+  Download
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import messagingService from '../../services/messagingService';
+import notificationService from '../../services/notificationService';
 
 interface Message {
   _id: string;
@@ -53,7 +59,15 @@ interface Message {
   isRead: boolean;
   sentAt: string;
   tempId?: string;
-  attachments?: any[];
+  metadata?: {
+    attachments?: Array<{
+      filename: string;
+      originalName: string;
+      mimeType: string;
+      size: number;
+      url: string;
+    }>;
+  };
 }
 
 interface Conversation {
@@ -95,6 +109,59 @@ const CommunicationPage: React.FC = () => {
   const messageInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Utility function to strip HTML tags for preview
+  const stripHtml = (html: string) => {
+    const tmp = document.createElement('DIV');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+  };
+
+  // Show browser notification
+  const showBrowserNotification = (payload: any) => {
+    try {
+      const title = payload.notification?.title || '💬 New Message';
+      const body = payload.notification?.body || 'You have a new message';
+      const conversationId = payload.data?.conversationId;
+
+      // Check if browser supports notifications
+      if (!('Notification' in window)) {
+        console.warn('Browser does not support notifications');
+        return;
+      }
+
+      // Only show if user has granted permission
+      if (Notification.permission === 'granted') {
+        const notification = new Notification(title, {
+          body: body,
+          icon: '/logo192.png',
+          badge: '/logo192.png',
+          tag: `message-${conversationId}`,
+          requireInteraction: false,
+          silent: false
+        });
+
+        // Handle notification click
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+          
+          // If conversation ID exists, try to open that conversation
+          if (conversationId && conversations.length > 0) {
+            const conv = conversations.find(c => c._id === conversationId);
+            if (conv) {
+              handleSelectConversation(conv);
+            }
+          }
+        };
+
+        // Auto-close after 5 seconds
+        setTimeout(() => notification.close(), 5000);
+      }
+    } catch (error) {
+      console.error('Error showing browser notification:', error);
+    }
+  };
+
   // Initialize Socket.io and fetch initial data
   useEffect(() => {
     const initialize = async () => {
@@ -107,6 +174,17 @@ const CommunicationPage: React.FC = () => {
         // Connect to Socket.io
         await messagingService.connect();
         console.log('✅ Messaging service connected');
+
+        // Initialize Firebase push notifications
+        try {
+          await notificationService.initializePushNotifications((payload) => {
+            console.log('🔔 Push notification received in foreground:', payload);
+            showBrowserNotification(payload);
+          });
+          console.log('✅ Push notifications initialized for messaging');
+        } catch (notifError) {
+          console.warn('Push notifications not available:', notifError);
+        }
 
         // Fetch conversations
         await loadConversations();
@@ -133,6 +211,7 @@ const CommunicationPage: React.FC = () => {
       }
       messagingService.removeAllListeners();
       messagingService.disconnect();
+      notificationService.cleanup();
     };
   }, [user]);
 
@@ -172,8 +251,26 @@ const CommunicationPage: React.FC = () => {
   // Setup Socket.io listeners
   const setupSocketListeners = () => {
     // New message received
-    messagingService.onNewMessage((message: Message) => {
+    messagingService.onNewMessage(async (message: Message) => {
       console.log('📨 New message received:', message);
+      
+      // Show browser notification if message is from someone else
+      if (message.senderId !== user?._id) {
+        const cleanContent = stripHtml(message.content);
+        const notificationBody = cleanContent.length > 100 ? cleanContent.substring(0, 100) + '...' : cleanContent;
+        
+        showBrowserNotification({
+          notification: {
+            title: `💬 New Message from ${message.senderName}`,
+            body: notificationBody
+          },
+          data: {
+            conversationId: message.conversationId,
+            senderId: message.senderId,
+            senderName: message.senderName
+          }
+        });
+      }
       
       // Add to messages if current conversation
       if (selectedConversation && message.conversationId === selectedConversation._id) {
@@ -186,8 +283,39 @@ const CommunicationPage: React.FC = () => {
         }
       }
       
-      // Update conversations list
-      loadConversations();
+      // Reload conversations to get updated list
+      const conversationsResult = await messagingService.getConversations();
+      if (conversationsResult.success) {
+        const updatedConversations = conversationsResult.data;
+        setConversations(updatedConversations);
+        
+        // Check if this is a new conversation (not in current list and message is not from current user)
+        const existingConv = conversations.find(conv => conv._id === message.conversationId);
+        const isNewConversation = !existingConv && message.senderId !== user?._id;
+        
+        if (isNewConversation) {
+          // Find the new conversation in updated list
+          const newConversation = updatedConversations.find(conv => conv._id === message.conversationId);
+          
+          if (newConversation) {
+            console.log('📬 New conversation thread detected, auto-opening:', newConversation);
+            
+            // Auto-open the new conversation
+            setSelectedConversation(newConversation);
+            messagingService.joinConversation(newConversation._id);
+            
+            // Load messages for the new conversation
+            const messagesResult = await messagingService.getConversationMessages(newConversation._id);
+            if (messagesResult.success) {
+              setMessages(messagesResult.data);
+              setTimeout(() => scrollToBottom(), 100);
+              
+              // Mark as read
+              messagingService.markAsRead(newConversation._id);
+            }
+          }
+        }
+      }
     });
 
     // Typing indicators
@@ -288,7 +416,9 @@ const CommunicationPage: React.FC = () => {
         isRead: false,
         sentAt: new Date().toISOString(),
         tempId,
-        attachments: uploadedAttachments
+        metadata: uploadedAttachments.length > 0 ? {
+          attachments: uploadedAttachments
+        } : undefined
       };
 
       setMessages(prev => [...prev, tempMessage]);
@@ -455,7 +585,7 @@ const CommunicationPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ height: 'calc(100vh - 250px)', display: 'flex', flexDirection: 'column' }}>
       <Grid container spacing={0} sx={{ flexGrow: 1, height: '100%' }}>
         {/* Conversation List */}
         <Grid item xs={12} md={4} sx={{ height: '100%', borderRight: '1px solid', borderColor: 'divider' }}>
@@ -566,7 +696,7 @@ const CommunicationPage: React.FC = () => {
                                 whiteSpace: 'nowrap'
                               }}
                             >
-                              {conv.lastMessage?.content || 'No messages yet'}
+                              {conv.lastMessage?.content ? stripHtml(conv.lastMessage.content) : 'No messages yet'}
                             </Typography>
                           }
                         />
@@ -660,9 +790,146 @@ const CommunicationPage: React.FC = () => {
                           borderBottomLeftRadius: isOwn ? 2 : 0
                         }}
                       >
-                        <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
-                          {message.content}
-                        </Typography>
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            wordBreak: 'break-word',
+                            '& p': { margin: 0 },
+                            '& ul, & ol': { marginTop: 0, marginBottom: 0, paddingLeft: '20px' },
+                            '& strong': { fontWeight: 600 },
+                            '& em': { fontStyle: 'italic' }
+                          }}
+                          dangerouslySetInnerHTML={{ __html: message.content }}
+                        />
+                        
+                        {/* Attachments Display */}
+                        {message.metadata?.attachments && message.metadata.attachments.length > 0 && (
+                          <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            {message.metadata.attachments.map((attachment, idx) => {
+                              const isImage = attachment.mimeType?.startsWith('image/');
+                              const isVideo = attachment.mimeType?.startsWith('video/');
+                              const isPDF = attachment.mimeType === 'application/pdf';
+                              const attachmentUrl = `${process.env.REACT_APP_API_URL?.replace('/api', '')}${attachment.url}`;
+
+                              // Show preview for images and videos
+                              if (isImage) {
+                                return (
+                                  <Box key={idx}>
+                                    <Box
+                                      component="img"
+                                      src={attachmentUrl}
+                                      alt={attachment.originalName}
+                                      sx={{
+                                        maxWidth: '100%',
+                                        maxHeight: 300,
+                                        borderRadius: 2,
+                                        cursor: 'pointer',
+                                        display: 'block',
+                                        '&:hover': {
+                                          opacity: 0.9
+                                        }
+                                      }}
+                                      onClick={() => window.open(attachmentUrl, '_blank')}
+                                    />
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        display: 'block',
+                                        color: isOwn ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                                        fontSize: '0.7rem',
+                                        mt: 0.5
+                                      }}
+                                    >
+                                      {attachment.originalName} • {(attachment.size / 1024).toFixed(1)} KB
+                                    </Typography>
+                                  </Box>
+                                );
+                              }
+
+                              if (isVideo) {
+                                return (
+                                  <Box key={idx}>
+                                    <Box
+                                      component="video"
+                                      controls
+                                      src={attachmentUrl}
+                                      sx={{
+                                        maxWidth: '100%',
+                                        maxHeight: 300,
+                                        borderRadius: 2,
+                                        display: 'block',
+                                      }}
+                                    />
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        display: 'block',
+                                        color: isOwn ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                                        fontSize: '0.7rem',
+                                        mt: 0.5
+                                      }}
+                                    >
+                                      {attachment.originalName} • {(attachment.size / 1024).toFixed(1)} KB
+                                    </Typography>
+                                  </Box>
+                                );
+                              }
+
+                              // For other files (PDFs, documents), show as card
+                              return (
+                                <Box
+                                  key={idx}
+                                  sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1,
+                                    p: 1,
+                                    bgcolor: isOwn ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.05)',
+                                    borderRadius: 1,
+                                    cursor: 'pointer',
+                                    '&:hover': {
+                                      bgcolor: isOwn ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.08)',
+                                    }
+                                  }}
+                                  onClick={() => window.open(attachmentUrl, '_blank')}
+                                >
+                                  {isPDF ? (
+                                    <Description sx={{ fontSize: 20, color: isOwn ? 'white' : 'primary.main' }} />
+                                  ) : (
+                                    <InsertDriveFile sx={{ fontSize: 20, color: isOwn ? 'white' : 'primary.main' }} />
+                                  )}
+                                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        display: 'block',
+                                        color: isOwn ? 'white' : 'text.primary',
+                                        fontWeight: 500,
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                    >
+                                      {attachment.originalName}
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        display: 'block',
+                                        color: isOwn ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                                        fontSize: '0.65rem'
+                                      }}
+                                    >
+                                      {(attachment.size / 1024).toFixed(1)} KB
+                                    </Typography>
+                                  </Box>
+                                  <Download sx={{ fontSize: 18, color: isOwn ? 'white' : 'primary.main' }} />
+                                </Box>
+                              );
+                            })}
+                          </Box>
+                        )}
+
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
                           <Typography 
                             variant="caption" 
@@ -722,7 +989,7 @@ const CommunicationPage: React.FC = () => {
                   </Box>
                 )}
                 
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -732,7 +999,7 @@ const CommunicationPage: React.FC = () => {
                   />
                   <IconButton
                     onClick={() => fileInputRef.current?.click()}
-                    size="small"
+                    size="medium"
                     color="primary"
                   >
                     <AttachFile />
@@ -740,7 +1007,7 @@ const CommunicationPage: React.FC = () => {
                   
                   <IconButton
                     onClick={(e) => setEmojiPickerAnchor(e.currentTarget)}
-                    size="small"
+                    size="medium"
                     color="primary"
                   >
                     <EmojiEmotions />
@@ -761,6 +1028,11 @@ const CommunicationPage: React.FC = () => {
                     }}
                     disabled={sending}
                     inputRef={messageInputRef}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        alignItems: 'center'
+                      }
+                    }}
                   />
                   <Button
                     variant="contained"
@@ -770,7 +1042,11 @@ const CommunicationPage: React.FC = () => {
                       minWidth: 'auto',
                       px: 3,
                       py: 1.5,
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                      height: '56px',
+                      bgcolor: 'primary.main',
+                      '&:hover': {
+                        bgcolor: 'primary.dark'
+                      }
                     }}
                   >
                     {sending ? <CircularProgress size={20} sx={{ color: 'white' }} /> : <Send />}

@@ -34,6 +34,7 @@ import {
 import { useData } from '../../../contexts/DataContext';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import { formatGradeForDisplay, areGradesEqual } from '../../../utils/gradeDisplayUtils';
 
 interface ExecutiveSummaryProps {
   schoolBranding?: any;
@@ -610,13 +611,13 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({ schoolBranding }) =
                   {school.gradeLevels.length > 0 ? (
                     <Box>
                       {school.gradeLevels.map((grade, index) => {
-                        const gradeStudents = students.filter(s => s.grade === grade).length;
+                        const gradeStudents = students.filter(s => areGradesEqual(s.grade, grade)).length;
                         const percentage = students.length > 0 ? Math.round((gradeStudents / students.length) * 100) : 0;
                         return (
                           <Box key={grade} sx={{ mb: 2 }}>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                               <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                {grade.charAt(0).toUpperCase() + grade.slice(1)}
+                                {formatGradeForDisplay(grade)}
                               </Typography>
                               <Typography variant="body2" color="text.secondary">
                                 {gradeStudents} students ({percentage}%)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { 
   StyleSheet, 
@@ -25,6 +25,49 @@ import { createStackNavigator } from '@react-navigation/stack';
 
 const Stack = createStackNavigator();
 
+// Error Boundary Component
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('📱 ERROR BOUNDARY CAUGHT:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={{ flex: 1 }}>
+          <LinearGradient colors={['#667eea', '#764ba2']} style={{ flex: 1 }}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+              <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold', marginBottom: 20 }}>
+                ⚠️ App Error
+              </Text>
+              <Text style={{ color: 'white', fontSize: 16, textAlign: 'center', marginBottom: 10 }}>
+                Something went wrong. Please restart the app.
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, textAlign: 'center' }}>
+                {this.state.error?.message || 'Unknown error'}
+              </Text>
+            </View>
+          </LinearGradient>
+        </SafeAreaView>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -33,6 +76,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<'dashboard' | 'students' | 'reports'>('dashboard');
+  const [appError, setAppError] = useState<string | null>(null);
 
   // Check for existing authentication on app start
   useEffect(() => {
@@ -41,18 +85,28 @@ export default function App() {
 
   const checkAuthentication = async () => {
     try {
-      const isAuthenticated = await apiService.isAuthenticated();
-      if (isAuthenticated) {
-        const user = await apiService.getStoredUserData();
-        if (user) {
-          setCurrentUser(user);
-          setIsLoggedIn(true);
-        }
+      console.log('📱 Starting authentication check...');
+      
+      // First, just check if we have stored user data (no API call)
+      const user = await apiService.getStoredUserData();
+      console.log('📱 Stored user data:', user ? 'Found' : 'Not found');
+      
+      if (user) {
+        setCurrentUser(user);
+        setIsLoggedIn(true);
+        console.log('📱 User restored from storage');
+      } else {
+        console.log('📱 No stored user, showing login');
       }
-    } catch (error) {
-      console.error('Authentication check failed:', error);
+    } catch (error: any) {
+      console.error('📱 Error checking authentication:', error);
+      // Don't crash, just show login
+      setCurrentUser(null);
+      setIsLoggedIn(false);
+      setAppError(error?.message || 'Initialization error');
     } finally {
       setIsInitializing(false);
+      console.log('📱 Initialization complete');
     }
   };
 
@@ -133,13 +187,16 @@ export default function App() {
 
   if (isLoggedIn && currentUser) {
     const schoolId = (currentUser as any).schoolId?._id || (currentUser as any).schoolId;
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar style="light" />
-        {/* Always provide branding when we have a schoolId so all roles get dynamic colors */}
-        <BrandingProvider schoolId={schoolId}>
-          {/* Branded background gradient */}
-          <BrandedBackground>
+    
+    // Wrap everything in try-catch to prevent crashes
+    try {
+      return (
+        <SafeAreaView style={styles.container}>
+          <StatusBar style="light" />
+          {/* Always provide branding when we have a schoolId so all roles get dynamic colors */}
+          <BrandingProvider schoolId={schoolId} userRole={currentUser.role}>
+            {/* Branded background gradient */}
+            <BrandedBackground>
           {/* Compact Header */}
           <View style={styles.compactHeader}>
             <View style={styles.headerLeft}>
@@ -213,7 +270,30 @@ export default function App() {
           </BrandedBackground>
         </BrandingProvider>
       </SafeAreaView>
-    );
+      );
+    } catch (error: any) {
+      console.error('📱 CRITICAL ERROR in logged-in view:', error);
+      // Show error screen but don't crash
+      return (
+        <SafeAreaView style={styles.container}>
+          <StatusBar style="light" />
+          <LinearGradient colors={['#667eea', '#764ba2']} style={styles.gradient}>
+            <View style={styles.loadingContainer}>
+              <Text style={styles.errorTitle}>⚠️ Error</Text>
+              <Text style={styles.errorText}>
+                App encountered an error. Please restart.
+              </Text>
+              <Text style={styles.errorDetails}>
+                {error?.message || 'Unknown error'}
+              </Text>
+              <TouchableOpacity onPress={handleLogout} style={styles.retryButton}>
+                <Text style={styles.retryButtonText}>Logout & Retry</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </SafeAreaView>
+      );
+    }
   }
 
   return (
@@ -294,17 +374,27 @@ export default function App() {
 
   // Helper component for branded background
   function BrandedBackground({ children }: { children: React.ReactNode }) {
-    // Lazy import to avoid hook usage before provider in other branches
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { useBranding } = require('./contexts/BrandingContext');
-    const { branding } = useBranding();
-    const primary = branding?.branding?.primaryColor || '#667eea';
-    const secondary = branding?.branding?.secondaryColor || '#764ba2';
-    return (
-      <LinearGradient colors={[primary, secondary]} style={styles.gradient}>
-        {children}
-      </LinearGradient>
-    );
+    try {
+      // Lazy import to avoid hook usage before provider in other branches
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useBranding } = require('./contexts/BrandingContext');
+      const { branding } = useBranding();
+      const primary = branding?.branding?.primaryColor || '#667eea';
+      const secondary = branding?.branding?.secondaryColor || '#764ba2';
+      return (
+        <LinearGradient colors={[primary, secondary]} style={styles.gradient}>
+          {children}
+        </LinearGradient>
+      );
+    } catch (error) {
+      console.error('📱 BrandedBackground error, using fallback:', error);
+      // Fallback to default gradient if branding fails
+      return (
+        <LinearGradient colors={['#667eea', '#764ba2']} style={styles.gradient}>
+          {children}
+        </LinearGradient>
+      );
+    }
   }
 
 const { width } = Dimensions.get('window');
@@ -324,6 +414,39 @@ const styles = StyleSheet.create({
   loadingText: {
     color: 'white',
     fontSize: 18,
+  },
+  errorTitle: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  errorText: {
+    color: 'white',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 40,
+  },
+  errorDetails: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 30,
+    paddingHorizontal: 40,
+  },
+  retryButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
   loginContainer: {
     flex: 1,

@@ -67,6 +67,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import toast from 'react-hot-toast';
 import { aiService } from '../../services/aiService';
+import { formatGradeForDisplay } from '../../utils/gradeDisplayUtils';
 
 const drawerWidth = 280;
 
@@ -707,7 +708,7 @@ const TeachersUI: React.FC = () => {
                   <Box>
                     <Typography variant="h6">{student.name}</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {student.grade}
+                      {formatGradeForDisplay(student.grade)}
                     </Typography>
                   </Box>
                 </Box>
@@ -935,7 +936,7 @@ const TeachersUI: React.FC = () => {
                 </ListItemAvatar>
                 <ListItemText
                   primary={student.name}
-                  secondary={student.grade}
+                  secondary={formatGradeForDisplay(student.grade)}
                 />
               </ListItem>
             ))}

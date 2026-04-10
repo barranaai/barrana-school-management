@@ -186,7 +186,7 @@ router.get('/conversation/:conversationId', protect, authorize('parent', 'school
 // @access  Private (parent, school_admin, super_admin)
 router.post('/conversation', protect, authorize('parent', 'school_admin', 'super_admin'), async (req, res) => {
   try {
-    const { recipientId, subject, initialMessage, studentId } = req.body;
+    const { recipientId, subject, initialMessage, studentId, forceNewThread } = req.body;
 
     if (!recipientId || !initialMessage) {
       return res.status(400).json({
@@ -218,14 +218,18 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
       });
     }
 
-    // Check if conversation already exists
-    let conversation = await Conversation.findOne({
-      schoolId: req.user.schoolId,
-      'participants.userId': { $all: [req.user._id, recipientId] },
-      isActive: true
-    });
+    let conversation = null;
 
-    // Create new conversation if doesn't exist
+    // Check if conversation already exists (only if not forcing new thread)
+    if (!forceNewThread) {
+      conversation = await Conversation.findOne({
+        schoolId: req.user.schoolId,
+        'participants.userId': { $all: [req.user._id, recipientId] },
+        isActive: true
+      });
+    }
+
+    // Create new conversation if doesn't exist or if forcing new thread
     if (!conversation) {
       let studentData = null;
       if (studentId) {
@@ -270,6 +274,16 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
     const schedulingData = req.body.schedulingData || {};
     const isScheduled = schedulingData.scheduledDateTime && new Date(schedulingData.scheduledDateTime) > new Date();
     
+    // Prepare metadata with attachments
+    const messageMetadata = {
+      ...conversation.metadata
+    };
+    
+    // Add attachments to metadata if present
+    if (attachments && attachments.length > 0) {
+      messageMetadata.attachments = attachments;
+    }
+    
     const message = await Message.create({
       conversationId: conversation._id,
       senderId: req.user._id,
@@ -287,10 +301,7 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
       scheduledTime: isScheduled ? schedulingData.scheduledTime : undefined,
       timezone: isScheduled ? (schedulingData.timezone || 'UTC') : undefined,
       sentAt: isScheduled ? null : new Date(), // Set to null for scheduled messages to prevent default
-      metadata: {
-        ...conversation.metadata,
-        attachments: attachments
-      }
+      metadata: messageMetadata
     });
 
     // Only update conversation and create notifications if NOT scheduled
@@ -304,12 +315,14 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
       const recipientUser = await User.findById(recipient._id);
       if (recipientUser) {
         const notification = {
+          id: `message_${message._id}_${Date.now()}`,
           type: 'message',
           title: 'New Message',
           message: `You have a new message from ${req.user.firstName} ${req.user.lastName}`,
           data: {
-            conversationId: conversation._id,
-            senderId: req.user._id,
+            messageId: message._id.toString(),
+            conversationId: conversation._id.toString(),
+            senderId: req.user._id.toString(),
             senderName: `${req.user.firstName} ${req.user.lastName}`,
             senderRole: req.user.role
           },
@@ -320,7 +333,7 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
         recipientUser.notifications.push(notification);
         await recipientUser.save();
 
-        logger.info(`Created notification for recipient ${recipient._id}`);
+        logger.info(`Created in-app notification for recipient ${recipient._id}`);
 
         // Send push notification
         try {

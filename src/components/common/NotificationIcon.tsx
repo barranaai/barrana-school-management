@@ -20,6 +20,7 @@ import {
   Close,
 } from '@mui/icons-material';
 import notificationService, { type Notification } from '../../services/notificationService';
+import messagingService from '../../services/messagingService';
 import toast from 'react-hot-toast';
 
 interface NotificationIconProps {
@@ -38,7 +39,39 @@ const NotificationIcon: React.FC<NotificationIconProps> = ({ variant = 'default'
   useEffect(() => {
     loadNotifications();
     
-    // Refresh notifications every 30 seconds
+    // Connect to Socket.io for real-time notifications
+    const token = localStorage.getItem('token');
+    if (token) {
+      messagingService.connect(token);
+
+      // Listen for real-time notifications
+      const handleNotification = (notification: Notification) => {
+        console.log('📡 Real-time notification received:', notification);
+        setNotifications(prev => [notification, ...prev]);
+        setUnreadCount(prev => prev + 1);
+        
+        // Show toast notification
+        toast.success(notification.message, {
+          icon: '🔔',
+          duration: 5000,
+        });
+      };
+
+      // Add listener (check if messagingService has a method to listen for notifications)
+      const socket = messagingService.getSocket?.();
+      if (socket) {
+        socket.on('notification', handleNotification);
+      }
+
+      // Cleanup on unmount
+      return () => {
+        if (socket) {
+          socket.off('notification', handleNotification);
+        }
+      };
+    }
+    
+    // Fallback: Refresh notifications every 30 seconds (if Socket.io fails)
     const interval = setInterval(() => {
       loadNotifications();
     }, 30000);

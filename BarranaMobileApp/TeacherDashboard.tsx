@@ -9,7 +9,9 @@ import {
   RefreshControl,
   ActivityIndicator,
   Dimensions,
+  Image,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useBranding } from './contexts/BrandingContext';
 import apiService, { User } from './apiService';
@@ -50,6 +52,9 @@ interface Report {
 const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout, onNavigateToStudents, onNavigateToReports }) => {
   const { branding } = useBranding();
   const primaryColor = branding?.branding?.primaryColor || '#667eea';
+  const secondaryColor = branding?.branding?.secondaryColor || '#764ba2';
+  const schoolName = branding?.schoolName || 'School';
+  const schoolLogo = branding?.logo;
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
@@ -106,6 +111,39 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout, onN
         }
         showsVerticalScrollIndicator={false}
       >
+        {/* Branded School Banner */}
+        <LinearGradient
+          colors={[primaryColor, secondaryColor]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.schoolBanner}
+        >
+          {/* Logout Button */}
+          <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
+            <Ionicons name="log-out-outline" size={24} color="#ffffff" />
+          </TouchableOpacity>
+
+          <View style={styles.bannerContent}>
+            <View style={styles.bannerLeft}>
+              <Text style={styles.schoolNameText}>{schoolName.toUpperCase()}</Text>
+              <Text style={styles.dashboardSubtitle}>Teacher Dashboard</Text>
+              <View style={styles.userInfoBanner}>
+                <Ionicons name="person-circle" size={16} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.userNameText}>{user.firstName} {user.lastName}</Text>
+              </View>
+            </View>
+            {schoolLogo && (
+              <View style={styles.logoContainer}>
+                <Image 
+                  source={{ uri: schoolLogo }} 
+                  style={styles.schoolLogo}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
+          </View>
+        </LinearGradient>
+
         {/* Stats Section */}
         <View style={styles.statsSection}>
           <View style={styles.statsGrid}>
@@ -151,6 +189,17 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, onLogout, onN
           </TouchableOpacity>
         </View>
 
+        {/* DEBUG: Branding Info */}
+        <View style={styles.debugSection}>
+          <Text style={styles.debugTitle}>🔍 DEBUG: Branding Status</Text>
+          <Text style={styles.debugText}>School Name: {schoolName}</Text>
+          <Text style={styles.debugText}>Primary Color: {primaryColor}</Text>
+          <Text style={styles.debugText}>Secondary Color: {secondaryColor}</Text>
+          <Text style={styles.debugText}>Logo URL: {schoolLogo || 'NOT SET'}</Text>
+          <Text style={styles.debugText}>Branding Object: {branding ? 'EXISTS' : 'NULL'}</Text>
+          <Text style={styles.debugText}>Full Branding: {JSON.stringify(branding, null, 2)}</Text>
+        </View>
+
 
 
 
@@ -180,6 +229,75 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  // Branded School Banner Styles
+  schoolBanner: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    paddingTop: 40, // Extra padding for status bar
+    position: 'relative',
+  },
+  logoutButton: {
+    position: 'absolute',
+    top: 12,
+    right: 20,
+    zIndex: 10,
+    padding: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 8,
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  bannerLeft: {
+    flex: 1,
+    marginRight: 16,
+  },
+  schoolNameText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  dashboardSubtitle: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+    marginBottom: 8,
+    fontWeight: '400',
+  },
+  userInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  userNameText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '500',
+  },
+  logoContainer: {
+    width: 70,
+    height: 70,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  schoolLogo: {
+    width: '100%',
+    height: '100%',
   },
   statsSection: {
     padding: 20,
@@ -341,6 +459,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     fontWeight: '500',
+  },
+  // Debug Section Styles
+  debugSection: {
+    margin: 20,
+    padding: 16,
+    backgroundColor: '#fff3cd',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#ffc107',
+  },
+  debugTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#856404',
+    marginBottom: 12,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#856404',
+    marginBottom: 4,
+    fontFamily: 'monospace',
   },
 });
 

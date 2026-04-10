@@ -1,11 +1,28 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
+const crypto = require('crypto');
 const router = express.Router();
 const User = require('../models/User');
 const Class = require('../models/Class');
 const Report = require('../models/Report');
+const School = require('../models/School');
 const { protect, authorize } = require('../middleware/auth');
 const { logger } = require('../utils/logger');
+const { sendTeacherWelcomeEmail } = require('../services/emailService');
+
+// Helper function to generate a secure random password
+const generateSecurePassword = () => {
+  const length = 12;
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*';
+  let password = '';
+  const randomBytes = crypto.randomBytes(length);
+  
+  for (let i = 0; i < length; i++) {
+    password += charset[randomBytes[i] % charset.length];
+  }
+  
+  return password;
+};
 
 // @desc    Get all teachers for a school
 // @route   GET /api/teachers
@@ -223,7 +240,6 @@ router.post('/', [
   body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('email').isEmail().withMessage('Please provide a valid email'),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
   body('phone').optional({ checkFalsy: true }).trim().matches(/^\+[1-9]\d{7,14}$/).withMessage('Phone number must be in E.164 format (e.g., +1234567890)'),
   body('grade').trim().notEmpty().withMessage('Grade is required'),
   body('specialization').optional({ checkFalsy: true }).trim(),
@@ -248,7 +264,6 @@ router.post('/', [
       firstName,
       lastName,
       email,
-      password,
       phone,
       grade,
       specialization,
@@ -259,6 +274,9 @@ router.post('/', [
       schoolId: providedSchoolId,
       canEmailReports
     } = req.body;
+
+    // Generate secure random password
+    const generatedPassword = generateSecurePassword();
 
     // Check if email already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -297,7 +315,7 @@ router.post('/', [
       firstName,
       lastName,
       email: email.toLowerCase(),
-      password,
+      password: generatedPassword,
       phone,
       role: 'teacher',
       schoolId,
@@ -309,21 +327,48 @@ router.post('/', [
       subjects: subjects || [],
       avatar,
       isActive: true,
-      isEmailVerified: false,
+      isEmailVerified: true, // Auto-verify admin-created accounts
       canEmailReports: !!canEmailReports
     });
 
     await teacher.save();
 
+    logger.info(`Teacher account created successfully:`, {
+      email: email,
+      schoolId: schoolId,
+      passwordGenerated: true,
+      passwordLength: generatedPassword.length,
+      isEmailVerified: teacher.isEmailVerified,
+      isActive: teacher.isActive
+    });
+
+    // Send welcome email to teacher with credentials
+    try {
+      const school = await School.findById(schoolId);
+      await sendTeacherWelcomeEmail({
+        teacherEmail: email,
+        teacherName: `${firstName} ${lastName}`,
+        temporaryPassword: generatedPassword,
+        schoolName: school?.name || 'Your School',
+        schoolEmail: school?.email || '',
+        loginUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+        schoolId: schoolId,
+        schoolBranding: school?.branding || {}
+      });
+      logger.info(`Welcome email sent to teacher: ${email}`);
+    } catch (emailError) {
+      logger.error(`Failed to send welcome email to teacher ${email}:`, emailError);
+      // Don't fail the request if email fails
+    }
+
     // Remove password from response
     const teacherResponse = teacher.toObject();
     delete teacherResponse.password;
 
-    logger.info(`Teacher account created: ${email} at school ${schoolId}`);
-
     res.status(201).json({
       success: true,
       data: teacherResponse,
+      generatedPassword: generatedPassword, // Return password to show to admin
       message: 'Teacher created successfully'
     });
   } catch (error) {
@@ -545,6 +590,61 @@ router.get('/me/notifications', protect, authorize('teacher'), async (req, res) 
     res.status(500).json({
       success: false,
       message: 'Server error while fetching notifications',
+      error: error.message
+    });
+  }
+});
+
+// @desc    Get teacher's school branding (for mobile app)
+// @route   GET /api/teachers/me/school-branding
+// @access  Private (Teacher only)
+router.get('/me/school-branding', protect, authorize('teacher'), async (req, res) => {
+  try {
+    const teacher = await User.findById(req.user._id).select('schoolId');
+    
+    if (!teacher || !teacher.schoolId) {
+      return res.status(404).json({
+        success: false,
+        message: 'Teacher or school not found'
+      });
+    }
+
+    const School = require('../models/School');
+    const school = await School.findById(teacher.schoolId).select('name branding logo');
+
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        message: 'School not found'
+      });
+    }
+
+    // Get logo URL - check both school.logo and school.branding.logo
+    let logoUrl = school.logo || school.branding?.logo;
+    
+    // If logo is a relative path, prepend base URL
+    if (logoUrl && !logoUrl.startsWith('http')) {
+      const baseUrl = process.env.FRONTEND_URL || 'http://191.101.233.56';
+      logoUrl = `${baseUrl}${logoUrl}`;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        schoolId: school._id,
+        schoolName: school.name,
+        logo: logoUrl,
+        branding: {
+          primaryColor: school.branding?.primaryColor || '#667eea',
+          secondaryColor: school.branding?.secondaryColor || '#764ba2'
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching teacher school branding:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching school branding',
       error: error.message
     });
   }

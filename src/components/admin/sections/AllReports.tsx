@@ -62,6 +62,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import { formatGradeForDisplay } from '../../../utils/gradeDisplayUtils';
 
 interface AllReportsProps {
   schoolBranding?: any;
@@ -91,6 +92,7 @@ interface ExtendedReport {
   updatedAt: string;
   sentAt?: string;
   template?: string;
+  pdfUrl?: string; // URL to generated PDF
   voiceRecording?: {
     hasRecording: boolean;
     recordings?: Array<{
@@ -131,6 +133,16 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
   const { primaryColor, secondaryColor } = getBrandingColors();
   const brandingGradient = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
   const brandingGradientHover = `linear-gradient(135deg, ${primaryColor}dd 0%, ${secondaryColor}dd 100%)`;
+  
+  // Helper function to convert hex to rgba
+  const hexToRgba = (hex: string, alpha: number = 1) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return `rgba(102, 126, 234, ${alpha})`;
+    const r = parseInt(result[1], 16);
+    const g = parseInt(result[2], 16);
+    const b = parseInt(result[3], 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
   const [reports, setReports] = useState<ExtendedReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -421,11 +433,11 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
     
     let formattedContent = content;
     
-    // Convert lines starting with ## to sub-headers (medium size, bold)
-    formattedContent = formattedContent.replace(/^##\s+(.+)$/gm, '<h4 style="font-size: 1.1em; font-weight: bold; color: #4a5568; margin: 12px 0 8px 0; border-left: 3px solid #764ba2; padding-left: 10px;">$1</h4>');
+    // Convert lines starting with ## to sub-headers (medium size, bold) - using dynamic branding colors
+    formattedContent = formattedContent.replace(/^##\s+(.+)$/gm, `<h4 style="font-size: 1.1em; font-weight: bold; color: #4a5568; margin: 12px 0 8px 0; border-left: 3px solid ${secondaryColor}; padding-left: 10px;">$1</h4>`);
     
-    // Convert lines starting with # to main headers (larger size, bold, with bottom border)
-    formattedContent = formattedContent.replace(/^#\s+(.+)$/gm, '<h3 style="font-size: 1.3em; font-weight: bold; color: #2d3748; margin: 18px 0 12px 0; border-bottom: 2px solid #667eea; padding-bottom: 8px;">$1</h3>');
+    // Convert lines starting with # to main headers (larger size, bold, with bottom border) - using dynamic branding colors
+    formattedContent = formattedContent.replace(/^#\s+(.+)$/gm, `<h3 style="font-size: 1.3em; font-weight: bold; color: #2d3748; margin: 18px 0 12px 0; border-bottom: 2px solid ${primaryColor}; padding-bottom: 8px;">$1</h3>`);
     
     // Convert **text** to <strong>text</strong> for bold formatting
     formattedContent = formattedContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -534,8 +546,31 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
   });
 
   const handleViewReport = (report: ExtendedReport) => {
-    setSelectedReport(report);
-    setShowReportDialog(true);
+    // If report has PDF URL, open it directly
+    if (report.pdfUrl) {
+      handleOpenPdf(report.pdfUrl);
+    } else {
+      // Otherwise, open the dialog to view content
+      setSelectedReport(report);
+      setShowReportDialog(true);
+    }
+  };
+
+  const handleOpenPdf = async (pdfUrl: string) => {
+    try {
+      console.log('Opening PDF:', pdfUrl);
+      
+      // Construct full URL with API base
+      const API_BASE = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5050';
+      const fullPdfUrl = `${API_BASE}${pdfUrl}`;
+      
+      // Open PDF in new tab
+      window.open(fullPdfUrl, '_blank');
+      toast.success('Opening PDF report...');
+    } catch (error) {
+      console.error('Error opening PDF:', error);
+      toast.error('Failed to open PDF report');
+    }
   };
 
   const handlePlayAudio = (report: ExtendedReport) => {
@@ -748,7 +783,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
     return (
       <Container maxWidth="xl">
         <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-          <CircularProgress size={60} sx={{ color: '#667eea' }} />
+          <CircularProgress size={60} sx={{ color: primaryColor }} />
         </Box>
       </Container>
     );
@@ -1095,7 +1130,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                                 opacity: 0.8,
                               }}
                             >
-                              Grade {report.studentId.studentGrade || report.studentId.grade || 'Unknown'}
+                              Grade {formatGradeForDisplay(report.studentId.studentGrade || report.studentId.grade) || 'Unknown'}
                             </Typography>
                           </Box>
                         </Box>
@@ -1174,9 +1209,9 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                                 handlePlayAudio(report);
                               }}
                               sx={{
-                                color: '#667eea',
+                                color: primaryColor,
                                 '&:hover': {
-                                  background: 'rgba(102, 126, 234, 0.1)',
+                                  background: hexToRgba(primaryColor, 0.1),
                                   transform: 'scale(1.1)',
                                 },
                                 transition: 'all 0.2s ease-in-out',
@@ -1475,7 +1510,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                       background: 'rgba(255,255,255,0.8)',
                       borderRadius: 3,
                       backdropFilter: 'blur(10px)',
-                      border: '1px solid rgba(102, 126, 234, 0.1)',
+                      border: `1px solid ${hexToRgba(primaryColor, 0.1)}`,
                       boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                       '&:hover': {
@@ -1489,7 +1524,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                         <Avatar
                           sx={{
                             mr: 2,
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            background: brandingGradient,
                             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                             width: 48,
                             height: 48,
@@ -1498,7 +1533,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                           {getStudentName(selectedReport).charAt(0)}
                         </Avatar>
                         <Box>
-                          <Typography variant="h6" fontWeight={700} sx={{ color: '#667eea' }}>
+                          <Typography variant="h6" fontWeight={700} sx={{ color: primaryColor }}>
                             Student Information
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
@@ -1522,7 +1557,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                             Grade Level
                           </Typography>
                           <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                            {selectedReport.studentId.studentGrade || selectedReport.studentId.grade || 'Unknown'}
+                            {formatGradeForDisplay(selectedReport.studentId.studentGrade || selectedReport.studentId.grade) || 'Unknown'}
                           </Typography>
                         </Box>
                         
@@ -1547,7 +1582,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                       background: 'rgba(255,255,255,0.8)',
                       borderRadius: 3,
                       backdropFilter: 'blur(10px)',
-                      border: '1px solid rgba(118, 75, 162, 0.1)',
+                      border: `1px solid ${hexToRgba(secondaryColor, 0.1)}`,
                       boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                       '&:hover': {
@@ -1561,7 +1596,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                         <Avatar
                           sx={{
                             mr: 2,
-                            background: 'linear-gradient(135deg, #764ba2 0%, #f093fb 100%)',
+                            background: `linear-gradient(135deg, ${secondaryColor} 0%, ${primaryColor} 100%)`,
                             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                             width: 48,
                             height: 48,
@@ -1570,7 +1605,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                           {getTeacherName(selectedReport).charAt(0)}
                         </Avatar>
                         <Box>
-                          <Typography variant="h6" fontWeight={700} sx={{ color: '#764ba2' }}>
+                          <Typography variant="h6" fontWeight={700} sx={{ color: secondaryColor }}>
                             Teacher Information
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
@@ -1636,9 +1671,9 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                   >
                     <CardContent sx={{ p: 3 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                        <Description sx={{ mr: 2, fontSize: 28, color: '#667eea' }} />
+                        <Description sx={{ mr: 2, fontSize: 28, color: primaryColor }} />
                         <Box>
-                          <Typography variant="h6" fontWeight={700} sx={{ color: '#667eea' }}>
+                          <Typography variant="h6" fontWeight={700} sx={{ color: primaryColor }}>
                             Report Content (Email Preview)
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
@@ -1654,8 +1689,8 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                           p: 3,
                           background: 'white',
                           borderRadius: 2,
-                          border: '4px solid #667eea',
-                          borderLeft: '4px solid #667eea',
+                          border: `4px solid ${primaryColor}`,
+                          borderLeft: `4px solid ${primaryColor}`,
                           fontFamily: 'Arial, sans-serif',
                           lineHeight: 1.6,
                           color: '#333',
@@ -1663,15 +1698,15 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                             width: '8px',
                           },
                           '&::-webkit-scrollbar-track': {
-                            background: 'rgba(102, 126, 234, 0.1)',
+                            background: hexToRgba(primaryColor, 0.1),
                             borderRadius: '4px',
                           },
                           '&::-webkit-scrollbar-thumb': {
-                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            background: brandingGradient,
                             borderRadius: '4px',
                           },
                           '&::-webkit-scrollbar-thumb:hover': {
-                            background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                            background: brandingGradientHover,
                           },
                           // Email-like styling
                           '& strong': {
@@ -1687,7 +1722,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                             fontWeight: 'bold',
                             color: '#2d3748',
                             margin: '18px 0 12px 0',
-                            borderBottom: '2px solid #667eea',
+                            borderBottom: `2px solid ${primaryColor}`,
                             paddingBottom: '8px',
                           },
                           '& h4': {
@@ -1695,7 +1730,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                             fontWeight: 'bold',
                             color: '#4a5568',
                             margin: '12px 0 8px 0',
-                            borderLeft: '3px solid #764ba2',
+                            borderLeft: `3px solid ${secondaryColor}`,
                             paddingLeft: '10px',
                           },
                         }}
@@ -1727,18 +1762,18 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
               px: 4,
               py: 1.5,
               fontWeight: 600,
-              borderColor: '#d32f2f',
-              color: '#d32f2f',
+              borderColor: secondaryColor,
+              color: secondaryColor,
               '&:hover': {
-                borderColor: '#b71c1c',
-                background: 'rgba(211, 47, 47, 0.05)',
-                color: '#b71c1c',
+                borderColor: primaryColor,
+                background: hexToRgba(secondaryColor, 0.05),
+                color: primaryColor,
                 transform: 'translateY(-2px)',
               },
               '&:active': {
-                borderColor: '#c62828',
-                background: 'rgba(198, 40, 40, 0.1)',
-                color: '#c62828',
+                borderColor: primaryColor,
+                background: hexToRgba(primaryColor, 0.1),
+                color: primaryColor,
               },
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
@@ -1750,16 +1785,16 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
             startIcon={<Download />}
             onClick={() => toast.success('Download functionality coming soon!')}
             sx={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: brandingGradient,
               borderRadius: 3,
               px: 4,
               py: 1.5,
               fontWeight: 600,
-              boxShadow: '0 4px 12px rgba(102, 126, 234, 0.3)',
+              boxShadow: `0 4px 12px ${hexToRgba(primaryColor, 0.3)}`,
               '&:hover': {
-                background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                background: brandingGradientHover,
                 transform: 'translateY(-2px)',
-                boxShadow: '0 6px 20px rgba(102, 126, 234, 0.4)',
+                boxShadow: `0 6px 20px ${hexToRgba(primaryColor, 0.4)}`,
               },
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
@@ -1787,7 +1822,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: brandingGradient,
             color: 'white',
             borderRadius: '12px 12px 0 0',
             pb: 2,
@@ -1809,7 +1844,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                 background: 'rgba(255,255,255,0.8)',
                 borderRadius: 3,
                 backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(102, 126, 234, 0.1)',
+                border: `1px solid ${hexToRgba(primaryColor, 0.1)}`,
                 boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
                 p: 3,
                 mb: 3,
@@ -1820,7 +1855,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                   sx={{
                     width: 80,
                     height: 80,
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: brandingGradient,
                     boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
                     mr: 2,
                   }}
@@ -1828,7 +1863,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                   <Mic sx={{ fontSize: 40 }} />
                 </Avatar>
                 <Box>
-                  <Typography variant="h6" fontWeight={700} sx={{ color: '#667eea' }}>
+                  <Typography variant="h6" fontWeight={700} sx={{ color: primaryColor }}>
                     Audio Recording
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -1857,10 +1892,10 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                   sx={{
                     width: 64,
                     height: 64,
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: brandingGradient,
                     color: 'white',
                     '&:hover': {
-                      background: 'linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%)',
+                      background: brandingGradientHover,
                       transform: 'scale(1.05)',
                     },
                     '&:disabled': {
@@ -1877,8 +1912,8 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                   onClick={handleNextAudio}
                   disabled={currentAudioIndex === 0}
                   sx={{
-                    color: '#667eea',
-                    '&:hover': { background: 'rgba(102, 126, 234, 0.1)' },
+                    color: primaryColor,
+                    '&:hover': { background: hexToRgba(primaryColor, 0.1) },
                     '&:disabled': { color: 'text.disabled' },
                   }}
                 >
@@ -1913,8 +1948,8 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <TextFields sx={{ mr: 1, color: '#667eea' }} />
-                <Typography variant="h6" fontWeight={700} sx={{ color: '#667eea' }}>
+                <TextFields sx={{ mr: 1, color: primaryColor }} />
+                <Typography variant="h6" fontWeight={700} sx={{ color: primaryColor }}>
                   Transcription
                 </Typography>
               </Box>
@@ -1925,7 +1960,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                   p: 2,
                   background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
                   borderRadius: 2,
-                  border: '1px solid rgba(102, 126, 234, 0.1)',
+                  border: `1px solid ${hexToRgba(primaryColor, 0.1)}`,
                 }}
               >
                 <Typography variant="body2" sx={{ lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
@@ -1944,11 +1979,11 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
               px: 4,
               py: 1.5,
               fontWeight: 600,
-              borderColor: 'rgba(102, 126, 234, 0.3)',
-              color: '#667eea',
+              borderColor: hexToRgba(primaryColor, 0.3),
+              color: primaryColor,
               '&:hover': {
-                borderColor: '#667eea',
-                background: 'rgba(102, 126, 234, 0.05)',
+                borderColor: primaryColor,
+                background: hexToRgba(primaryColor, 0.05),
                 transform: 'translateY(-2px)',
               },
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',

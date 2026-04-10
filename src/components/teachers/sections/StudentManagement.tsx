@@ -66,6 +66,7 @@ import {
   AutoFixHigh,
   Send,
   PhotoCamera,
+  Refresh,
 } from '@mui/icons-material';
 import { useData } from '../../../contexts/DataContext';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -77,6 +78,7 @@ import { communicationService } from '../../../services/communicationService';
 import { REPORT_FREQUENCIES, type ReportFrequency } from '../../../constants/reportFrequencies';
 import { mediaService, type UploadedMedia } from '../../../services/mediaService';
 import MediaUpload from '../../common/MediaUpload';
+import { formatGradeForDisplay, areGradesEqual } from '../../../utils/gradeDisplayUtils';
 import NotificationIcon from '../../common/NotificationIcon';
 import { themeColors } from '../../../theme/teacherTheme';
 import toast from 'react-hot-toast';
@@ -178,6 +180,21 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   // Due status tracking
   const [dueStatusData, setDueStatusData] = useState<DueStatusData>({});
   const [isCheckingDueStatus, setIsCheckingDueStatus] = useState(false);
+  const [checking, setChecking] = useState(false);
+  // Due reports from centralized backend calculator (single source of truth)
+  const [dueReportsFromBackend, setDueReportsFromBackend] = useState<Array<{
+    studentId: string;
+    studentName: string;
+    studentGrade: string;
+    studentClass: string;
+    templateId: string;
+    templateName: string;
+    frequency: string;
+    dueDate: Date;
+    daysOverdue: number;
+    reportStatus: string;
+    reportId: string | null;
+  }>>([]);
   
   // Refs for media recording
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -216,6 +233,32 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
     loadReportTemplates();
   }, [user?.id]); // Add user.id as dependency to ensure it runs when user is loaded
+
+  // Fetch due reports from centralized backend calculator (single source of truth)
+  useEffect(() => {
+    const fetchDueReports = async () => {
+      try {
+        console.log('📊 Fetching due reports from centralized backend calculator...');
+        const response = await apiService.getDueReports();
+        
+        if (response.success && response.data) {
+          console.log('✅ Due reports fetched:', response.data);
+          setDueReportsFromBackend(response.data.dueReports);
+        } else {
+          console.error('❌ Failed to fetch due reports:', response.error);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching due reports:', error);
+      }
+    };
+
+    if (user?.id) {
+      fetchDueReports();
+      // Refresh every 2 minutes
+      const interval = setInterval(fetchDueReports, 120000);
+      return () => clearInterval(interval);
+    }
+  }, [user?.id]);
 
   // Helper function to get current time in school timezone
   const getCurrentTimeInSchoolTimezone = (): Date => {
@@ -669,201 +712,25 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   };
 
   // Calculate due reports based on templates and frequencies
+  // SIMPLIFIED: Use backend calculator as single source of truth
+  // All complex logic moved to backend/services/dueReportsCalculator.js
   const dueReports = useMemo(() => {
-    // Debug logging removed for cleaner console
+    console.log('🎯 Using due reports from centralized backend:', dueReportsFromBackend.length);
     
-    // Only calculate if we have students and templates
-    if (teacherStudents.length === 0 || reportTemplates.length === 0) {
-      return [];
-    }
-    
-    // Only calculate if we have school settings
-    if (!school?.settings) {
-      return [];
-    }
-    
-    // Only calculate if we have timezone settings
-    if (!school?.settings?.timezone) {
-      return [];
-    }
-    
-    // Only calculate if we have report frequency settings
-    if (!school?.settings?.reportFrequencies) {
-      return [];
-    }
-    
-    const due: DueReport[] = [];
-    
-    // Get current time in school timezone
-    const schoolSettings = school?.settings || {};
-    const now = getCurrentTimeInSchoolTimezone();
-    
-    // Calculation started
-
-    teacherStudents.forEach(student => {
-      // Find templates for this student's grade (case-insensitive)
-      const gradeTemplates = reportTemplates.filter(template => 
-        template.grade.toLowerCase() === student.grade.toLowerCase() && template.isActive
-      );
-
-      gradeTemplates.forEach(template => {
-        // Get ALL reports for this student (not just current teacher's reports)
-        const allStudentReports = reports.filter(r => {
-          const reportStudentId = typeof r.studentId === 'string' ? r.studentId : (r.studentId && r.studentId._id);
-          return reportStudentId === student._id;
-        });
-        
-        console.log('🔍 Frontend: Debug reports for student', {
-          student: student.name,
-          template: template.name,
-          totalReports: reports.length,
-          allStudentReports: allStudentReports.length,
-          studentReportsData: allStudentReports.map(r => ({
-            id: r._id,
-            teacherId: typeof r.teacherId === 'string' ? r.teacherId : r.teacherId?._id,
-            teacherName: typeof r.teacherId === 'string' ? 'Unknown' : `${r.teacherId?.firstName} ${r.teacherId?.lastName}`,
-            createdAt: r.createdAt,
-            status: r.status
-          }))
-        });
-        
-        // Check if there's a report for the current period based on frequency
-        const currentPeriodReport = getReportForCurrentPeriod(allStudentReports, template.reportFrequency, now);
-        
-        if (currentPeriodReport) {
-          // Report exists for current period - check if it's by another teacher
-          const currentTeacherId = user?._id || user?.id;
-          const reportTeacherId = typeof currentPeriodReport.teacherId === 'string' 
-            ? currentPeriodReport.teacherId 
-            : currentPeriodReport.teacherId?._id;
-          
-          const isReportByAnotherTeacher = reportTeacherId && reportTeacherId !== currentTeacherId;
-          
-          console.log('🔍 Frontend: Due calculation - Report exists for current period', {
-            student: student.name,
-            template: template.name,
-            reportTeacherId,
-            currentTeacherId,
-            userObject: { _id: user?._id, id: user?.id },
-            isReportByAnotherTeacher,
-            status: currentPeriodReport.status
-          });
-          
-          if (isReportByAnotherTeacher) {
-            // Report already generated by another teacher for this period - not due for current teacher
-            console.log('🔍 Frontend: Report already generated by another teacher - SKIPPING', {
-              student: student.name,
-              template: template.name,
-              reportTeacherId,
-              currentTeacherId,
-              status: currentPeriodReport.status
-            });
-            return; // Skip this template for current teacher
-          }
-          
-          // Report exists for current period by current teacher - check status
-          if (currentPeriodReport.status === 'sent') {
-            // Not due - report is sent
-            console.log('🔍 Frontend: Report exists and sent', {
-              student: student.name,
-              template: template.name,
-              status: currentPeriodReport.status
-            });
-          } else {
-            // Report exists but not sent (draft or completed) by current teacher
-            // Check if the report is overdue based on the due date
-            const dueDate = calculateDueDateForFrequency(template.reportFrequency, now);
-            const isOverdue = now.getTime() > dueDate.getTime();
-            
-            console.log('🔍 Frontend: Report exists but not sent', {
-              student: student.name,
-              template: template.name,
-              status: currentPeriodReport.status,
-              dueDate: dueDate.toISOString(),
-              now: now.toISOString(),
-              isOverdue
-            });
-            
-            if (isOverdue) {
-              const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-              due.push({
-                studentId: student._id,
-                studentName: student.name,
-                templateName: template.name,
-                frequency: template.reportFrequency,
-                dueDate: dueDate,
-                daysOverdue: daysOverdue,
-                templateId: template._id,
-                reportStatus: currentPeriodReport.status,
-                reportId: currentPeriodReport._id
-              });
-              
-              // Debug this calculation
-              debugDueCalculations(student._id, template._id, {
-                due: true,
-                timezone: schoolSettings.timezone,
-                frequency: template.reportFrequency,
-                dueDate: dueDate.toISOString(),
-                now: now.toISOString(),
-                daysOverdue
-              });
-            }
-          }
-        } else {
-          // No report for current period - calculate due date
-          const dueDate = calculateDueDateForFrequency(template.reportFrequency, now);
-          
-          // Use time-based comparison (same as backend) instead of day-based
-          const isOverdue = now.getTime() > dueDate.getTime();
-          
-          console.log('🔍 Frontend: No report for current period', {
-            student: student.name,
-            template: template.name,
-            dueDate: dueDate.toISOString(),
-            now: now.toISOString(),
-            isOverdue
-          });
-          
-          if (isOverdue) {
-            const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-            due.push({
-              studentId: student._id,
-              studentName: student.name,
-              templateName: template.name,
-              frequency: template.reportFrequency,
-              dueDate,
-              daysOverdue,
-              templateId: template._id,
-              reportStatus: 'missing',
-              reportId: null
-            });
-            
-            // Debug this calculation
-            debugDueCalculations(student._id, template._id, {
-              due: true,
-              timezone: schoolSettings.timezone,
-              frequency: template.reportFrequency,
-              dueDate: dueDate.toISOString(),
-              now: now.toISOString(),
-              daysOverdue
-            });
-          }
-        }
-      });
-    });
-
-    // Sort by most overdue first
-    due.sort((a, b) => b.daysOverdue - a.daysOverdue);
-    
-    // Calculation completed
-    
-    return due;
+    // Convert backend format to frontend format
+    return dueReportsFromBackend.map(report => ({
+      studentId: report.studentId,
+      studentName: report.studentName,
+      templateName: report.templateName,
+      frequency: report.frequency,
+      dueDate: new Date(report.dueDate),
+      daysOverdue: report.daysOverdue,
+      templateId: report.templateId,
+      reportStatus: report.reportStatus,
+      reportId: report.reportId
+    }));
   }, [
-    teacherStudents.length, 
-    reportTemplates.length, 
-    school?.settings?.timezone,
-    JSON.stringify(school?.settings?.reportFrequencies), // Recalculate when report frequencies change
-    reports.length // Also recalculate when reports change
+    dueReportsFromBackend.length // Use backend as single source of truth
   ]);
 
   const filteredStudents = teacherStudents.filter(student =>
@@ -991,20 +858,19 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         console.log('🔍 Due templates available:', dueTemplates.map(t => t.name));
         setSelectedTemplate(null);
         setKeyPoints([]);
-        toast.success(`${dueTemplates.length} due template(s) available for Grade ${student.grade}. Please select one to continue.`);
+        toast.success(`${dueTemplates.length} due template(s) available for Grade ${formatGradeForDisplay(student.grade)}. Please select one to continue.`);
       } else {
         console.log('🔍 No due templates for grade:', student.grade);
         const availableTemplates = await getAvailableTemplatesForStudent(student);
         const existingReports = getExistingReportInfo(student) || [];
         
         if (availableTemplates.length > 0) {
-          // There are available templates but none are due yet
-          toast.success(`${availableTemplates.length} template(s) available for ${student.grade}, but none are due yet. You can still generate reports manually.`);
+          toast.success(`${availableTemplates.length} template(s) available for ${formatGradeForDisplay(student.grade)}, but none are due yet. You can still generate reports manually.`);
         } else if (existingReports.length > 0) {
           const reportDetails = existingReports.map(r => `${r.frequency}`).join(', ');
-          toast.success(`All ${reportDetails} reports already exist for ${student.grade}. Another teacher may have generated the reports for this period.`);
+          toast.success(`All ${reportDetails} reports already exist for ${formatGradeForDisplay(student.grade)}. Another teacher may have generated the reports for this period.`);
         } else {
-          toast.error(`No active templates found for Grade ${student.grade}.`);
+          toast.error(`No active templates found for Grade ${formatGradeForDisplay(student.grade)}.`);
         }
         setSelectedTemplate(null);
         setKeyPoints([]);
@@ -1742,6 +1608,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     return Object.values(studentDueData).some(status => status.due);
   };
 
+  // SIMPLIFIED: Use centralized backend calculator to check if report can be generated
   const openReportDialog = async (student: any) => {
     console.log('🔍 openReportDialog called for student:', student);
     
@@ -1751,54 +1618,53 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       return;
     }
     
-    // Check available templates using cross-teacher filtering
-    const existingReports = getExistingReportInfo(student);
-    let availableTemplates: any[] = [];
-    let dueTemplates: any[] = [];
+    // Get templates for this student's grade
+    const studentGrade = student.grade || '';
+    const gradeTemplates = reportTemplates.filter(template => 
+      areGradesEqual(template.grade, studentGrade) && template.isActive
+    );
     
-    try {
-      availableTemplates = await getAvailableTemplatesForStudent(student);
-      dueTemplates = await getDueTemplatesForStudent(student);
-    } catch (error) {
-      console.error('Error getting template availability:', error);
-      toast.error('Error checking template availability. Please try again.');
+    if (gradeTemplates.length === 0) {
+      toast.error(`No active templates found for grade: ${formatGradeForDisplay(student.grade)}`);
       return;
     }
     
-    // Only block if NO templates are available (all generated by other teachers)
-    if (availableTemplates.length === 0) {
-      console.log('🚫 Report dialog blocked - no templates available (cross-teacher check)');
-      toast.error(`Cannot generate new report. All reports for this period have already been generated by other teachers assigned to ${student.name}'s class.`);
-      return;
-    }
+    // Check each template with centralized backend
+    let canGenerateAny = false;
+    let blockReasons: string[] = [];
     
-    // Show different messages based on what's available
-    if (dueTemplates.length === 0 && availableTemplates.length > 0) {
-      toast.success(`${availableTemplates.length} template(s) available for ${student.grade}, but none are due yet. You can still generate reports manually if needed.`);
-    } else if (existingReports && existingReports.length > 0) {
-      const reportDetails = existingReports.map(r => `${r.template} (${r.frequency})`).join(', ');
-      const dueCount = dueTemplates.length;
-      if (dueCount > 0) {
-        toast.success(`${dueCount} report(s) due now. Note: Some reports already exist: ${reportDetails}.`);
-      } else {
-        toast.success(`Some reports already exist: ${reportDetails}. No reports are due yet.`);
+    for (const template of gradeTemplates) {
+      try {
+        const result = await apiService.canGenerateReport(student._id, template._id);
+        if (result.success && result.data?.canGenerate) {
+          canGenerateAny = true;
+          break; // At least one template is available
+        } else if (result.data?.reason) {
+          blockReasons.push(result.data.reason);
+        }
+      } catch (error) {
+        console.error(`Error checking if can generate for template ${template.name}:`, error);
       }
-    } else if (dueTemplates.length > 0) {
-      toast.success(`${dueTemplates.length} report(s) are due now for ${student.name}.`);
     }
     
-    console.log('🔍 Setting selected student:', student.name);
+    if (!canGenerateAny) {
+      console.log('🚫 Report dialog blocked - cannot generate any templates');
+      const reason = blockReasons.length > 0 
+        ? blockReasons[0] 
+        : 'Cannot generate report at this time. Please check if reports have already been generated.';
+      toast.error(reason);
+      return;
+    }
+    
+    console.log('✅ Can generate report - opening dialog');
     setSelectedStudent(student);
     
-    console.log('🔍 Auto-selecting template for student grade:', student.grade);
     await autoSelectTemplateForStudent(student);
     
-    console.log('🔍 Generating temp report ID and opening dialog');
     // Generate a temporary report ID for media uploads
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     setTempReportId(tempId);
     
-    console.log('🔍 Opening quick report dialog');
     setShowQuickReportDialog(true);
   };
 
@@ -1814,7 +1680,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     
     const studentGrade = student.grade || '';
     const gradeTemplates = reportTemplates.filter(template => 
-      template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
+      areGradesEqual(template.grade, studentGrade) && template.isActive
     );
     
     // Find existing reports for current period
@@ -1885,16 +1751,27 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     
     const studentGrade = student.grade || '';
     const gradeTemplates = reportTemplates.filter(template => 
-      template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
+      areGradesEqual(template.grade, studentGrade) && template.isActive
     );
     
-    // Get existing reports for current period (only current teacher's reports)
-    const existingReports = getExistingReportInfo(student) || [];
-    const existingFrequencies = existingReports.map(r => r.frequency);
+    // Get existing reports for current period (check ALL teachers' reports)
+    // Business Rule: Only ONE report per student per period, regardless of teacher
+    const allStudentReports = reports.filter(r => {
+      const reportStudentId = typeof r.studentId === 'string' ? r.studentId : (r.studentId && r.studentId._id);
+      return reportStudentId === student._id;
+    });
     
-    // Filter out templates that already have reports
+    const existingReports = [];
+    for (const template of gradeTemplates) {
+      const currentPeriodReport = getReportForCurrentPeriod(allStudentReports, template.reportFrequency, new Date());
+      if (currentPeriodReport) {
+        existingReports.push(template.reportFrequency);
+      }
+    }
+    
+    // Filter out templates that already have reports from ANY teacher
     return gradeTemplates.filter(template => 
-      !existingFrequencies.includes(template.reportFrequency)
+      !existingReports.includes(template.reportFrequency)
     );
   };
 
@@ -1947,16 +1824,27 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     
     const studentGrade = student.grade || '';
     const gradeTemplates = reportTemplates.filter(template => 
-      template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
+      areGradesEqual(template.grade, studentGrade) && template.isActive
     );
     
-    // Get existing reports for current period (only current teacher's reports)
-    const existingReports = getExistingReportInfo(student) || [];
-    const existingFrequencies = existingReports.map(r => r.frequency);
+    // Get existing reports for current period (check ALL teachers' reports)
+    // Business Rule: Only ONE report per student per period, regardless of teacher
+    const allStudentReports = reports.filter(r => {
+      const reportStudentId = typeof r.studentId === 'string' ? r.studentId : (r.studentId && r.studentId._id);
+      return reportStudentId === student._id;
+    });
     
-    // Filter out templates that already have reports
+    const existingReports = [];
+    for (const template of gradeTemplates) {
+      const currentPeriodReport = getReportForCurrentPeriod(allStudentReports, template.reportFrequency, new Date());
+      if (currentPeriodReport) {
+        existingReports.push(template.reportFrequency);
+      }
+    }
+    
+    // Filter out templates that already have reports from ANY teacher
     const availableTemplates = gradeTemplates.filter(template => 
-      !existingFrequencies.includes(template.reportFrequency)
+      !existingReports.includes(template.reportFrequency)
     );
 
     // From the available templates, find which ones are actually due
@@ -1995,7 +1883,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           
           const studentGrade = student.grade || '';
           const applicableTemplates = reportTemplates.filter(template => 
-            template.grade.toLowerCase() === studentGrade.toLowerCase() && template.isActive
+            areGradesEqual(template.grade, studentGrade) && template.isActive
           );
           
           for (const template of applicableTemplates) {
@@ -2041,6 +1929,38 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     console.log('🔍 Force refreshing due reports calculation');
     // This will trigger the useMemo to recalculate
     setSearchTerm(prev => prev); // Force a re-render
+  };
+
+  // Manual check for due reports
+  // Refresh due reports from centralized backend calculator
+  const handleCheckDueReports = async () => {
+    try {
+      setChecking(true);
+      toast.loading('Checking for due reports...', { id: 'checking-due-reports' });
+
+      const response = await apiService.getDueReports();
+
+      if (response.success) {
+        const dueReports = response.data?.dueReports ?? [];
+        const count = response.data?.count ?? dueReports.length;
+        setDueReportsFromBackend(Array.isArray(dueReports) ? dueReports : []);
+
+        if (count > 0) {
+          toast.success(`Found ${count} due report(s)!`, { id: 'checking-due-reports' });
+        } else {
+          toast.success('No due reports at this time!', { id: 'checking-due-reports' });
+        }
+      } else {
+        const message = response.error || response.message || 'Failed to check due reports';
+        toast.error(message, { id: 'checking-due-reports' });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error checking due reports';
+      console.error('❌ Error checking due reports:', error);
+      toast.error(message, { id: 'checking-due-reports' });
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
@@ -2188,7 +2108,28 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                 Manage and track your assigned students
               </Typography>
             </Box>
-            <NotificationIcon />
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Button
+                variant="outlined"
+                startIcon={checking ? <CircularProgress size={16} /> : <Refresh />}
+                onClick={handleCheckDueReports}
+                disabled={checking}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  borderColor: schoolBranding?.branding?.primaryColor || '#667eea',
+                  color: schoolBranding?.branding?.primaryColor || '#667eea',
+                  '&:hover': {
+                    borderColor: schoolBranding?.branding?.primaryColor || '#667eea',
+                    bgcolor: `${schoolBranding?.branding?.primaryColor || '#667eea'}10`,
+                  },
+                }}
+              >
+                {checking ? 'Checking...' : 'Check Due Reports'}
+              </Button>
+              <NotificationIcon />
+            </Box>
           </Box>
         </Box>
       </Fade>
@@ -2578,7 +2519,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                         </TableCell>
                         <TableCell>
                           <Chip 
-                            label={student.grade} 
+                            label={formatGradeForDisplay(student.grade)} 
                             size="small"
                             sx={{ 
                               backgroundColor: 'rgba(102, 126, 234, 0.1)',
@@ -2968,7 +2909,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                             Grade Level
                           </Typography>
                           <Chip 
-                            label={selectedStudent.grade} 
+                            label={formatGradeForDisplay(selectedStudent.grade)} 
                             size="small"
                             sx={{ 
                               backgroundColor: 'rgba(102, 126, 234, 0.1)',
@@ -3294,7 +3235,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                 sx={{ borderRadius: 2 }}
               >
                 {reportTemplates
-                  .filter(template => template.grade.toLowerCase() === selectedStudent?.grade?.toLowerCase() && template.isActive)
+                  .filter(template => areGradesEqual(template.grade, selectedStudent?.grade) && template.isActive)
                   .map((template) => {
                     const isDue = isTemplateDueForStudent(selectedStudent, template);
                     return (
@@ -3382,7 +3323,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
               const dueTemplates = getDueTemplatesForStudent(selectedStudent);
               const allGradeTemplates = reportTemplates.filter(template => 
                 template.isActive && 
-                template.grade.toLowerCase() === selectedStudent?.grade?.toLowerCase()
+                areGradesEqual(template.grade, selectedStudent?.grade)
               );
               
               if (allGradeTemplates.length === 0) {

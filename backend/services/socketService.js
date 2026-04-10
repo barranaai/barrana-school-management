@@ -203,10 +203,8 @@ class SocketService {
           await recipientUser.save();
         }
 
-        // Send push notification if recipient is offline or in different conversation
-        if (!this.isUserOnline(recipient.userId) || !this.isUserInConversation(recipient.userId, conversationId)) {
-          await this.sendMessagePushNotification(recipientUser, user, content, conversationId);
-        }
+        // Always send push notification for new messages
+        await this.sendMessagePushNotification(recipientUser, user, content, conversationId);
       } catch (notifError) {
         logger.error('Error creating notification for message:', notifError);
       }
@@ -271,6 +269,18 @@ class SocketService {
         }
       }
 
+      // Remove message notifications for this conversation from user's notification array
+      await User.findByIdAndUpdate(user._id, {
+        $pull: {
+          notifications: {
+            type: 'message',
+            'data.conversationId': conversationId
+          }
+        }
+      });
+      
+      logger.info(`Removed message notifications for conversation ${conversationId} from user ${user._id}`);
+
       // Notify other participants
       socket.to(`conversation:${conversationId}`).emit('messages_read', {
         conversationId,
@@ -287,18 +297,28 @@ class SocketService {
   async sendMessagePushNotification(recipient, sender, content, conversationId) {
     try {
       if (recipient && recipient.fcmTokens && recipient.fcmTokens.length > 0) {
+        // Strip HTML tags from content for clean notification
+        const stripHtml = (html) => {
+          return html.replace(/<[^>]*>/g, '').trim();
+        };
+        
+        const cleanContent = stripHtml(content);
+        const notificationBody = cleanContent.length > 100 ? cleanContent.substring(0, 100) + '...' : cleanContent;
+        
         await firebaseService.sendNotificationToUser(
           recipient,
           {
-            title: `💬 Message from ${sender.firstName} ${sender.lastName}`,
-            body: content.length > 100 ? content.substring(0, 100) + '...' : content,
+            title: `💬 New Message from ${sender.firstName} ${sender.lastName}`,
+            body: notificationBody,
             type: 'new_message',
-            priority: 'high'
+            priority: 'high',
+            clickAction: '/communication'
           },
           {
             conversationId: conversationId,
             senderId: sender._id.toString(),
-            senderName: `${sender.firstName} ${sender.lastName}`
+            senderName: `${sender.firstName} ${sender.lastName}`,
+            action: 'open_conversation'
           }
         );
 

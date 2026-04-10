@@ -97,7 +97,8 @@ import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import {
   formatGradeForDisplay as formatGradeDisplay,
-  convertDisplayToRawGrade as convertDisplayToRaw
+  convertDisplayToRawGrade as convertDisplayToRaw,
+  areGradesEqual,
 } from '../../../utils/gradeDisplayUtils';
 
 interface TeacherManagementProps {
@@ -489,8 +490,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
       email.includes(searchTerm.toLowerCase());
     
     // Handle grade filtering - compare formatted grades
-    const teacherGradeFormatted = formatGradeForDisplay(teacher.grade || '');
-    const matchesGrade = filterGrade === '' || teacherGradeFormatted === filterGrade;
+    const matchesGrade = filterGrade === '' || areGradesEqual(teacher.grade, filterGrade);
     
     const matchesStatus = filterStatus === '' || (teacher.isActive ? 'active' : 'inactive') === filterStatus;
     

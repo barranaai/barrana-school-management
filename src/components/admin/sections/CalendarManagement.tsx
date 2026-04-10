@@ -57,6 +57,7 @@ import apiService from '../../../services/apiService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import RichTextEditor from '../../common/RichTextEditor';
+import { formatGradeForDisplay } from '../../../utils/gradeDisplayUtils';
 
 interface CalendarManagementProps {
   schoolBranding?: any;
@@ -975,7 +976,7 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
                   >
                     {school.gradeLevels.map((grade: string) => (
                       <MenuItem key={grade} value={grade}>
-                        {grade}
+                        {formatGradeForDisplay(grade)}
                       </MenuItem>
                     ))}
                   </Select>

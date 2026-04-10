@@ -62,6 +62,10 @@ class MessagingService {
     };
   }
 
+  private getToken(): string | null {
+    return localStorage.getItem('token');
+  }
+
   // Socket.io Connection Management
   connect(token?: string): Promise<Socket> {
     return new Promise((resolve, reject) => {
@@ -193,11 +197,18 @@ class MessagingService {
         formData.append('files', file);
       });
 
+      const token = this.getToken();
+      const headers: any = {};
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      // Don't set Content-Type - browser will set it automatically with boundary for multipart/form-data
+
       const response = await fetch(`${this.baseUrl}/api/messages/upload-attachments`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.getToken()}`
-        },
+        headers: headers,
         body: formData
       });
 
@@ -285,14 +296,18 @@ class MessagingService {
       scheduledTime?: string;
       scheduledDateTime?: string;
       timezone?: string;
-    }
+    },
+    forceNewThread?: boolean,
+    attachments?: any[]
   ): Promise<{ success: boolean; data: { conversation: Conversation; message: Message } }> {
     try {
       const body: any = {
         recipientId,
         initialMessage,
         subject,
-        studentId
+        studentId,
+        forceNewThread: forceNewThread || false,
+        attachments: attachments || []
       };
       
       // Add scheduling data if provided

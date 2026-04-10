@@ -12,6 +12,7 @@ const { sendEventReminder } = require('./notificationService');
 const { cleanupOldPDFs } = require('./pdfService');
 const { getCurrentDateInTimezone, isReportDue, calculateDueDate, getStartOfFrequencyPeriod } = require('../utils/dateUtils');
 const firebaseService = require('./firebaseService');
+const { getIO } = require('./socketService');
 
 /**
  * Get recipients for an event based on target type
@@ -473,6 +474,17 @@ async function checkDueReports() {
                 );
 
                 totalNotificationsCreated++;
+
+                // Send real-time notification via Socket.io
+                try {
+                  const io = getIO();
+                  if (io) {
+                    io.to(`user_${teacher._id}`).emit('notification', notification);
+                    logger.info(`📡 Real-time notification emitted to teacher ${teacher.firstName} ${teacher.lastName}`);
+                  }
+                } catch (socketError) {
+                  logger.error('Error emitting Socket.io notification:', socketError);
+                }
 
                 // Send FCM push notification if available
                 if (teacher.fcmToken && firebaseService.isInitialized()) {

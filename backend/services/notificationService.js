@@ -98,7 +98,7 @@ const getSchoolWithBranding = async (schoolId) => {
     const school = await School.findById(schoolId).select('name branding logo');
     if (!school) return null;
     // Attach logo as inline image (if local file path)
-    const logoPath = school.logo;
+    const logoPath = school.branding?.logo || school.logo;
     if (logoPath) {
       const absolute = path.join(__dirname, '..', logoPath);
       if (fs.existsSync(absolute)) {

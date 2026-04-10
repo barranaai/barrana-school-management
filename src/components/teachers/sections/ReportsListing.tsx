@@ -72,6 +72,7 @@ import { mediaService } from '../../../services/mediaService';
 import NotificationIcon from '../../common/NotificationIcon';
 import { themeColors } from '../../../theme/teacherTheme';
 import toast from 'react-hot-toast';
+import { formatGradeForDisplay } from '../../../utils/gradeDisplayUtils';
 
 export interface ReportsListingProps {
   schoolBranding?: any;
@@ -389,8 +390,31 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   };
 
   const handleViewReport = (report: Report) => {
-    setSelectedReport(report);
-    setOpenReportDialog(true);
+    // If report has PDF URL, open it directly
+    if (report.pdfUrl) {
+      handleOpenPdf(report.pdfUrl);
+    } else {
+      // Otherwise, open the dialog to view content
+      setSelectedReport(report);
+      setOpenReportDialog(true);
+    }
+  };
+
+  const handleOpenPdf = async (pdfUrl: string) => {
+    try {
+      console.log('Opening PDF:', pdfUrl);
+      
+      // Construct full URL with API base
+      const API_BASE = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5050';
+      const fullPdfUrl = `${API_BASE}${pdfUrl}`;
+      
+      // Open PDF in new tab
+      window.open(fullPdfUrl, '_blank');
+      toast.success('Opening PDF report...');
+    } catch (error) {
+      console.error('Error opening PDF:', error);
+      toast.error('Failed to open PDF report');
+    }
   };
 
   const handleSendReport = async (reportId: string) => {
@@ -572,29 +596,20 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   };
 
   const getStudentGrade = (report: Report) => {
+    let raw = '';
     // Handle populated student object from API
     if (report.studentId && typeof report.studentId === 'object') {
-      // If populated object has grade, use it
       if (report.studentId.grade) {
-        return report.studentId.grade;
+        raw = report.studentId.grade;
+      } else {
+        const student = students.find(s => s._id === (report.studentId as any)._id);
+        raw = student?.grade || '';
       }
-      
-      // Otherwise, find student in students array using the _id
-      const student = students.find(s => s._id === (report.studentId as any)._id);
-      if (student) {
-        return student.grade || 'N/A';
-      }
-    }
-    
-    // Handle string studentId - find student in students array
-    if (typeof report.studentId === 'string') {
+    } else if (typeof report.studentId === 'string') {
       const student = students.find(s => s._id === report.studentId);
-      if (student) {
-        return student.grade || 'N/A';
-      }
+      raw = student?.grade || '';
     }
-    
-    return 'N/A';
+    return raw ? formatGradeForDisplay(raw) : 'N/A';
   };
 
   const getStudentClass = (report: Report) => {

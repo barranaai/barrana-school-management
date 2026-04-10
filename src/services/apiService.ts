@@ -1,7 +1,9 @@
 // API Service for Barrana.ai
 // This service handles all HTTP requests to the backend
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5050/api';
+// In production, use a relative path so Nginx proxies /api correctly.
+// In development, the proxy field in package.json forwards /api to localhost:5050.
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -141,6 +143,7 @@ export interface Report {
   status: string;
   createdAt: string;
   updatedAt: string;
+  pdfUrl?: string; // URL to generated PDF
 }
 
 export interface Class {
@@ -268,7 +271,7 @@ class ApiService {
         
         return {
           success: false,
-          error: data.message || `HTTP ${response.status}: ${response.statusText}`,
+          error: data.error || data.message || `HTTP ${response.status}: ${response.statusText}`,
         };
       }
 
@@ -276,6 +279,7 @@ class ApiService {
         success: true,
         data: data.data || data,
         message: data.message,
+        ...data, // Pass through any additional fields from the API response (e.g., generatedPassword)
       };
     } catch (error) {
       return {
@@ -503,6 +507,43 @@ class ApiService {
   async getReports(includeCrossTeacher: boolean = false): Promise<ApiResponse<Report[]>> {
     const queryParam = includeCrossTeacher ? '?includeCrossTeacher=true' : '';
     return this._request<Report[]>(`/reports${queryParam}`);
+  }
+
+  // NEW: Get due reports using centralized calculator
+  async getDueReports(): Promise<ApiResponse<{
+    dueReports: Array<{
+      studentId: string;
+      studentName: string;
+      studentGrade: string;
+      studentClass: string;
+      templateId: string;
+      templateName: string;
+      frequency: string;
+      dueDate: Date;
+      daysOverdue: number;
+      reportStatus: string;
+      reportId: string | null;
+      createdBy: string | null;
+      teacherName: string;
+      timezone: string;
+      calculatedAt: Date;
+    }>;
+    count: number;
+    calculatedAt: Date;
+  }>> {
+    return this._request<any>('/reports/due');
+  }
+
+  // NEW: Check if a specific report can be generated
+  async canGenerateReport(studentId: string, templateId: string): Promise<ApiResponse<{
+    canGenerate: boolean;
+    reason: string;
+    existingReport?: any;
+  }>> {
+    return this._request<any>('/reports/can-generate', {
+      method: 'POST',
+      body: JSON.stringify({ studentId, templateId }),
+    });
   }
 
   async getAvailableTemplatesForStudent(studentId: string): Promise<ApiResponse<{

@@ -282,13 +282,11 @@ const TeacherDashboard: React.FC = () => {
         justifyContent: 'center', 
         alignItems: 'center', 
         minHeight: '100vh',
-        bgcolor: '#F8F9FA'
+        background: 'linear-gradient(135deg, #17437b 0%, #26aea6 100%)',
       }}>
         <Box sx={{ textAlign: 'center' }}>
-          <CircularProgress size={60} sx={{ color: '#667eea', mb: 2 }} />
-          <Typography variant="h6" color="text.secondary">
-            Loading...
-          </Typography>
+          <img src="/kidsible-logo.png" alt="Kidsible" style={{ height: '60px', width: 'auto', marginBottom: '16px', filter: 'brightness(0) invert(1)' }} />
+          <CircularProgress size={36} sx={{ color: '#bbca1f', display: 'block', margin: '0 auto' }} />
         </Box>
       </Box>
     );
@@ -396,8 +394,19 @@ const TeacherDashboard: React.FC = () => {
                 ))}
               </List>
 
-              {/* Logout at Bottom */}
+              {/* Kidsible Platform Branding + Logout at Bottom */}
               <Box sx={{ mt: 'auto', pb: 2, px: 2 }}>
+                {/* Powered by Kidsible */}
+                <Box sx={{ mb: 1.5, textAlign: 'center', py: 1, borderRadius: 2, bgcolor: 'rgba(23,67,123,0.04)' }}>
+                  <Typography variant="caption" sx={{ color: '#727272', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', mb: 0.5 }}>
+                    Powered by
+                  </Typography>
+                  <img
+                    src="/kidsible-logo.png"
+                    alt="Kidsible"
+                    style={{ height: '26px', width: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto' }}
+                  />
+                </Box>
                 <Divider sx={{ mb: 2 }} />
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                   <ListItem

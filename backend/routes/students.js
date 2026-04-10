@@ -232,6 +232,12 @@ router.post('/', [
 
     logger.info(`Student account created: ${student.firstName} ${student.lastName} at school ${req.user.schoolId}`);
 
+    // Sync enrollment count on the class
+    if (classId) {
+      const enrollCount = await User.countDocuments({ role: 'student', classId, isActive: true });
+      await Class.findByIdAndUpdate(classId, { currentEnrollment: enrollCount });
+    }
+
     // Create or update parent account for login access
     let parentAccount = null;
     try {
@@ -306,15 +312,20 @@ router.post('/', [
       const field = Object.keys(error.keyPattern)[0];
       let message = 'Duplicate value error';
       let fieldName = field;
-      
+
       if (field === 'email') {
         message = 'This email is already registered. Please use a different email or leave it empty.';
         fieldName = 'email';
+      } else if (field === 'studentId') {
+        message = 'A student with this Student ID already exists. Please use a different Student ID.';
+        fieldName = 'studentId';
+      } else {
+        message = `A record with this ${field} already exists. Please use a different value.`;
       }
-      
+
       return res.status(400).json({
         success: false,
-        error: 'Duplicate value error',
+        error: message,
         field: fieldName,
         message: message
       });
@@ -383,7 +394,7 @@ router.put('/:id', [
     }
 
     // If teacher is being changed, verify new teacher and update counts
-    if (req.body.assignedTeacher && req.body.assignedTeacher !== student.assignedTeacher.toString()) {
+    if (req.body.assignedTeacher && req.body.assignedTeacher !== (student.assignedTeacher ? student.assignedTeacher.toString() : null)) {
       const newTeacher = await User.findOne({ 
         _id: req.body.assignedTeacher, 
         role: 'teacher',
@@ -466,6 +477,24 @@ router.put('/:id', [
     .populate('classId', 'name grade')
     .select('-password');
 
+    // Sync enrollment counts when class assignment changes
+    try {
+      const oldClassId = student.classId ? student.classId.toString() : null;
+      const newClassId = updateData.classId ? updateData.classId.toString() : null;
+      if (oldClassId !== newClassId) {
+        if (oldClassId) {
+          const oldCount = await User.countDocuments({ role: 'student', classId: oldClassId, isActive: true });
+          await Class.findByIdAndUpdate(oldClassId, { currentEnrollment: oldCount });
+        }
+        if (newClassId) {
+          const newCount = await User.countDocuments({ role: 'student', classId: newClassId, isActive: true });
+          await Class.findByIdAndUpdate(newClassId, { currentEnrollment: newCount });
+        }
+      }
+    } catch (enrollSyncErr) {
+      logger.error('Error syncing class enrollment on student update:', enrollSyncErr);
+    }
+
     // If parent phone or email changed, update the parent account
     if (req.body.parentPhone || req.body.parentEmail) {
       try {
@@ -546,6 +575,12 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (
     }
 
     await User.findByIdAndDelete(req.params.id);
+
+    // Sync class enrollment after deletion
+    if (student.classId) {
+      const enrollCount = await User.countDocuments({ role: 'student', classId: student.classId, isActive: true });
+      await Class.findByIdAndUpdate(student.classId, { currentEnrollment: enrollCount });
+    }
 
     res.json({
       success: true,

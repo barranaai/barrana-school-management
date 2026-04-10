@@ -6,6 +6,7 @@ const ReportTemplate = require('../models/ReportTemplate');
 const User = require('../models/User');
 const School = require('../models/School');
 const { calculateDueDate, isReportDue, getCurrentDateInTimezone, getStartOfFrequencyPeriod } = require('../utils/dateUtils');
+const { gradesMatch } = require('../utils/gradeUtils');
 const loggerUtils = require('../utils/logger');
 const logger = loggerUtils.logger;
 const { protect, authorize } = require('../middleware/auth');
@@ -442,6 +443,10 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), as
 // @desc    Check due status for a template/student for current period
 // @route   GET /api/reports/due-status?studentId=...&templateId=...
 // @access  Private (teacher, school_admin, super_admin)
+// 
+// NOTE: This endpoint uses dateUtils directly for single student/template checks.
+// For bulk due reports checking, use GET /api/reports/due which uses the centralized calculator.
+// Both use the same underlying dateUtils.calculateDueDate() function (now case-insensitive).
 router.get('/due-status', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
   try {
     const { studentId, templateId } = req.query;
@@ -754,7 +759,7 @@ router.post('/check-due', protect, authorize('teacher'), async (req, res) => {
     for (const student of students) {
       const studentName = `${student.firstName} ${student.lastName}`;
       // Filter templates by grade match if template has grade
-      const applicableTemplates = templates.filter(t => !t.grade || !student.studentGrade || (t.grade === student.studentGrade));
+      const applicableTemplates = templates.filter(t => !t.grade || !student.studentGrade || gradesMatch(t.grade, student.studentGrade));
 
       for (const template of applicableTemplates) {
         const frequency = template.reportFrequency;
@@ -1397,7 +1402,7 @@ router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'su
     const report = await Report.findById(req.params.id)
       .populate('studentId', 'firstName lastName grade studentClass class parentEmail studentGrade')
       .populate('teacherId', 'firstName lastName')
-      .populate('schoolId', 'name');
+      .populate('schoolId', 'name branding logo');
 
     // Get parent user account to check phone number and WhatsApp preferences
     let parentUser = null;
@@ -1428,12 +1433,14 @@ router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'su
     const teacherName = `${report.teacherId.firstName} ${report.teacherId.lastName}`;
     const schoolName = report.schoolId?.name || 'Barrana.ai School';
     
-    // Get school logo if available
+    // Get school logo as a relative file path (pdfService reads it from disk)
     let schoolLogo = null;
-    if (report.schoolId?.logo) {
-      const baseUrl = process.env.BASE_URL || 'http://localhost:5050';
-      schoolLogo = `${baseUrl}${report.schoolId.logo}`;
+    if (report.schoolId?.branding?.logo) {
+      schoolLogo = report.schoolId.branding.logo; // e.g. /uploads/logos/school-xxx.png
+    } else if (report.schoolId?.logo) {
+      schoolLogo = report.schoolId.logo; // legacy fallback
     }
+    logger.info(`School logo for email/PDF: ${schoolLogo || 'none (no logo uploaded)'}`)
 
     // Prepare email data with WhatsApp information
     const emailData = {
@@ -1473,15 +1480,18 @@ router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'su
       report.status = 'sent';
       report.sentAt = new Date();
       
-      // Save PDF path if it was generated
+      // Save PDF path and URL if it was generated
       if (emailResult.pdfPath) {
         report.pdfPath = emailResult.pdfPath;
-        logger.info(`Saving PDF path to report: ${emailResult.pdfPath}`);
+        // Convert file path to URL (e.g., /uploads/pdfs/report-xxx.pdf)
+        const pdfFilename = path.basename(emailResult.pdfPath);
+        report.pdfUrl = `/uploads/pdfs/${pdfFilename}`;
+        logger.info(`Saving PDF to report - Path: ${report.pdfPath}, URL: ${report.pdfUrl}`);
       }
       
       await report.save();
       
-      logger.info(`Report ${report._id} status updated to 'sent' with pdfPath: ${report.pdfPath || 'none'}`);
+      logger.info(`Report ${report._id} status updated to 'sent' with pdfUrl: ${report.pdfUrl || 'none'}`);
       
       // Send push notification to parent (don't wait for it)
       setImmediate(async () => {
@@ -1903,6 +1913,234 @@ router.delete('/:reportId/media/:mediaId', protect, authorize('teacher', 'school
       success: false,
       message: 'Error deleting media',
       error: error.message
+    });
+  }
+});
+
+/**
+ * @route   POST /api/reports/check-due
+ * @desc    Manually trigger due report check for the current teacher
+ * @access  Teacher only
+ */
+router.post('/check-due', protect, authorize('teacher'), async (req, res) => {
+  try {
+    const { checkDueReports } = require('../services/reminderScheduler');
+    
+    logger.info(`Manual due report check triggered by teacher ${req.user._id}`, {
+      service: 'reports',
+      user: req.user._id
+    });
+
+    // Run the check
+    await checkDueReports();
+
+    res.json({
+      success: true,
+      message: 'Due reports check completed successfully'
+    });
+
+  } catch (error) {
+    logger.error('Error in manual due report check', {
+      service: 'reports',
+      error: error.message,
+      user: req.user._id
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error checking due reports',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/reports/due
+ * Get due reports for current teacher using centralized calculator
+ * Returns consistent results across all platforms
+ */
+router.get('/due', protect, authorize('teacher'), async (req, res) => {
+  try {
+    const { calculateDueReportsForTeacher } = require('../services/dueReportsCalculator');
+    
+    logger.info(`📊 Getting due reports for teacher ${req.user._id}`, {
+      service: 'reports',
+      user: req.user._id
+    });
+
+    const dueReports = await calculateDueReportsForTeacher(req.user._id.toString());
+
+    res.json({
+      success: true,
+      data: {
+        dueReports,
+        count: dueReports.length,
+        calculatedAt: new Date()
+      },
+      message: `Found ${dueReports.length} due report(s)`
+    });
+
+  } catch (error) {
+    logger.error('Error getting due reports', {
+      service: 'reports',
+      error: error.message,
+      user: req.user._id
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error calculating due reports',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/reports/can-generate
+ * Check if a specific report can be generated
+ * Validates cross-teacher conflicts
+ */
+router.post('/can-generate', protect, authorize('teacher'), async (req, res) => {
+  try {
+    const { studentId, templateId } = req.body;
+    
+    if (!studentId || !templateId) {
+      return res.status(400).json({
+        success: false,
+        message: 'studentId and templateId are required'
+      });
+    }
+    
+    const { canGenerateReport } = require('../services/dueReportsCalculator');
+    
+    const result = await canGenerateReport(
+      req.user._id.toString(),
+      studentId,
+      templateId
+    );
+
+    res.json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    logger.error('Error checking if report can be generated', {
+      service: 'reports',
+      error: error.message,
+      user: req.user._id
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error checking report status',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/reports/available-templates/:studentId
+ * Return all active templates for a student's grade, with availability status.
+ * A template is unavailable if ANY teacher has already generated a report for
+ * the current period (cross-teacher enforcement).
+ */
+router.get('/available-templates/:studentId', protect, authorize('teacher'), async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    // Resolve teacher's school
+    const teacher = await User.findById(req.user._id).select('schoolId');
+    if (!teacher) {
+      return res.status(403).json({ success: false, message: 'Teacher not found' });
+    }
+
+    // Resolve student
+    const student = await User.findById(studentId)
+      .select('firstName lastName studentGrade schoolId')
+      .lean();
+    if (!student || student.schoolId?.toString() !== teacher.schoolId?.toString()) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    // School settings (for timezone + period calculation)
+    const school = await School.findById(teacher.schoolId).select('settings');
+    if (!school) {
+      return res.status(404).json({ success: false, message: 'School not found' });
+    }
+    const settings = school.settings || {};
+    const timezone = settings.timezone || 'UTC';
+    const now = moment().tz(timezone);
+
+    // Active templates for this school whose grade matches the student's grade
+    const { getReportForCurrentPeriod } = require('../services/dueReportsCalculator');
+    const allTemplates = await ReportTemplate.find({ schoolId: teacher.schoolId, isActive: true })
+      .select('_id name reportFrequency grade')
+      .lean();
+
+    const gradeTemplates = allTemplates.filter(t =>
+      gradesMatch(t.grade, student.studentGrade)
+    );
+
+    // Determine availability for each template
+    const availableTemplates = await Promise.all(
+      gradeTemplates.map(async (template) => {
+        const existingReport = await getReportForCurrentPeriod(
+          studentId,
+          template._id.toString(),
+          teacher.schoolId.toString(),
+          template.reportFrequency,
+          settings,
+          now
+        );
+
+        return {
+          _id: template._id,
+          name: template.name,
+          reportFrequency: template.reportFrequency,
+          grade: template.grade,
+          isAvailable: !existingReport,
+          existingReport: existingReport
+            ? {
+                id: existingReport._id,
+                createdAt: existingReport.createdAt,
+                teacherName: existingReport.teacherId
+                  ? `${existingReport.teacherId.firstName} ${existingReport.teacherId.lastName}`
+                  : 'Unknown',
+                status: existingReport.status,
+              }
+            : undefined,
+        };
+      })
+    );
+
+    const availableCount = availableTemplates.filter(t => t.isAvailable).length;
+
+    return res.json({
+      success: true,
+      data: {
+        student: {
+          id: student._id,
+          name: `${student.firstName} ${student.lastName}`,
+          grade: student.studentGrade,
+        },
+        availableTemplates,
+        totalTemplates: gradeTemplates.length,
+        availableCount,
+        unavailableCount: gradeTemplates.length - availableCount,
+        timezone,
+        calculatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error('Error getting available templates for student', {
+      error: error.message,
+      studentId: req.params.studentId,
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Error getting available templates',
+      error: error.message,
     });
   }
 });

@@ -37,6 +37,9 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3001;
 
+// Trust Nginx reverse proxy (required for correct IP detection with express-rate-limit)
+app.set('trust proxy', 1);
+
 // Initialize Socket.io
 socketService.initialize(server);
 

@@ -329,7 +329,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       ((student as any).studentId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (student.id || student._id || '').toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesGrade = filterGrade === '' || student.grade === filterGrade;
+    const matchesGrade = filterGrade === '' || areGradesEqual(student.grade, filterGrade);
     const matchesStatus = filterStatus === '' || student.status === filterStatus;
     
     return matchesSearch && matchesGrade && matchesStatus;
@@ -1255,7 +1255,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     </TableCell>
                     <TableCell>
                       <Typography sx={{ fontWeight: 500 }}>
-                        {student.grade}
+                        {formatGradeDisplay(student.grade)}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -1472,7 +1472,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                         <Chip
-                          label={selectedStudentData.grade}
+                          label={formatGradeDisplay(selectedStudentData.grade)}
                           sx={{
                             background: brandingGradient,
                             color: 'white',

@@ -9,7 +9,7 @@ const { logger } = require('../utils/logger');
 // @access  Private (school_admin, super_admin)
 router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), async (req, res) => {
   try {
-    const { role, grade, classId } = req.query;
+    const { role, grade, classId, email } = req.query;
     
     // Build query
     const query = {
@@ -20,6 +20,11 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), as
     // Filter by role if provided
     if (role) {
       query.role = role;
+    }
+    
+    // Filter by email if provided
+    if (email) {
+      query.email = email;
     }
     
     // Filter by grade if provided

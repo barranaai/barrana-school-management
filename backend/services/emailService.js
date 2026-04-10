@@ -443,7 +443,7 @@ const createReportEmailTemplate = async (data) => {
   }
 
   return {
-    subject: `Student Report: ${studentName} - ${reportTitle}`,
+    subject: `${schoolName || 'School'}: ${reportTitle} - ${studentName}`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -452,61 +452,62 @@ const createReportEmailTemplate = async (data) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Student Report</title>
         <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          body { font-family: Arial, sans-serif; line-height: 1.8; color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-          .content { background: #f8f9fa; padding: 20px; border-radius: 0 0 8px 8px; }
-          .report-content { background: white; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid ${primaryColor}; }
-          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          .header { background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; padding: 25px; border-radius: 8px 8px 0 0; text-align: center; }
+          .content { background: #f8f9fa; padding: 30px 25px; border-radius: 0 0 8px 8px; }
+          .footer { text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6; color: #666; font-size: 12px; }
           .highlight { color: ${primaryColor}; font-weight: bold; }
-          .report-content strong { color: #2d3748; font-weight: 700; }
-          .report-content em { color: #4a5568; font-style: italic; }
+          .info-box { background: #e8f4fd; padding: 18px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${primaryColor}; }
+          .attachment-notice { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; font-weight: 600; }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
             ${logoHtml}
-            <h1>📊 Student Report</h1>
-            <p><strong>${schoolName || 'Barrana.ai School'}</strong></p>
+            <h1 style="margin: 10px 0 5px 0; font-size: 28px;">📊 Student Report</h1>
+            <p style="margin: 0; font-size: 16px;"><strong>${schoolName || 'Barrana.ai School'}</strong></p>
           </div>
           
           <div class="content">
-            <h2>Dear Parent/Guardian,</h2>
+            <h2 style="color: #2d3748; margin-bottom: 15px;">Dear Parent/Guardian,</h2>
             
-            <p>We are pleased to share the latest report for your child, <span class="highlight">${studentName}</span>.</p>
+            <p style="font-size: 15px; margin-bottom: 15px;">We are pleased to share the latest report for your child, <span class="highlight">${studentName}</span>.</p>
             
-            <div style="background: #e8f4fd; padding: 15px; border-radius: 5px; margin: 15px 0;">
-              <p><strong>Report Details:</strong></p>
-              <ul>
-                <li><strong>Student:</strong> ${studentName}</li>
-                <li><strong>Teacher:</strong> ${teacherName}</li>
-                <li><strong>Report Title:</strong> ${reportTitle}</li>
-                <li><strong>Date:</strong> ${reportDate}</li>
+            <div class="info-box">
+              <p style="margin: 0 0 10px 0;"><strong>Report Details:</strong></p>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li style="margin-bottom: 5px;"><strong>Student:</strong> ${studentName}</li>
+                <li style="margin-bottom: 5px;"><strong>Teacher:</strong> ${teacherName}</li>
+                <li style="margin-bottom: 5px;"><strong>Report Title:</strong> ${reportTitle}</li>
+                <li style="margin-bottom: 0;"><strong>Date:</strong> ${reportDate}</li>
               </ul>
             </div>
             
-            <h3>Report Content:</h3>
-            <div class="report-content">
-              ${formattedContent}
+            <div class="attachment-notice">
+              📎 The complete report is attached as a PDF document.
             </div>
             
-            <p>If you have any questions about this report, please don't hesitate to contact your child's teacher or the school administration.</p>
+            <p style="font-size: 14px; line-height: 1.7;">The attached PDF contains detailed information about your child's progress, activities, and observations. Please review it at your convenience.</p>
             
-            <p>Best regards,<br>
-            <strong>${schoolName || 'Barrana.ai School'}</strong></p>
+            <p style="font-size: 14px; line-height: 1.7;">If you have any questions or would like to discuss this report further, please don't hesitate to contact ${teacherName} or the school administration.</p>
+            
+            <p style="margin-top: 25px; font-size: 15px;">Best regards,<br>
+            <strong>${teacherName}</strong><br>
+            <span style="color: #666;">${schoolName || 'Barrana.ai School'}</span></p>
           </div>
           
           <div class="footer">
-            <p>This is an automated message from the Barrana.ai School Management System.</p>
-            <p>Please do not reply to this email. Contact the school directly for any inquiries.</p>
+            <p style="margin: 5px 0;">This is an automated message from the Barrana.ai School Management System.</p>
+            <p style="margin: 5px 0;">Please do not reply to this email. Contact the school directly for any inquiries.</p>
           </div>
         </div>
       </body>
       </html>
     `,
     text: `
-Student Report: ${studentName}
+${schoolName || 'School'}: ${reportTitle} - ${studentName}
 
 Dear Parent/Guardian,
 
@@ -518,12 +519,14 @@ Report Details:
 - Report Title: ${reportTitle}
 - Date: ${reportDate}
 
-Report Content:
-${reportContent.replace(/^#{1,2}\s+/gm, '').replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1')}
+The complete report is attached as a PDF document.
 
-If you have any questions about this report, please don't hesitate to contact your child's teacher or the school administration.
+The attached PDF contains detailed information about your child's progress, activities, and observations. Please review it at your convenience.
+
+If you have any questions or would like to discuss this report further, please don't hesitate to contact ${teacherName} or the school administration.
 
 Best regards,
+${teacherName}
 ${schoolName || 'Barrana.ai School'}
 
 ---
@@ -653,7 +656,10 @@ const sendReportEmail = async (emailData) => {
     let pdfInfo = null;
     
     try {
-      logger.info(`Generating PDF for report: ${reportTitle}`);
+      logger.info(`[EMAIL-PDF] Step 1: Starting PDF generation for report: "${reportTitle}", student: "${studentName}"`);
+      logger.info(`[EMAIL-PDF] schoolLogo provided: ${schoolLogo || 'none'}`);
+      logger.info(`[EMAIL-PDF] reportContent length: ${reportContent ? reportContent.length : 0} chars`);
+      
       pdfInfo = await pdfService.generateReportPDF({
         studentName,
         teacherName,
@@ -666,9 +672,14 @@ const sendReportEmail = async (emailData) => {
         schoolBranding
       });
       pdfPath = pdfInfo.path;
-      logger.info(`PDF generated successfully: ${pdfInfo.filename}`);
+      
+      logger.info(`[EMAIL-PDF] Step 2: PDF generated successfully`);
+      logger.info(`[EMAIL-PDF]   filename: ${pdfInfo.filename}`);
+      logger.info(`[EMAIL-PDF]   path: ${pdfPath}`);
+      logger.info(`[EMAIL-PDF]   size: ${pdfInfo.size} bytes`);
+      logger.info(`[EMAIL-PDF]   file exists check: ${fs.existsSync(pdfPath)}`);
     } catch (pdfError) {
-      logger.error('Error generating PDF, continuing without PDF attachment:', pdfError);
+      logger.error(`[EMAIL-PDF] FAILED to generate PDF: ${pdfError.message}`, { stack: pdfError.stack });
       // Continue sending email without PDF if generation fails
     }
 
@@ -678,17 +689,26 @@ const sendReportEmail = async (emailData) => {
     // Add logo as CID attachment (inline, not shown as attachment)
     if (emailTemplate.logoAttachment) {
       emailAttachments.push(emailTemplate.logoAttachment);
-      logger.info('School logo added as inline CID attachment');
+      logger.info('[EMAIL-PDF] Step 3a: School logo added as inline CID attachment');
     }
     
     // Add PDF as attachment
-    if (pdfInfo && pdfPath && fs.existsSync(pdfPath)) {
-      emailAttachments.push({
-        filename: pdfInfo.filename,
-        path: pdfPath,
-        contentType: 'application/pdf'
-      });
-      logger.info(`PDF added to email attachments: ${pdfInfo.filename}`);
+    if (pdfInfo && pdfPath) {
+      const pdfExists = fs.existsSync(pdfPath);
+      logger.info(`[EMAIL-PDF] Step 3b: pdfInfo exists=${!!pdfInfo}, pdfPath=${pdfPath}, file exists=${pdfExists}`);
+      if (pdfExists) {
+        emailAttachments.push({
+          filename: pdfInfo.filename,
+          path: pdfPath,
+          contentType: 'application/pdf',
+          contentDisposition: 'attachment'
+        });
+        logger.info(`[EMAIL-PDF] Step 3c: PDF added to attachments list - ${pdfInfo.filename}`);
+      } else {
+        logger.error(`[EMAIL-PDF] PDF file not found on disk at: ${pdfPath}`);
+      }
+    } else {
+      logger.warn(`[EMAIL-PDF] Step 3b: No PDF to attach - pdfInfo=${!!pdfInfo}, pdfPath=${pdfPath}`);
     }
     
     // Add media attachments
@@ -724,6 +744,11 @@ const sendReportEmail = async (emailData) => {
       attachments: emailAttachments
     };
 
+    logger.info(`[EMAIL-PDF] Step 4: Preparing to send email to ${parentEmail}`);
+    logger.info(`[EMAIL-PDF]   Total attachments: ${emailAttachments.length}`);
+    emailAttachments.forEach((att, i) => {
+      logger.info(`[EMAIL-PDF]   Attachment[${i}]: filename=${att.filename}, contentType=${att.contentType}, cid=${att.cid || 'none'}`);
+    });
     logger.info(`Sending email with ${emailAttachments.length} attachment(s) to ${parentEmail}`);
 
     const result = await transporter.sendMail(mailOptions);
@@ -883,8 +908,175 @@ const testEmailConfiguration = async () => {
   }
 };
 
+// Send welcome email to newly created teacher with login credentials
+const sendTeacherWelcomeEmail = async ({ teacherEmail, teacherName, temporaryPassword, schoolName, schoolEmail, loginUrl, schoolId, schoolBranding }) => {
+  const transporter = createTransporter();
+  
+  // If transporter is not configured, log and skip
+  if (!transporter) {
+    logger.info('Email service not configured - skipping teacher welcome email');
+    return { success: false, message: 'Email service not configured' };
+  }
+
+  try {
+    // Extract branding colors with fallbacks
+    const primaryColor = schoolBranding?.primaryColor || '#667eea';
+    const secondaryColor = schoolBranding?.secondaryColor || '#764ba2';
+    
+    // Get school logo if available
+    let logoHtml = '';
+    let logoAttachment = null;
+    
+    if (schoolId) {
+      const logoUrl = await getSchoolLogo(schoolId);
+      if (logoUrl) {
+        const logoPath = path.join(__dirname, '..', logoUrl);
+        if (fs.existsSync(logoPath)) {
+          logoAttachment = {
+            filename: 'school-logo.png',
+            path: logoPath,
+            cid: 'schoolLogo'
+          };
+          logoHtml = `<img src="cid:schoolLogo" alt="${schoolName} Logo" style="max-height: 60px; max-width: 200px; margin-bottom: 15px; object-fit: contain;">`;
+        }
+      }
+    }
+    
+    const mailOptions = {
+      from: `"${schoolName}" <${process.env.EMAIL_USER}>`,
+      to: teacherEmail,
+      subject: `${schoolName}: Welcome to Your Teacher Account`,
+      attachments: logoAttachment ? [logoAttachment] : [],
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Welcome to ${schoolName}</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f5f5f5;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; padding: 40px 30px; text-align: center;">
+              ${logoHtml}
+              <h1 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                Welcome to ${schoolName}!
+              </h1>
+              <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95;">
+                Your teacher account has been created
+              </p>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 40px 30px;">
+              <p style="font-size: 16px; margin: 0 0 20px 0;">
+                Dear <strong>${teacherName}</strong>,
+              </p>
+              
+              <p style="font-size: 15px; margin: 0 0 25px 0; line-height: 1.7;">
+                Welcome to our school! Your teacher account has been created on our school management system. 
+                You can now access your dashboard to manage students, create reports, and communicate with parents.
+              </p>
+              
+              <!-- Login Credentials Box -->
+              <div style="background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); border-left: 4px solid ${primaryColor}; border-radius: 8px; padding: 25px; margin: 30px 0;">
+                <h3 style="margin: 0 0 20px 0; color: #2d3748; font-size: 18px; font-weight: 700;">
+                  🔐 Your Login Credentials
+                </h3>
+                
+                <div style="margin-bottom: 15px;">
+                  <p style="margin: 0 0 5px 0; color: #718096; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Login Email:
+                  </p>
+                  <p style="margin: 0; font-size: 16px; font-weight: 600; color: #2d3748; font-family: 'Courier New', monospace; background: white; padding: 10px 15px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                    ${teacherEmail}
+                  </p>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                  <p style="margin: 0 0 5px 0; color: #718096; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Temporary Password:
+                  </p>
+                  <p style="margin: 0; font-size: 18px; font-weight: 700; color: ${primaryColor}; font-family: 'Courier New', monospace; background: white; padding: 12px 15px; border-radius: 4px; border: 2px solid ${primaryColor}; letter-spacing: 2px;">
+                    ${temporaryPassword}
+                  </p>
+                </div>
+                
+                <div style="background: #fff3cd; border-left: 3px solid #ffc107; padding: 12px 15px; border-radius: 4px; margin-top: 20px;">
+                  <p style="margin: 0; font-size: 13px; color: #856404; line-height: 1.5;">
+                    ⚠️ <strong>Important:</strong> Please change this password after your first login for security purposes.
+                  </p>
+                </div>
+              </div>
+              
+              <!-- Login Button -->
+              <div style="text-align: center; margin: 35px 0;">
+                <a href="${loginUrl}/login" 
+                   style="display: inline-block; background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease;">
+                  Login to Dashboard
+                </a>
+              </div>
+              
+              <!-- Getting Started -->
+              <div style="background: #f7fafc; border-radius: 8px; padding: 25px; margin: 30px 0;">
+                <h3 style="margin: 0 0 15px 0; color: #2d3748; font-size: 16px; font-weight: 700;">
+                  🚀 Getting Started
+                </h3>
+                <ul style="margin: 0; padding-left: 20px; color: #4a5568; font-size: 14px; line-height: 1.8;">
+                  <li>Login with your credentials above</li>
+                  <li>Complete your teacher profile</li>
+                  <li>View your assigned students and classes</li>
+                  <li>Start creating student reports</li>
+                  <li>Communicate with parents through the messaging system</li>
+                </ul>
+              </div>
+              
+              <!-- Support -->
+              <div style="margin-top: 30px; padding-top: 25px; border-top: 1px solid #e2e8f0;">
+                <p style="font-size: 14px; color: #718096; margin: 0 0 10px 0;">
+                  If you have any questions or need assistance, please contact:
+                </p>
+                <p style="font-size: 14px; margin: 0;">
+                  📧 <a href="mailto:${schoolEmail}" style="color: ${primaryColor}; text-decoration: none; font-weight: 600;">${schoolEmail}</a>
+                </p>
+              </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background: #f7fafc; padding: 25px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #718096;">
+                <strong>${schoolName}</strong>
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #a0aec0;">
+                Powered by <strong style="color: ${primaryColor};">Barrana.ai</strong> - School Management System
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    logger.info('Teacher welcome email sent successfully', {
+      to: teacherEmail,
+      messageId: info.messageId,
+      schoolName: schoolName
+    });
+
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error('Error sending teacher welcome email:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   sendReportEmail,
   sendWelcomeEmail,
-  testEmailConfiguration
+  testEmailConfiguration,
+  sendTeacherWelcomeEmail
 }; 

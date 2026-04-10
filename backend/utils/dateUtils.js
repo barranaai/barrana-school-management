@@ -103,7 +103,10 @@ const getStartOfFrequencyPeriod = (frequency, schoolSettings, currentDate) => {
     return now.startOf('day').toDate();
   }
   
-  switch (frequency) {
+  // SAFETY: Normalize frequency to handle case variations
+  const normalizedFrequency = frequency.charAt(0).toUpperCase() + frequency.slice(1).toLowerCase();
+  
+  switch (normalizedFrequency) {
     case 'Daily':
       return now.startOf('day').toDate();
       
@@ -113,7 +116,10 @@ const getStartOfFrequencyPeriod = (frequency, schoolSettings, currentDate) => {
       const daysToSubtract = (currentDayOfWeek - weeklyStartDay + 7) % 7;
       return now.subtract(daysToSubtract, 'days').startOf('day').toDate();
       
+    case 'Bi-weekly':
     case 'Bi-Weekly':
+    case 'BiWeekly':
+    case 'Biweekly':
       const biWeeklyStartDay = frequencyConfig.startDay || 1;
       const biWeeklyStartWeek = frequencyConfig.startWeek || 1;
       const currentWeekOfYear = now.week();
@@ -125,7 +131,10 @@ const getStartOfFrequencyPeriod = (frequency, schoolSettings, currentDate) => {
     case 'Monthly':
       return now.startOf('month').toDate();
       
+    case 'Bi-monthly':
     case 'Bi-Monthly':
+    case 'BiMonthly':
+    case 'Bimonthly':
       const startMonth = frequencyConfig.startMonth || 9; // September
       const currentMonth = now.month(); // 0-11
       const monthsSinceStart = (currentMonth - startMonth + 12) % 12;
@@ -200,7 +209,10 @@ const calculateDueDate = (frequency, schoolSettings, baseDate = null) => {
   
   let dueDate = currentDate.clone();
   
-  switch (frequency) {
+  // SAFETY: Normalize frequency to handle case variations consistently
+  const normalizedFrequency = frequency.charAt(0).toUpperCase() + frequency.slice(1).toLowerCase();
+  
+  switch (normalizedFrequency) {
     case 'Daily':
       // For daily reports, check if today is a working day
       // Note: workingDays uses 1=Monday, 7=Sunday
@@ -262,7 +274,10 @@ const calculateDueDate = (frequency, schoolSettings, baseDate = null) => {
       dueDate.add(daysToAdd, 'days');
       break;
       
-    case 'Bi-Weekly':
+      case 'Bi-weekly':
+      case 'Bi-Weekly':
+      case 'BiWeekly':
+      case 'Biweekly':
       // Rule-based bi-weekly calculation
       dueDate = calculateBiWeeklyDate(dueDate, frequencyConfig, workingDays, holidays);
       break;
@@ -272,7 +287,10 @@ const calculateDueDate = (frequency, schoolSettings, baseDate = null) => {
       dueDate = calculateRuleBasedDate(dueDate, frequencyConfig, workingDays, holidays, 'monthly');
       break;
       
-    case 'Bi-Monthly':
+      case 'Bi-monthly':
+      case 'Bi-Monthly':
+      case 'BiMonthly':
+      case 'Bimonthly':
       // Rule-based bi-monthly calculation
       const startMonth = frequencyConfig.startMonth || 9; // Default to September
       dueDate = calculateRuleBasedDate(dueDate, frequencyConfig, workingDays, holidays, 'bi-monthly', startMonth);
@@ -340,12 +358,14 @@ const calculateDueDate = (frequency, schoolSettings, baseDate = null) => {
       break;
       
     default:
-      throw new Error(`Unsupported frequency: ${frequency}`);
+      // SAFETY: Provide helpful error message with supported frequencies
+      const supportedFrequencies = ['Daily', 'Weekly', 'Bi-Weekly', 'Monthly', 'Bi-Monthly', 'Quarterly', 'Annually'];
+      throw new Error(`Unsupported frequency: "${frequency}". Supported frequencies: ${supportedFrequencies.join(', ')}`);
   }
   
   // Set the time (except for Annual reports which set time within the case)
   let hours, minutes;
-  if (frequency !== 'Annually') {
+  if (normalizedFrequency !== 'Annually') {
     [hours, minutes] = frequencyConfig.dueTime.split(':').map(Number);
     dueDate.hours(hours).minutes(minutes).seconds(0).milliseconds(0);
   } else {
@@ -362,7 +382,7 @@ const calculateDueDate = (frequency, schoolSettings, baseDate = null) => {
   });
   
     // Skip weekends and holidays if configured (except for annual reports)
-    if (frequency !== 'Annually') {
+    if (normalizedFrequency !== 'Annually') {
       if (frequencyConfig.skipWeekends && isWeekend(dueDate, workingDays)) {
         const originalDate = dueDate.clone();
         dueDate = getNextWorkingDay(dueDate, workingDays, holidays);

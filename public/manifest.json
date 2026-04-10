@@ -1,15 +1,15 @@
 {
-  "short_name": "Barrana AI",
-  "name": "Barrana AI School Management System",
+  "short_name": "Kidsible",
+  "name": "Kidsible - AI-Powered Smart Schools",
   "icons": [
     {
-      "src": "favicon.ico",
+      "src": "kidsible-favicon.png",
       "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
+      "type": "image/png"
     }
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#1976d2",
+  "theme_color": "#17437b",
   "background_color": "#ffffff"
 }

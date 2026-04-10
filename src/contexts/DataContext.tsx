@@ -99,6 +99,7 @@ export interface Report {
   updatedAt: string;
   sentAt?: string;
   template?: string;
+  pdfUrl?: string; // URL to generated PDF
   voiceRecordingUrl?: string;
   voiceRecording?: {
     hasRecording: boolean;
@@ -224,7 +225,7 @@ interface DataContextType {
   updateStudent: (id: string, updates: Partial<Student>) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
   // CRUD operations for teachers
-  addTeacher: (teacher: Omit<Teacher, '_id'>) => Promise<void>;
+  addTeacher: (teacher: Omit<Teacher, '_id'>) => Promise<any>;
   updateTeacher: (id: string, updates: Partial<Teacher>) => Promise<void>;
   deleteTeacher: (id: string) => Promise<void>;
   // Refresh data
@@ -647,6 +648,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.log('DataContext - addTeacher called with:', teacher);
       const response = await apiService.createTeacher(teacher);
       console.log('DataContext - createTeacher API response:', response);
+      console.log('DataContext - response.generatedPassword:', response.generatedPassword);
+      console.log('DataContext - response keys:', Object.keys(response));
       
       if (response.success && response.data) {
         console.log('DataContext - Teacher created successfully, refreshing data...');
@@ -655,13 +658,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Then refresh all data to ensure complete consistency
         await refreshData();
         console.log('DataContext - Data refresh completed after adding teacher');
+        // Return the full response including generatedPassword
+        console.log('DataContext - Returning response with generatedPassword:', response.generatedPassword);
+        return response;
       } else {
         console.error('DataContext - Failed to create teacher:', response);
         setError(response.error || 'Failed to add teacher');
+        return response;
       }
     } catch (err) {
       console.error('DataContext - Error in addTeacher:', err);
       setError(err instanceof Error ? err.message : 'Failed to add teacher');
+      throw err;
     }
   };
 

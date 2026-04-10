@@ -1017,7 +1017,7 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
                             </Typography>
                           </TableCell>
                           <TableCell>
-                          <Chip label={toProperCase(template.grade)} color="primary" size="small" />
+                          <Chip label={formatGradeForDisplay(template.grade)} color="primary" size="small" />
                           </TableCell>
                           <TableCell>
                             <Chip
@@ -1101,8 +1101,8 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
         </Grid>
       </Grow>
 
-      {/* Frequency & Calendar Configuration - Only for School Admins */}
-      {isSchoolAdmin && (
+      {/* Frequency & Calendar Configuration - School Admin always; Super Admin when a school is selected */}
+      {(isSchoolAdmin || (isSuperAdmin && selectedSchoolId)) && (
         <Grow in timeout={1200}>
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12}>
@@ -1131,7 +1131,7 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
                       🐛 <strong>Settings Debug Info:</strong>
                     </Typography>
                     <Typography variant="caption" component="div">
-                      • School ID: {school?.id || 'None'}
+                      • School ID: {getCurrentSchoolId() || 'None'}
                     </Typography>
                     <Typography variant="caption" component="div">
                       • Local Settings: {JSON.stringify(localSchoolSettings, null, 2).substring(0, 200)}...
@@ -1155,10 +1155,10 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
                       const previousSettings = { ...localSchoolSettings };
                       
                       try {
-                        const schoolId = school?.id;
+                        const schoolId = getCurrentSchoolId();
                         if (!schoolId) {
                           console.error('❌ No school ID available for settings update');
-                          setError('No school ID available');
+                          setError('No school ID available. Select a school (Super Admin) or ensure you are assigned to a school.');
                           return;
                         }
                         

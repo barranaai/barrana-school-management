@@ -1,0 +1,107 @@
+BARRANA AI PROJECT REVIEW
+=========================
+
+Date: November 19, 2025
+Project Status: Active Development / Prototype Phase
+Overall Health: Moderate. The project demonstrates a solid functional foundation with a clear separation of concerns (Backend, Web, Mobile). However, there are CRITICAL security vulnerabilities and significant architectural issues that must be addressed immediately.
+
+--------------------------------------------------------------------------------
+
+1. BACKEND REVIEW (/backend)
+
+Architecture & Structure:
+- Framework: Express.js with MongoDB (Mongoose).
+- Structure: Standard MVC-like structure.
+- Middleware: Good use of `helmet`, `compression`, and custom `auditLog`.
+
+🚨 CRITICAL SECURITY ISSUES:
+
+1. Path Traversal / Arbitrary File Read (P0):
+   - File: `routes/reports.js`
+   - Endpoint: `GET /api/reports/test-media/:filename`
+   - Issue: The endpoint uses `path.join` with user-controlled input (`req.params.filename`) without sanitization.
+   - Vulnerability: An attacker can request `../../config.env` to read sensitive environment variables (DB credentials, API keys).
+   - Fix: Validate `filename` to ensure it contains no path separators or `..`, or use a safe file serving library.
+
+2. Debug/Test Endpoints in Production (P0):
+   - File: `routes/auth.js`
+   - Issue: `/test-login` bypasses auth and logs sensitive data.
+   - Fix: Remove or restrict to development environment.
+
+3. Rate Limiting Disabled (P0):
+   - File: `routes/auth.js`
+   - Issue: `authLimiter` is explicitly bypassed.
+   - Fix: Re-enable immediately.
+
+Code Quality & Logic:
+
+- Logic Duplication: The due date calculation logic in `utils/dateUtils.js` (implied) appears to be duplicated in the mobile app.
+- Models: `User.js` is monolithic (400+ lines) and mixes concerns (Auth, Profile, Settings).
+
+--------------------------------------------------------------------------------
+
+2. FRONTEND WEB REVIEW (/src)
+
+Architecture:
+- Framework: React with TypeScript.
+- State Management: Context API (`AuthContext`).
+
+Security & Quality:
+
+- Token Storage (P1):
+  - File: `contexts/AuthContext.tsx`
+  - Issue: JWT tokens are stored in `localStorage`.
+  - Risk: Vulnerable to XSS attacks.
+  - Recommendation: Switch to `httpOnly` cookies or ensure strict CSP.
+
+- Type Safety:
+  - File: `services/apiService.ts`
+  - Issue: Loose typing (`any`) in several API responses.
+  - Recommendation: Define strict interfaces for all API responses.
+
+--------------------------------------------------------------------------------
+
+3. MOBILE APP REVIEW (/BarranaMobileApp)
+
+Architecture:
+- Framework: React Native (Expo).
+
+🚨 CRITICAL ISSUES:
+
+1. "God Component" Anti-Pattern (P1):
+   - File: `screens/StudentsScreen.tsx`
+   - Size: ~3500 lines.
+   - Issue: Handles UI, API calls, Audio Logic, AI Logic, and complex Date Logic.
+   - Risk: Extremely hard to maintain and test.
+   - Fix: Refactor into smaller components (`AudioRecorder`, `ReportGenerator`) and hooks (`useAudio`, `useReport`).
+
+2. Duplicated Business Logic (P1):
+   - File: `screens/StudentsScreen.tsx` (Lines 691-773)
+   - Issue: Re-implements complex report due date logic (Daily, Weekly, Bi-Weekly, etc.) that exists in the backend.
+   - Risk: Inconsistency between App and Backend.
+   - Fix: Move this logic to the backend. The app should ask the API "Is this report due?" rather than calculating it locally.
+
+3. Hardcoded Credentials (P0):
+   - File: `App.tsx`
+   - Issue: Demo credentials included in source.
+   - Fix: Remove immediately.
+
+--------------------------------------------------------------------------------
+
+SUMMARY OF RECOMMENDATIONS
+
+Immediate Actions (P0 - Security Critical):
+1. [Backend] Fix Path Traversal in `routes/reports.js`.
+2. [Backend] Remove `/test-login` and re-enable rate limiting in `routes/auth.js`.
+3. [Mobile] Remove hardcoded credentials from `App.tsx`.
+4. [Backend] Restrict CORS in `server.js`.
+
+Short-term Improvements (P1 - Stability & Quality):
+1. [Mobile] Refactor `StudentsScreen.tsx` to extract logic into hooks/components.
+2. [Mobile] Remove duplicated date logic; rely on Backend API for due status.
+3. [Frontend] Move token storage to a more secure mechanism if possible.
+
+Long-term Goals (P2 - Maintainability):
+1. [Backend] Refactor `User.js` model.
+2. [Infra] Implement centralized logging and error tracking (Sentry).
+3. [Testing] Add unit tests for the critical due date calculation logic to ensure Backend/Mobile consistency (if mobile logic must remain).

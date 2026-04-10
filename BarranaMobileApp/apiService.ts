@@ -105,6 +105,25 @@ class ApiService {
     return API_BASE_URL;
   }
 
+  // Get current token (for external use)
+  public async getToken(): Promise<string | null> {
+    return await this.getStoredToken();
+  }
+
+  // Generic request method (for backward compatibility)
+  public async makeRequest<T = any>(endpoint: string, options?: any): Promise<T> {
+    try {
+      const response: AxiosResponse<T> = await this.api.request({
+        url: endpoint,
+        ...options
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('📱 API Request error:', error);
+      throw error;
+    }
+  }
+
   // Token management
   private async getStoredToken(): Promise<string | null> {
     try {
@@ -475,7 +494,58 @@ class ApiService {
       return response.data;
     } catch (error: any) {
       console.error('Error checking due status:', error);
-      throw this.handleError(error, 'Failed to check due status');
+      throw new Error(error.response?.data?.message || 'Failed to check due status');
+    }
+  }
+
+  // NEW: Get due reports from centralized backend calculator (single source of truth)
+  public async getDueReports(): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      console.log('📱 Getting due reports from centralized backend...');
+      const response: AxiosResponse<ApiResponse<any>> = await this.api.get('/reports/due');
+      
+      if (response.data.success && response.data.data) {
+        console.log('📱 Due reports received:', response.data.data);
+        return { 
+          success: true, 
+          data: response.data.data 
+        };
+      } else {
+        throw new Error(response.data.message || 'Failed to get due reports');
+      }
+    } catch (error: any) {
+      console.error('📱 Error getting due reports:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.message || error.message || 'Failed to get due reports' 
+      };
+    }
+  }
+
+  // NEW: Check if a report can be generated for a student/template (validation before creating report)
+  public async canGenerateReport(studentId: string, templateId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      console.log('📱 Checking if report can be generated:', { studentId, templateId });
+      const response: AxiosResponse<ApiResponse<any>> = await this.api.post('/reports/can-generate', {
+        studentId,
+        templateId
+      });
+      
+      if (response.data.success && response.data.data) {
+        console.log('📱 Can generate report:', response.data.data);
+        return { 
+          success: true, 
+          data: response.data.data 
+        };
+      } else {
+        throw new Error(response.data.message || 'Validation failed');
+      }
+    } catch (error: any) {
+      console.error('📱 Error checking if report can be generated:', error);
+      return { 
+        success: false, 
+        error: error.response?.data?.message || error.message || 'Validation failed' 
+      };
     }
   }
 
@@ -534,6 +604,39 @@ class ApiService {
     } catch (error: any) {
       console.error('Error fetching school data:', error);
       throw new Error(error.response?.data?.message || 'Failed to fetch school data');
+    }
+  }
+
+  // Get school branding (for teachers and parents)
+  public async getSchoolBranding(endpoint: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      console.log('📱 Fetching school branding from:', endpoint);
+      console.log('📱 Full API URL:', API_BASE_URL + endpoint);
+      console.log('📱 Has token:', !!(await this.getToken()));
+      
+      const response: AxiosResponse<ApiResponse<any>> = await this.api.get(endpoint);
+      
+      console.log('📱 Raw API response status:', response.status);
+      console.log('📱 Raw API response data:', JSON.stringify(response.data, null, 2));
+      
+      if (response.data.success && response.data.data) {
+        console.log('📱 School branding fetched successfully');
+        console.log('📱 Branding data:', JSON.stringify(response.data.data, null, 2));
+        return { 
+          success: true, 
+          data: response.data.data 
+        };
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch school branding');
+      }
+    } catch (error: any) {
+      console.error('📱 Error fetching school branding:', error);
+      console.error('📱 Error response:', error.response?.data);
+      console.error('📱 Error status:', error.response?.status);
+      return { 
+        success: false, 
+        error: error.response?.data?.message || error.message || 'Failed to fetch school branding' 
+      };
     }
   }
 
@@ -917,11 +1020,6 @@ class ApiService {
         error: error.response?.data?.message || error.message || 'Failed to fetch teacher data' 
       };
     }
-  }
-
-  // Utility method to get base URL
-  public getBaseUrl(): string {
-    return API_BASE_URL;
   }
 }
 
