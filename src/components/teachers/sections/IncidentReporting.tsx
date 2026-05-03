@@ -73,6 +73,7 @@ import {
   type Student,
 } from '../../../services/apiService';
 import { useData } from '../../../contexts/DataContext';
+import SchoolBannerHeader from '../../common/SchoolBannerHeader';
 
 interface Props {
   schoolBranding?: any;
@@ -163,6 +164,7 @@ const IncidentReporting: React.FC<Props> = ({ schoolBranding }) => {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
+      <SchoolBannerHeader schoolBranding={schoolBranding} />
       {/* Header */}
       <Card
         sx={{

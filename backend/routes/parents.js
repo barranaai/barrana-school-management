@@ -524,7 +524,7 @@ router.patch('/me/notifications/mark-all-read', protect, authorize('parent'), as
 router.get('/me/school-branding', protect, authorize('parent'), async (req, res) => {
   try {
     const school = await School.findById(req.user.schoolId)
-      .select('name logo branding')
+      .select('name logo branding updatedAt')
       .lean();
 
     if (!school) {
@@ -542,10 +542,13 @@ router.get('/me/school-branding', protect, authorize('parent'), async (req, res)
       data: {
         schoolId: school._id,
         schoolName: school.name,
+        updatedAt: school.updatedAt,
         logo: logoPath,
-        branding: school.branding || {
-          primaryColor: '#667eea',
-          secondaryColor: '#764ba2'
+        branding: {
+          ...(school.branding || {}),
+          primaryColor: school.branding?.primaryColor || '#667eea',
+          secondaryColor: school.branding?.secondaryColor || '#764ba2',
+          logo: logoPath || school.branding?.logo,
         }
       }
     });

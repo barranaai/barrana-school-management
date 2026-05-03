@@ -57,6 +57,7 @@ import {
   type Meeting,
   type MeetingFormat,
 } from '../../../services/apiService';
+import SchoolBannerHeader from '../../common/SchoolBannerHeader';
 
 interface Props {
   schoolBranding?: any;
@@ -149,6 +150,7 @@ const Meetings: React.FC<Props> = ({ schoolBranding }) => {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
+      <SchoolBannerHeader schoolBranding={schoolBranding} />
       {/* Header */}
       <Card
         sx={{

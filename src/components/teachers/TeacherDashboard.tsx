@@ -163,9 +163,17 @@ const TeacherDashboard: React.FC = () => {
                 const school = schoolResponse.data as any;
                 const brandingData = {
                   schoolName: school.name,
+                  name: school.name,
+                  updatedAt: school.updatedAt,
                   primaryColor: school.branding?.primaryColor || '#667eea',
                   secondaryColor: school.branding?.secondaryColor || '#764ba2',
-                  logo: school.logo || school.branding?.logo
+                  logo: school.branding?.logo || school.logo,
+                  branding: {
+                    ...(school.branding || {}),
+                    primaryColor: school.branding?.primaryColor || '#667eea',
+                    secondaryColor: school.branding?.secondaryColor || '#764ba2',
+                    logo: school.branding?.logo,
+                  },
                 };
                 setSchoolBranding(brandingData);
                 if (school.name) {

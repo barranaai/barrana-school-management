@@ -610,7 +610,7 @@ router.get('/me/school-branding', protect, authorize('teacher'), async (req, res
     }
 
     const School = require('../models/School');
-    const school = await School.findById(teacher.schoolId).select('name branding logo');
+    const school = await School.findById(teacher.schoolId).select('name branding logo updatedAt');
 
     if (!school) {
       return res.status(404).json({
@@ -619,24 +619,22 @@ router.get('/me/school-branding', protect, authorize('teacher'), async (req, res
       });
     }
 
-    // Get logo URL - check both school.logo and school.branding.logo
-    let logoUrl = school.logo || school.branding?.logo;
-    
-    // If logo is a relative path, prepend base URL
-    if (logoUrl && !logoUrl.startsWith('http')) {
-      const baseUrl = process.env.FRONTEND_URL || 'http://191.101.233.56';
-      logoUrl = `${baseUrl}${logoUrl}`;
-    }
+    // Canonical path from School Configuration is branding.logo (/uploads/logos/…).
+    // Return it as stored (relative). Clients resolve against their API/public origin
+    // so logos work in dev (CRA proxy), staging, and production without hard-coded hosts.
+    const logoPath = school.branding?.logo || school.logo || null;
 
     res.json({
       success: true,
       data: {
         schoolId: school._id,
         schoolName: school.name,
-        logo: logoUrl,
+        updatedAt: school.updatedAt,
+        logo: logoPath,
         branding: {
           primaryColor: school.branding?.primaryColor || '#667eea',
-          secondaryColor: school.branding?.secondaryColor || '#764ba2'
+          secondaryColor: school.branding?.secondaryColor || '#764ba2',
+          logo: logoPath
         }
       }
     });

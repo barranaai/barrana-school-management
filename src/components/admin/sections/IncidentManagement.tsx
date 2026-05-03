@@ -64,6 +64,7 @@ import {
   type IncidentStats,
   type IncidentType,
 } from '../../../services/apiService';
+import SchoolBannerHeader from '../../common/SchoolBannerHeader';
 
 interface Props {
   schoolBranding?: any;
@@ -178,6 +179,7 @@ const IncidentManagement: React.FC<Props> = ({ schoolBranding }) => {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
+      <SchoolBannerHeader schoolBranding={schoolBranding} />
       {/* Hero */}
       <Card
         sx={{
