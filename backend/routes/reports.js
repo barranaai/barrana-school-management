@@ -23,6 +23,10 @@ try {
 const { sendReportEmail } = require('../services/emailService');
 const firebaseService = require('../services/firebaseService');
 
+// Maximum number of media attachments (images + videos combined) per report.
+// Enforced on create and on append-media routes. Mirrored in the Report model.
+const MAX_REPORT_ATTACHMENTS = 10;
+
 // Check if ffmpeg is available
 let ffmpeg = null;
 
@@ -877,6 +881,18 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
       });
     }
 
+    // Enforce max attachment cap on create
+    if (Array.isArray(attachments) && attachments.length > MAX_REPORT_ATTACHMENTS) {
+      return res.status(400).json({
+        success: false,
+        message: `A report cannot have more than ${MAX_REPORT_ATTACHMENTS} media attachments.`,
+        data: {
+          provided: attachments.length,
+          max: MAX_REPORT_ATTACHMENTS
+        }
+      });
+    }
+
     // Verify template exists
     const template = await ReportTemplate.findById(templateId);
     if (!template) {
@@ -1722,6 +1738,32 @@ router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 's
       return res.status(400).json({
         success: false,
         message: 'No files uploaded'
+      });
+    }
+
+    // Enforce max attachment cap before persisting any new files.
+    // Multer has already written files to disk; clean them up if rejected.
+    const currentCount = report.attachments?.length || 0;
+    const incomingCount = req.files.length;
+    if (currentCount + incomingCount > MAX_REPORT_ATTACHMENTS) {
+      for (const f of req.files) {
+        try {
+          if (f && f.path && fs.existsSync(f.path)) {
+            fs.unlinkSync(f.path);
+          }
+        } catch (cleanupErr) {
+          console.warn('Failed to clean up rejected upload:', f?.path, cleanupErr.message);
+        }
+      }
+      return res.status(400).json({
+        success: false,
+        message: `A report cannot have more than ${MAX_REPORT_ATTACHMENTS} media attachments. This report already has ${currentCount}; ${incomingCount} more would exceed the limit.`,
+        data: {
+          current: currentCount,
+          incoming: incomingCount,
+          max: MAX_REPORT_ATTACHMENTS,
+          remaining: Math.max(0, MAX_REPORT_ATTACHMENTS - currentCount)
+        }
       });
     }
 

@@ -112,6 +112,7 @@ router.post('/', [
   body('medicalInfo.allergies').optional({ checkFalsy: true }).isArray().withMessage('Allergies must be an array'),
   body('medicalInfo.conditions').optional({ checkFalsy: true }).isArray().withMessage('Conditions must be an array'),
   body('medicalInfo.medications').optional({ checkFalsy: true }).isArray().withMessage('Medications must be an array'),
+  body('medicalInfo.dietaryRestrictions').optional({ checkFalsy: true }).isArray().withMessage('Dietary restrictions must be an array'),
   body('academicLevel').optional({ checkFalsy: true }).isIn(['beginner', 'intermediate', 'advanced']).withMessage('Invalid academic level'),
   body('notes').optional({ checkFalsy: true }).trim().isLength({ max: 1000 }).withMessage('Notes cannot exceed 1000 characters'),
   body('isActive').optional({ checkFalsy: true }).isBoolean().withMessage('Status must be a boolean')
@@ -355,7 +356,12 @@ router.put('/:id', [
   body('enrollmentDate').optional().isISO8601().withMessage('Please provide a valid enrollment date'),
   body('academicLevel').optional().isIn(['beginner', 'intermediate', 'advanced']).withMessage('Invalid academic level'),
   body('isActive').optional().isBoolean().withMessage('Status must be a boolean'),
-  body('assignedTeacher').optional().isMongoId().withMessage('Valid teacher ID is required')
+  body('assignedTeacher').optional().isMongoId().withMessage('Valid teacher ID is required'),
+  body('emergencyContact').optional({ checkFalsy: true }).trim(),
+  body('medicalInfo.allergies').optional({ checkFalsy: true }).isArray().withMessage('Allergies must be an array'),
+  body('medicalInfo.conditions').optional({ checkFalsy: true }).isArray().withMessage('Conditions must be an array'),
+  body('medicalInfo.medications').optional({ checkFalsy: true }).isArray().withMessage('Medications must be an array'),
+  body('medicalInfo.dietaryRestrictions').optional({ checkFalsy: true }).isArray().withMessage('Dietary restrictions must be an array')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);

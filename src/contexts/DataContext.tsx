@@ -3,6 +3,13 @@ import { apiService, Student as ApiStudent, Teacher as ApiTeacher, Report as Api
 import { useAuth } from './AuthContext';
 
 // Types
+export interface MedicalInfo {
+  allergies?: string[];
+  conditions?: string[];
+  medications?: string[];
+  dietaryRestrictions?: string[];
+}
+
 export interface Student {
   _id: string;
   id?: string; // For backward compatibility
@@ -27,7 +34,7 @@ export interface Student {
   dateOfBirth?: string;
   address?: string;
   emergencyContact?: string;
-  medicalInfo?: string;
+  medicalInfo?: MedicalInfo | string;
   academicLevel?: string;
   notes?: string;
   createdAt?: string;

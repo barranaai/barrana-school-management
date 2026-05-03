@@ -78,6 +78,7 @@ import { communicationService } from '../../../services/communicationService';
 import { REPORT_FREQUENCIES, type ReportFrequency } from '../../../constants/reportFrequencies';
 import { mediaService, type UploadedMedia } from '../../../services/mediaService';
 import MediaUpload from '../../common/MediaUpload';
+import MedicalInfoDisplay from '../../common/MedicalInfoDisplay';
 import { formatGradeForDisplay, areGradesEqual } from '../../../utils/gradeDisplayUtils';
 import NotificationIcon from '../../common/NotificationIcon';
 import { themeColors } from '../../../theme/teacherTheme';
@@ -2862,6 +2863,15 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                   </List>
                 </Alert>
               )}
+
+              {/* Medical Safety Alert + Information */}
+              <Box sx={{ mt: 3 }}>
+                <MedicalInfoDisplay
+                  value={(selectedStudent as any).medicalInfo}
+                  emergencyContact={(selectedStudent as any).emergencyContact}
+                  showSafetyAlert={true}
+                />
+              </Box>
 
               {/* Detailed Information */}
               <Grid container spacing={4} sx={{ mt: 3 }}>

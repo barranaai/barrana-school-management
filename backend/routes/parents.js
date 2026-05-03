@@ -23,7 +23,7 @@ router.get('/me/children', protect, authorize('parent'), async (req, res) => {
       parentEmail: req.user.email
     })
       .populate('classId', 'name grade')
-      .select('firstName lastName studentId email phone classId photo parentEmail parentPhone')
+      .select('firstName lastName studentId email phone classId photo parentEmail parentPhone medicalInfo emergencyContact studentGrade dateOfBirth')
       .lean();
 
     // Get teacher info for each child

@@ -55,7 +55,40 @@ import {
   Email,
   Sms,
   Settings,
+  Psychology,
+  DirectionsRun,
+  Chat,
+  EmojiEmotions,
+  CheckCircle,
+  Mosque,
+  MenuBook,
+  Abc,
+  Language as LanguageIcon,
+  Verified,
+  Assignment,
+  Person,
+  Groups,
+  Lightbulb,
+  SelfImprovement,
+  VolunteerActivism,
+  AutoStories,
+  LibraryBooks,
+  Calculate,
+  Science,
+  History,
+  Palette,
+  FitnessCenter,
 } from '@mui/icons-material';
+import {
+  SKILL_MODULES,
+  isSkillModuleInserted,
+  getModulesByCategory,
+  SKILL_MODULE_CATEGORY_LABELS,
+  SKILL_MODULE_CATEGORY_DESCRIPTIONS,
+  SKILL_MODULE_CATEGORY_ORDER,
+  type SkillModule,
+  type SkillModuleCategory,
+} from '../../../constants/skillModules';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import {
@@ -507,6 +540,44 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
       ...prev,
       [field]: value
     }));
+  };
+
+  // Mapping of module id -> icon component (kept here so the constants file stays UI-free)
+  const SKILL_MODULE_ICONS: Record<string, React.ReactElement> = {
+    // Development Domains
+    cognitive: <Psychology />,
+    motor: <DirectionsRun />,
+    language: <Chat />,
+    behavior: <EmojiEmotions />,
+    // Learning Skills & Work Habits
+    responsibility: <Verified />,
+    organization: <Assignment />,
+    independent_work: <Person />,
+    collaboration: <Groups />,
+    initiative: <Lightbulb />,
+    self_regulation: <SelfImprovement />,
+    // Subject Areas
+    islamic_studies: <Mosque />,
+    islamic_development: <VolunteerActivism />,
+    quran_memorization: <MenuBook />,
+    arabic: <Abc />,
+    quranic_arabic: <AutoStories />,
+    french: <LanguageIcon />,
+    english_language: <LibraryBooks />,
+    mathematics: <Calculate />,
+    science_technology: <Science />,
+    social_studies: <History />,
+    the_arts: <Palette />,
+    health_phys_ed: <FitnessCenter />,
+  };
+
+  // Append a pre-built skill module's content block to the Template Content field.
+  // No-ops if the module is already present (duplicate prevention).
+  const handleAddSkillModule = (module: SkillModule) => {
+    const existing = formData.content || '';
+    if (isSkillModuleInserted(existing, module)) return;
+    const separator = existing.trim().length > 0 ? '\n\n' : '';
+    handleFormChange('content', `${existing}${separator}${module.content}`);
   };
 
   // Load school branding from backend
@@ -1592,6 +1663,121 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
               />
             </Grid>
             
+            {/* Quick Add Skill Modules — super admin only */}
+            {isSuperAdmin && (
+              <Grid item xs={12}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2.5,
+                    borderRadius: 2,
+                    borderColor: 'rgba(102, 126, 234, 0.25)',
+                    background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.04) 0%, rgba(118, 75, 162, 0.04) 100%)',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{
+                        fontWeight: 700,
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                      }}
+                    >
+                      Quick Add Skill Modules
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                    Click a module to insert a ready-made section into the Template Content below. You can edit it freely afterward.
+                  </Typography>
+
+                  {SKILL_MODULE_CATEGORY_ORDER.map((category, idx) => {
+                    const modules = getModulesByCategory(category);
+                    if (modules.length === 0) return null;
+                    return (
+                      <Box key={category} sx={{ mt: idx === 0 ? 0 : 2.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 1 }}>
+                          <Typography variant="overline" sx={{ fontWeight: 700, color: 'text.primary', letterSpacing: 0.6 }}>
+                            {SKILL_MODULE_CATEGORY_LABELS[category]}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {SKILL_MODULE_CATEGORY_DESCRIPTIONS[category]}
+                          </Typography>
+                        </Box>
+                        <Grid container spacing={1.5}>
+                          {modules.map((module) => {
+                            const inserted = isSkillModuleInserted(formData.content || '', module);
+                            return (
+                              <Grid item xs={12} sm={6} md={3} key={module.id}>
+                                <Card
+                                  onClick={() => !inserted && handleAddSkillModule(module)}
+                                  sx={{
+                                    cursor: inserted ? 'default' : 'pointer',
+                                    borderRadius: 2,
+                                    height: '100%',
+                                    border: '1px solid',
+                                    borderColor: inserted ? 'success.light' : 'rgba(102, 126, 234, 0.25)',
+                                    background: inserted
+                                      ? 'linear-gradient(135deg, rgba(76, 175, 80, 0.08) 0%, rgba(76, 175, 80, 0.04) 100%)'
+                                      : '#fff',
+                                    transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
+                                    '&:hover': inserted
+                                      ? {}
+                                      : {
+                                          transform: 'translateY(-2px)',
+                                          boxShadow: '0 6px 20px rgba(102, 126, 234, 0.18)',
+                                          borderColor: '#667eea',
+                                        },
+                                  }}
+                                >
+                                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                                      <Box
+                                        sx={{
+                                          width: 36,
+                                          height: 36,
+                                          borderRadius: '10px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          background: inserted
+                                            ? 'linear-gradient(135deg, #66bb6a 0%, #43a047 100%)'
+                                            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                          color: '#fff',
+                                        }}
+                                      >
+                                        {SKILL_MODULE_ICONS[module.id] || <Description />}
+                                      </Box>
+                                      {inserted && (
+                                        <Chip
+                                          icon={<CheckCircle sx={{ fontSize: 14 }} />}
+                                          label="Added"
+                                          size="small"
+                                          color="success"
+                                          sx={{ fontWeight: 600, height: 22 }}
+                                        />
+                                      )}
+                                    </Box>
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.25 }}>
+                                      {module.name}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.35 }}>
+                                      {module.shortDescription}
+                                    </Typography>
+                                  </CardContent>
+                                </Card>
+                              </Grid>
+                            );
+                          })}
+                        </Grid>
+                      </Box>
+                    );
+                  })}
+                </Paper>
+              </Grid>
+            )}
+
             <Grid item xs={12}>
               <TextField
                 fullWidth

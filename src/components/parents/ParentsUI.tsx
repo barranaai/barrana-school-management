@@ -76,6 +76,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import NotificationIcon from '../common/NotificationIcon';
+import MedicalInfoDisplay from '../common/MedicalInfoDisplay';
 import { formatGradeForDisplay } from '../../utils/gradeDisplayUtils';
 import notificationService from '../../services/notificationService';
 import messagingService from '../../services/messagingService';
@@ -1800,6 +1801,15 @@ const ParentsUI: React.FC = () => {
                     </Box>
                 </Box>
                 
+                  {/* Medical Information (read-only) */}
+                  <Box sx={{ mt: 2 }}>
+                    <MedicalInfoDisplay
+                      value={(child as any).medicalInfo}
+                      emergencyContact={(child as any).emergencyContact}
+                      showSafetyAlert={false}
+                    />
+                  </Box>
+
                   <Box sx={{ display: 'flex', gap: 1.5, mt: 2 }}>
                   <Button
                     variant="contained"

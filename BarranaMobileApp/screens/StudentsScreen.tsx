@@ -2021,6 +2021,58 @@ const StudentsScreen: React.FC<StudentsScreenProps> = ({ user, onBack }) => {
                       </Text>
                     </View>
                   )}
+
+                  {/* Medical Info — safety alerts and dietary notes */}
+                  {(() => {
+                    const med = (student as any).medicalInfo;
+                    if (!med || typeof med === 'string') return null;
+                    const allergies: string[] = med.allergies || [];
+                    const medications: string[] = med.medications || [];
+                    const conditions: string[] = med.conditions || [];
+                    const dietary: string[] = med.dietaryRestrictions || [];
+                    if (
+                      allergies.length === 0 &&
+                      medications.length === 0 &&
+                      conditions.length === 0 &&
+                      dietary.length === 0
+                    ) {
+                      return null;
+                    }
+                    return (
+                      <View style={styles.medicalContainer}>
+                        <View style={styles.medicalHeader}>
+                          <Ionicons name="medical" size={12} color="#d32f2f" />
+                          <Text style={styles.medicalHeaderText}>Medical Information</Text>
+                        </View>
+                        <View style={styles.medicalChipsWrapper}>
+                          {allergies.map((a, i) => (
+                            <View key={`alrg-${i}`} style={[styles.medicalChip, { backgroundColor: '#ffebee', borderColor: '#d32f2f' }]}>
+                              <Ionicons name="warning" size={10} color="#d32f2f" />
+                              <Text style={[styles.medicalChipText, { color: '#d32f2f' }]}>{a}</Text>
+                            </View>
+                          ))}
+                          {medications.map((m, i) => (
+                            <View key={`med-${i}`} style={[styles.medicalChip, { backgroundColor: '#e3f2fd', borderColor: '#1976d2' }]}>
+                              <Ionicons name="medkit" size={10} color="#1976d2" />
+                              <Text style={[styles.medicalChipText, { color: '#1976d2' }]}>{m}</Text>
+                            </View>
+                          ))}
+                          {conditions.map((c, i) => (
+                            <View key={`cnd-${i}`} style={[styles.medicalChip, { backgroundColor: '#f3e5f5', borderColor: '#7b1fa2' }]}>
+                              <Ionicons name="pulse" size={10} color="#7b1fa2" />
+                              <Text style={[styles.medicalChipText, { color: '#7b1fa2' }]}>{c}</Text>
+                            </View>
+                          ))}
+                          {dietary.map((d, i) => (
+                            <View key={`diet-${i}`} style={[styles.medicalChip, { backgroundColor: '#e8f5e9', borderColor: '#2e7d32' }]}>
+                              <Ionicons name="restaurant" size={10} color="#2e7d32" />
+                              <Text style={[styles.medicalChipText, { color: '#2e7d32' }]}>{d}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    );
+                  })()}
                 </View>
                 
                 <View style={styles.cardActions}>
@@ -3202,6 +3254,44 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#999',
     marginLeft: 4,
+  },
+  medicalContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  medicalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  medicalHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#d32f2f',
+    marginLeft: 4,
+    letterSpacing: 0.3,
+  },
+  medicalChipsWrapper: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  medicalChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginRight: 4,
+    marginBottom: 4,
+  },
+  medicalChipText: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginLeft: 3,
   },
   parentContactContainer: {
     flexDirection: 'row',

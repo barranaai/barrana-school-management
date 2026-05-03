@@ -83,6 +83,13 @@ export interface CreateSchoolResponse {
   schoolAdmin: SchoolAdminCredentials | null;
 }
 
+export interface MedicalInfo {
+  allergies?: string[];
+  conditions?: string[];
+  medications?: string[];
+  dietaryRestrictions?: string[];
+}
+
 export interface Student {
   _id: string;
   firstName: string;
@@ -96,6 +103,8 @@ export interface Student {
   parentId?: string;
   avatar?: string;
   lastReport: string;
+  emergencyContact?: string;
+  medicalInfo?: MedicalInfo | string;
   createdAt: string;
   updatedAt: string;
 }

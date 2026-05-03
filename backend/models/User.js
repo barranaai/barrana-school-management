@@ -287,7 +287,8 @@ const userSchema = new mongoose.Schema({
   medicalInfo: {
     allergies: [String],
     conditions: [String],
-    medications: [String]
+    medications: [String],
+    dietaryRestrictions: [String]
   },
   academicLevel: {
     type: String,

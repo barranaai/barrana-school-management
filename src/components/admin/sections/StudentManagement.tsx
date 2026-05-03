@@ -48,9 +48,11 @@ import {
   Email,
   Phone,
 } from '@mui/icons-material';
-import { useData } from '../../../contexts/DataContext';
+import { useData, type MedicalInfo } from '../../../contexts/DataContext';
 import toast from 'react-hot-toast';
 import PhoneNumberInput from '../../common/PhoneNumberInput';
+import MedicalInfoEditor from '../../common/MedicalInfoEditor';
+import MedicalInfoDisplay from '../../common/MedicalInfoDisplay';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import {
@@ -123,6 +125,29 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     return medicalInfo || 'No medical information available';
   };
 
+  // Coerce any incoming medicalInfo (string, undefined, or object) into a clean
+  // structured MedicalInfo so the editor and backend always speak the same shape.
+  const toStructuredMedicalInfo = (medicalInfo: any): MedicalInfo => {
+    if (!medicalInfo) {
+      return { allergies: [], conditions: [], medications: [], dietaryRestrictions: [] };
+    }
+    if (typeof medicalInfo === 'string') {
+      const trimmed = medicalInfo.trim();
+      return {
+        allergies: trimmed ? [trimmed] : [],
+        conditions: [],
+        medications: [],
+        dietaryRestrictions: [],
+      };
+    }
+    return {
+      allergies: medicalInfo.allergies ?? [],
+      conditions: medicalInfo.conditions ?? [],
+      medications: medicalInfo.medications ?? [],
+      dietaryRestrictions: medicalInfo.dietaryRestrictions ?? [],
+    };
+  };
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGrade, setFilterGrade] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -131,14 +156,32 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   const [dialogType, setDialogType] = useState<'add' | 'edit' | 'view'>('add');
   const [selectedStudentData, setSelectedStudentData] = useState<any>(null);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    firstName: string;
+    lastName: string;
+    email: string;
+    studentId: string;
+    grade: string;
+    class: string;
+    status: 'active' | 'pending' | 'inactive';
+    parentName: string;
+    parentEmail: string;
+    parentPhone: string;
+    enrollmentDate: string;
+    dateOfBirth: string;
+    address: string;
+    emergencyContact: string;
+    medicalInfo: MedicalInfo;
+    academicLevel: string;
+    notes: string;
+  }>({
     firstName: '',
     lastName: '',
     email: '',
     studentId: '',
     grade: '',
     class: '',
-    status: 'active' as 'active' | 'pending' | 'inactive',
+    status: 'active',
     parentName: '',
     parentEmail: '',
     parentPhone: '',
@@ -146,7 +189,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     dateOfBirth: '',
     address: '',
     emergencyContact: '',
-    medicalInfo: '',
+    medicalInfo: { allergies: [], conditions: [], medications: [], dietaryRestrictions: [] },
     academicLevel: 'beginner',
     notes: '',
   });
@@ -298,7 +341,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         dateOfBirth: '2018-01-01',
         address: '123 Main St, City, State',
         emergencyContact: '+1-555-9999',
-        medicalInfo: 'No known allergies',
+        medicalInfo: { allergies: [], conditions: [], medications: [], dietaryRestrictions: [] },
         academicLevel: 'Standard',
         notes: 'Imported student',
       }));
@@ -371,7 +414,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         dateOfBirth: '',
         address: '',
         emergencyContact: '',
-        medicalInfo: '',
+        medicalInfo: { allergies: [], conditions: [], medications: [], dietaryRestrictions: [] },
         academicLevel: 'beginner',
         notes: '',
       });
@@ -408,7 +451,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           dateOfBirth: student.dateOfBirth ? new Date(student.dateOfBirth).toISOString().split('T')[0] : '',
           address: student.address || (student as any).address || '',
           emergencyContact: student.emergencyContact || (student as any).emergencyContact || '',
-          medicalInfo: formatMedicalInfo(student.medicalInfo),
+          medicalInfo: toStructuredMedicalInfo(student.medicalInfo),
           academicLevel: student.academicLevel || (student as any).academicLevel || 'beginner',
           notes: student.notes || (student as any).notes || '',
         });
@@ -437,7 +480,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       dateOfBirth: '',
       address: '',
       emergencyContact: '',
-      medicalInfo: '',
+      medicalInfo: { allergies: [], conditions: [], medications: [], dietaryRestrictions: [] },
       academicLevel: 'beginner',
       notes: '',
     });
@@ -626,7 +669,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         dateOfBirth: '',
         address: '',
         emergencyContact: '',
-        medicalInfo: '',
+        medicalInfo: { allergies: [], conditions: [], medications: [], dietaryRestrictions: [] },
         academicLevel: 'beginner',
         notes: '',
       });
@@ -1589,16 +1632,10 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                           </Typography>
                         </Box>
                         <Box sx={{ p: 3 }}>
-                          <Typography 
-                            variant="body1" 
-                            sx={{ 
-                              lineHeight: 1.6,
-                              color: 'text.primary',
-                              fontWeight: 500,
-                            }}
-                          >
-                            {formatMedicalInfo(selectedStudentData.medicalInfo)}
-                          </Typography>
+                          <MedicalInfoDisplay
+                            value={selectedStudentData.medicalInfo}
+                            showSafetyAlert={true}
+                          />
                         </Box>
                       </Card>
                     </Grid>
@@ -1877,18 +1914,24 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  label="Medical Info"
-                  value={formData.medicalInfo}
-                  onChange={(e) => handleFormChange('medicalInfo', e.target.value)}
-                />
-              </Grid>
-              {/* Academic Level removed from Add Student as per requirements. Still available in view/edit via stored data. */}
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
                   label="Notes"
                   value={formData.notes}
                   onChange={(e) => handleFormChange('notes', e.target.value)}
+                />
+              </Grid>
+              {/* Medical Information — structured chip-based editor */}
+              <Grid item xs={12}>
+                <Box sx={{ mt: 1, mb: 0.5 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
+                    Medical Information
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+                    Type an entry and press <strong>Enter</strong> to add. Click ✕ on a chip to remove. This information will be visible to teachers and parents for safety.
+                  </Typography>
+                </Box>
+                <MedicalInfoEditor
+                  value={formData.medicalInfo}
+                  onChange={(next) => handleFormChange('medicalInfo', next)}
                 />
               </Grid>
             </Grid>

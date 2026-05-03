@@ -151,17 +151,28 @@ const reportSchema = new mongoose.Schema({
   },
   
   // Attachments and Media
-  attachments: [{
-    filename: String,
-    originalName: String,
-    mimeType: String,
-    size: Number,
-    url: String,
-    uploadedAt: {
-      type: Date,
-      default: Date.now
-    }
-  }],
+  // Hard cap of 10 media items (images + videos combined) per report.
+  // Enforced at the route level and validated here as a safety net.
+  attachments: {
+    type: [{
+      filename: String,
+      originalName: String,
+      mimeType: String,
+      size: Number,
+      url: String,
+      uploadedAt: {
+        type: Date,
+        default: Date.now
+      }
+    }],
+    validate: {
+      validator: function (arr) {
+        return !Array.isArray(arr) || arr.length <= 10;
+      },
+      message: 'A report cannot have more than 10 media attachments.'
+    },
+    default: []
+  },
   
   // PDF URL for generated report
   pdfUrl: {
