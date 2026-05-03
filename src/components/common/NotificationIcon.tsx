@@ -18,6 +18,7 @@ import {
   Schedule,
   Assessment,
   Close,
+  ReportProblem,
 } from '@mui/icons-material';
 import notificationService, { type Notification } from '../../services/notificationService';
 import messagingService from '../../services/messagingService';
@@ -138,6 +139,9 @@ const NotificationIcon: React.FC<NotificationIconProps> = ({ variant = 'default'
         return <Assessment fontSize="small" />;
       case 'due_report':
         return <Schedule fontSize="small" />;
+      case 'incident':
+      case 'alert':
+        return <ReportProblem fontSize="small" />;
       default:
         return <Notifications fontSize="small" />;
     }
@@ -149,6 +153,9 @@ const NotificationIcon: React.FC<NotificationIconProps> = ({ variant = 'default'
         return 'primary';
       case 'due_report':
         return 'warning';
+      case 'incident':
+      case 'alert':
+        return 'error';
       default:
         return 'default';
     }

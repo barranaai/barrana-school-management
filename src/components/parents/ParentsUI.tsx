@@ -45,6 +45,8 @@ import {
   Assessment,
   Message,
   Settings,
+  ReportProblem,
+  Event as EventIcon,
   AccountCircle,
   Notifications,
   School,
@@ -81,6 +83,8 @@ import { formatGradeForDisplay } from '../../utils/gradeDisplayUtils';
 import notificationService from '../../services/notificationService';
 import messagingService from '../../services/messagingService';
 import CommunicationPage from './CommunicationPage';
+import ParentIncidents from './ParentIncidents';
+import ParentMeetings from './ParentMeetings';
 
 const drawerWidth = 250;
 
@@ -88,6 +92,8 @@ const menuItems = [
   { text: 'Dashboard', icon: <Dashboard />, section: 'dashboard' },
   { text: 'My Children', icon: <People />, section: 'children' },
   { text: 'Reports', icon: <Assessment />, section: 'reports' },
+  { text: 'Incidents', icon: <ReportProblem />, section: 'incidents' },
+  { text: 'Meetings', icon: <EventIcon />, section: 'meetings' },
   { text: 'Communication', icon: <Message />, section: 'communication' },
   { text: 'Settings', icon: <Settings />, section: 'settings' },
 ];
@@ -508,6 +514,10 @@ const ParentsUI: React.FC = () => {
         return <ChildrenSection />;
       case 'reports':
         return <ReportsSection />;
+      case 'incidents':
+        return <ParentIncidents parentEmail={user?.email} />;
+      case 'meetings':
+        return <ParentMeetings parentEmail={user?.email} />;
       case 'communication':
         return <CommunicationSection />;
       case 'settings':

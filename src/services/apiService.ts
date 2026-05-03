@@ -155,6 +155,269 @@ export interface Report {
   pdfUrl?: string; // URL to generated PDF
 }
 
+export type IncidentType =
+  | 'injury'
+  | 'behavior'
+  | 'illness'
+  | 'allergic_reaction'
+  | 'medication_error'
+  | 'environmental'
+  | 'lost_child'
+  | 'property_damage'
+  | 'other';
+
+export type IncidentSeverity = 'minor' | 'moderate' | 'serious' | 'critical';
+
+export type IncidentStatus =
+  | 'reported'
+  | 'parent_notified'
+  | 'acknowledged'
+  | 'under_review'
+  | 'resolved'
+  | 'closed';
+
+export type IncidentNotificationMethod =
+  | 'email'
+  | 'sms'
+  | 'whatsapp'
+  | 'push'
+  | 'phone'
+  | 'in_person';
+
+export interface IncidentInjury {
+  _id?: string;
+  bodyPart?: string;
+  injuryType?: string;
+  severity?: IncidentSeverity;
+  notes?: string;
+}
+
+export interface IncidentStudentInvolved {
+  _id?: string;
+  studentId:
+    | string
+    | {
+        _id: string;
+        firstName: string;
+        lastName: string;
+        studentGrade?: string;
+        studentClass?: string;
+        parentEmail?: string;
+      };
+  role?: 'affected' | 'involved' | 'witness';
+  injuries?: IncidentInjury[];
+  notes?: string;
+}
+
+export interface IncidentWitness {
+  _id?: string;
+  type?: 'staff' | 'student' | 'parent' | 'visitor' | 'other';
+  userId?: string | { _id: string; firstName: string; lastName: string };
+  name?: string;
+  statement?: string;
+}
+
+export interface IncidentParentNotification {
+  _id?: string;
+  studentId: string | { _id: string; firstName: string; lastName: string };
+  parentEmail?: string;
+  notifiedAt?: string;
+  method: IncidentNotificationMethod;
+  notifiedBy?: string | { _id: string; firstName: string; lastName: string };
+  deliveryStatus?: 'queued' | 'sent' | 'failed' | 'skipped';
+  deliveryError?: string;
+  acknowledged?: boolean;
+  acknowledgedAt?: string;
+  acknowledgmentNotes?: string;
+}
+
+export interface IncidentAttachment {
+  _id?: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  uploadedAt?: string;
+}
+
+export interface IncidentEditHistoryEntry {
+  editedAt: string;
+  editedBy?: string | { _id: string; firstName: string; lastName: string };
+  summary?: string;
+  fieldsChanged?: string[];
+}
+
+export interface IncidentReport {
+  _id: string;
+  schoolId: string;
+  reportNumber: string;
+  occurredAt: string;
+  reportedAt: string;
+  reportedBy:
+    | string
+    | { _id: string; firstName: string; lastName: string; email?: string; role?: string };
+  location?: string;
+  incidentType: IncidentType;
+  severity: IncidentSeverity;
+  description: string;
+  studentsInvolved: IncidentStudentInvolved[];
+  witnesses?: IncidentWitness[];
+  immediateAction?: string;
+  firstAidGiven?: boolean;
+  firstAidDetails?: string;
+  emergencyServicesCalled?: boolean;
+  emergencyServicesDetails?: string;
+  attachments?: IncidentAttachment[];
+  parentNotifications?: IncidentParentNotification[];
+  status: IncidentStatus;
+  followUpRequired?: boolean;
+  followUpActions?: string;
+  resolvedAt?: string;
+  resolvedBy?: string | { _id: string; firstName: string; lastName: string };
+  resolutionNotes?: string;
+  reviewedBy?: string | { _id: string; firstName: string; lastName: string };
+  reviewedAt?: string;
+  reviewNotes?: string;
+  isLocked?: boolean;
+  lockedAt?: string;
+  lockedBy?: string | { _id: string; firstName: string; lastName: string };
+  editHistory?: IncidentEditHistoryEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IncidentEnums {
+  incidentTypes: IncidentType[];
+  severities: IncidentSeverity[];
+  statuses: IncidentStatus[];
+  notificationMethods: IncidentNotificationMethod[];
+}
+
+export interface IncidentStats {
+  total: number;
+  last30Days: number;
+  severityLast30: Partial<Record<IncidentSeverity, number>>;
+  typeLast30: Partial<Record<IncidentType, number>>;
+  byStatus: Partial<Record<IncidentStatus, number>>;
+}
+
+// ─── Meetings types ──────────────────────────────────────────────────
+
+export type MeetingFormat = 'in_person' | 'virtual' | 'phone';
+export type AvailabilityStatus = 'published' | 'booked' | 'cancelled';
+export type MeetingStatus =
+  | 'confirmed'
+  | 'cancelled'
+  | 'completed'
+  | 'no_show'
+  | 'rescheduled';
+
+export interface AvailabilitySlot {
+  _id: string;
+  schoolId: string;
+  teacherId:
+    | string
+    | { _id: string; firstName: string; lastName: string; email?: string; role?: string };
+  startsAt: string;
+  endsAt: string;
+  durationMinutes: number;
+  location?: string;
+  meetingUrl?: string;
+  format: MeetingFormat;
+  notes?: string;
+  status: AvailabilityStatus;
+  meetingId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MeetingReminderEntry {
+  type: '24h' | '1h';
+  sentAt: string;
+  deliveryStatus?: 'queued' | 'sent' | 'failed' | 'skipped';
+  deliveryError?: string;
+}
+
+export interface Meeting {
+  _id: string;
+  schoolId: string;
+  meetingNumber: string;
+  teacherId:
+    | string
+    | { _id: string; firstName: string; lastName: string; email?: string; photo?: string };
+  parentId:
+    | string
+    | { _id: string; firstName: string; lastName: string; email?: string };
+  studentId:
+    | string
+    | {
+        _id: string;
+        firstName: string;
+        lastName: string;
+        studentGrade?: string;
+        studentClass?: string;
+        parentEmail?: string;
+        photo?: string;
+      };
+  slotId: string;
+  startsAt: string;
+  endsAt: string;
+  location?: string;
+  meetingUrl?: string;
+  format: MeetingFormat;
+  bookingMessage?: string;
+  teacherNotes?: string;
+  status: MeetingStatus;
+  cancelledBy?: string | { _id: string; firstName: string; lastName: string };
+  cancelledAt?: string;
+  cancellationReason?: string;
+  completedAt?: string;
+  noShowAt?: string;
+  noShowReportedBy?: string | { _id: string; firstName: string; lastName: string };
+  rescheduledToMeetingId?: string;
+  rescheduledFromMeetingId?: string;
+  reminderHistory?: MeetingReminderEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MeetingStats {
+  total: number;
+  upcoming30Days: number;
+  cancelled: number;
+  completed: number;
+  noShow: number;
+}
+
+export interface AvailabilityListFilters {
+  teacherId?: string;
+  from?: string;
+  to?: string;
+  status?: AvailabilityStatus;
+  onlyMyTeachers?: boolean;
+}
+
+export interface MeetingListFilters {
+  status?: MeetingStatus;
+  from?: string;
+  to?: string;
+  teacherId?: string;
+  parentId?: string;
+  upcoming?: boolean;
+}
+
+export interface IncidentListFilters {
+  severity?: IncidentSeverity;
+  status?: IncidentStatus;
+  incidentType?: IncidentType;
+  studentId?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  skip?: number;
+}
+
 export interface Class {
   _id: string;
   id?: string; // For backward compatibility
@@ -647,6 +910,208 @@ class ApiService {
     }
 
     return this.makeRequest<T>(endpoint, options);
+  }
+
+  // ─── Incidents API ─────────────────────────────────────────────────
+
+  async getIncidentEnums(): Promise<ApiResponse<IncidentEnums>> {
+    return this._request<IncidentEnums>('/incidents/enums');
+  }
+
+  async getIncidentStats(): Promise<ApiResponse<IncidentStats>> {
+    return this._request<IncidentStats>('/incidents/stats');
+  }
+
+  async getIncidents(filters: IncidentListFilters = {}): Promise<ApiResponse<IncidentReport[]>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.append(k, String(v));
+    });
+    const qs = params.toString();
+    return this._request<IncidentReport[]>(`/incidents${qs ? `?${qs}` : ''}`);
+  }
+
+  async getIncident(id: string): Promise<ApiResponse<IncidentReport>> {
+    return this._request<IncidentReport>(`/incidents/${id}`);
+  }
+
+  async createIncident(data: Partial<IncidentReport>): Promise<ApiResponse<IncidentReport>> {
+    return this._request<IncidentReport>('/incidents', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateIncident(
+    id: string,
+    data: Partial<IncidentReport>
+  ): Promise<ApiResponse<IncidentReport>> {
+    return this._request<IncidentReport>(`/incidents/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteIncident(id: string): Promise<ApiResponse<{}>> {
+    return this._request(`/incidents/${id}`, { method: 'DELETE' });
+  }
+
+  async notifyParentsOfIncident(
+    id: string,
+    methods: IncidentNotificationMethod[] = ['push'],
+    note?: string
+  ): Promise<ApiResponse<IncidentReport>> {
+    return this._request<IncidentReport>(`/incidents/${id}/notify-parents`, {
+      method: 'POST',
+      body: JSON.stringify({ methods, note }),
+    });
+  }
+
+  async acknowledgeIncident(
+    id: string,
+    notes?: string
+  ): Promise<ApiResponse<IncidentReport>> {
+    return this._request<IncidentReport>(`/incidents/${id}/acknowledge`, {
+      method: 'POST',
+      body: JSON.stringify({ notes }),
+    });
+  }
+
+  async resolveIncident(
+    id: string,
+    resolutionNotes?: string
+  ): Promise<ApiResponse<IncidentReport>> {
+    return this._request<IncidentReport>(`/incidents/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ resolutionNotes }),
+    });
+  }
+
+  async reviewIncident(
+    id: string,
+    reviewNotes?: string
+  ): Promise<ApiResponse<IncidentReport>> {
+    return this._request<IncidentReport>(`/incidents/${id}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ reviewNotes }),
+    });
+  }
+
+  async toggleIncidentLock(
+    id: string,
+    lock: boolean
+  ): Promise<ApiResponse<IncidentReport>> {
+    return this._request<IncidentReport>(`/incidents/${id}/lock`, {
+      method: 'POST',
+      body: JSON.stringify({ lock }),
+    });
+  }
+
+  /**
+   * Upload one or more media files to an incident.
+   * Uses raw fetch (with FormData) since `_request` always sets JSON headers.
+   */
+  async uploadIncidentMedia(
+    id: string,
+    files: File[]
+  ): Promise<ApiResponse<IncidentReport>> {
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append('media', f);
+      const token = this.getToken();
+      const res = await fetch(`${API_BASE_URL}/incidents/${id}/media`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        return { success: false, error: json.error || json.message || 'Upload failed' };
+      }
+      return json;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Upload failed' };
+    }
+  }
+
+  // ─── Availability + Meetings API ───────────────────────────────────
+
+  async getAvailability(filters: AvailabilityListFilters = {}): Promise<ApiResponse<AvailabilitySlot[]>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.append(k, String(v));
+    });
+    const qs = params.toString();
+    return this._request<AvailabilitySlot[]>(`/availability${qs ? `?${qs}` : ''}`);
+  }
+
+  async createAvailability(
+    data: Partial<AvailabilitySlot> | { slots: Partial<AvailabilitySlot>[] }
+  ): Promise<ApiResponse<AvailabilitySlot[]>> {
+    return this._request<AvailabilitySlot[]>('/availability', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAvailability(id: string): Promise<ApiResponse<{}>> {
+    return this._request(`/availability/${id}`, { method: 'DELETE' });
+  }
+
+  async getMeetings(filters: MeetingListFilters = {}): Promise<ApiResponse<Meeting[]>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.append(k, String(v));
+    });
+    const qs = params.toString();
+    return this._request<Meeting[]>(`/meetings${qs ? `?${qs}` : ''}`);
+  }
+
+  async getMeetingStats(): Promise<ApiResponse<MeetingStats>> {
+    return this._request<MeetingStats>('/meetings/stats');
+  }
+
+  async getMeeting(id: string): Promise<ApiResponse<Meeting>> {
+    return this._request<Meeting>(`/meetings/${id}`);
+  }
+
+  async bookMeeting(
+    slotId: string,
+    studentId: string,
+    bookingMessage?: string
+  ): Promise<ApiResponse<Meeting>> {
+    return this._request<Meeting>('/meetings', {
+      method: 'POST',
+      body: JSON.stringify({ slotId, studentId, bookingMessage }),
+    });
+  }
+
+  async cancelMeeting(id: string, reason?: string): Promise<ApiResponse<Meeting>> {
+    return this._request<Meeting>(`/meetings/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async rescheduleMeeting(id: string, newSlotId: string): Promise<ApiResponse<Meeting>> {
+    return this._request<Meeting>(`/meetings/${id}/reschedule`, {
+      method: 'POST',
+      body: JSON.stringify({ newSlotId }),
+    });
+  }
+
+  async completeMeeting(id: string, teacherNotes?: string): Promise<ApiResponse<Meeting>> {
+    return this._request<Meeting>(`/meetings/${id}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({ teacherNotes }),
+    });
+  }
+
+  async markMeetingNoShow(id: string, reason?: string): Promise<ApiResponse<Meeting>> {
+    return this._request<Meeting>(`/meetings/${id}/no-show`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   }
 }
 

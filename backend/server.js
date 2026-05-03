@@ -21,6 +21,9 @@ const studentRoutes = require('./routes/students');
 const teacherRoutes = require('./routes/teachers');
 const classRoutes = require('./routes/classes');
 const reportRoutes = require('./routes/reports');
+const incidentRoutes = require('./routes/incidents');
+const availabilityRoutes = require('./routes/availability');
+const meetingRoutes = require('./routes/meetings');
 const reportTemplateRoutes = require('./routes/reportTemplates');
 const billingRoutes = require('./routes/billing');
 const superAdminRoutes = require('./routes/superAdmin');
@@ -32,6 +35,7 @@ const messageRoutes = require('./routes/messages');
 
 // Import reminder scheduler
 const { initializeReminderScheduler, initializePDFCleanup, initializeScheduledMessageProcessor, initializeDueReportChecker } = require('./services/reminderScheduler');
+const { initializeMeetingReminderScheduler } = require('./services/meetingReminderScheduler');
 
 const app = express();
 const server = http.createServer(app);
@@ -131,6 +135,9 @@ app.use('/api/students', studentRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/incidents', incidentRoutes);
+app.use('/api/availability', availabilityRoutes);
+app.use('/api/meetings', meetingRoutes);
 app.use('/api/report-templates', reportTemplateRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/super-admin', superAdminRoutes);
@@ -185,6 +192,9 @@ server.listen(PORT, '0.0.0.0', () => {
   
   // Initialize due report checker
   initializeDueReportChecker();
+
+  // Initialize parent-teacher meeting reminders (24h + 1h)
+  initializeMeetingReminderScheduler();
 });
 
 // Graceful shutdown

@@ -49,6 +49,9 @@ coverage/
 *.tar.gz
 *.rar
 
+# Runtime upload directories — user-generated content
+backend/uploads/
+
 # Uploads (keep structure but ignore content)
 backend/uploads/audio/*
 backend/uploads/media/*

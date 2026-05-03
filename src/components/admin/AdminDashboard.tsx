@@ -28,6 +28,8 @@ import {
   Groups,
   Notifications,
   Settings,
+  ReportProblem,
+  EventAvailable,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/apiService';
@@ -38,6 +40,8 @@ import TeacherManagement from './sections/TeacherManagement';
 import ClassManagement from './sections/ClassManagement';
 import SchoolConfiguration from './sections/SchoolConfiguration';
 import AllReports from './sections/AllReports';
+import IncidentManagement from './sections/IncidentManagement';
+import MeetingsManagement from './sections/MeetingsManagement';
 import CalendarManagement from './sections/CalendarManagement';
 import ParentGroupManagement from './sections/ParentGroupManagement';
 import NotificationLogs from './sections/NotificationLogs';
@@ -52,6 +56,8 @@ const menuItems = [
   { text: 'Class Management', icon: <Group />, section: 'classes', color: '#ff9a9e' },
   { text: 'School Configuration', icon: <Settings />, section: 'reports', color: '#4facfe' },
   { text: 'All Reports', icon: <Assessment />, section: 'all-reports', color: '#4facfe' },
+  { text: 'Incidents', icon: <ReportProblem />, section: 'incidents', color: '#f44336' },
+  { text: 'Meetings', icon: <EventAvailable />, section: 'meetings', color: '#43e97b' },
   { text: 'Calendar Management', icon: <Event />, section: 'calendar', color: '#43e97b' },
   { text: 'Parent Groups', icon: <Groups />, section: 'parent-groups', color: '#f59e0b' },
   { text: 'Communication', icon: <Message />, section: 'communication', color: '#8b5cf6' },
@@ -149,6 +155,10 @@ const AdminDashboard: React.FC = () => {
         return <SchoolConfiguration schoolBranding={schoolBranding} />;
       case 'all-reports':
         return <AllReports schoolBranding={schoolBranding} />;
+      case 'incidents':
+        return <IncidentManagement schoolBranding={schoolBranding} />;
+      case 'meetings':
+        return <MeetingsManagement schoolBranding={schoolBranding} />;
       case 'calendar':
         return <CalendarManagement schoolBranding={schoolBranding} />;
       case 'parent-groups':

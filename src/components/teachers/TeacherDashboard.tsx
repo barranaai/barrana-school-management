@@ -47,6 +47,8 @@ import {
   Refresh,
   Description,
   ExpandMore,
+  ReportProblem,
+  Event as EventIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
@@ -57,6 +59,8 @@ import NotificationIcon from '../common/NotificationIcon';
 import TeacherOverview from './sections/TeacherOverview';
 import StudentManagement from './sections/StudentManagement';
 import ReportsListing from './sections/ReportsListing';
+import IncidentReporting from './sections/IncidentReporting';
+import Meetings from './sections/Meetings';
 import { createTeacherTheme } from '../../theme/teacherTheme';
 
 // import CommunicationCenter from './sections/CommunicationCenter';
@@ -69,6 +73,8 @@ const menuItems = [
   { text: 'Teacher Overview', icon: <Dashboard />, section: 'overview', color: '#667eea' },
   { text: 'My Students', icon: <People />, section: 'students', color: '#764ba2' },
   { text: 'My Reports', icon: <Description />, section: 'reports-listing', color: '#4facfe' },
+  { text: 'Incidents', icon: <ReportProblem />, section: 'incidents', color: '#f44336' },
+  { text: 'Meetings', icon: <EventIcon />, section: 'meetings', color: '#43e97b' },
   // { text: 'Communication', icon: <Message />, section: 'communication', color: '#4facfe' },
   // { text: 'Analytics', icon: <TrendingUp />, section: 'analytics', color: '#43e97b' },
   // { text: 'Settings', icon: <Settings />, section: 'settings', color: '#fa709a' },
@@ -263,6 +269,10 @@ const TeacherDashboard: React.FC = () => {
         return <StudentManagement schoolBranding={schoolBranding} />;
       case 'reports-listing':
         return <ReportsListing schoolBranding={schoolBranding} />;
+      case 'incidents':
+        return <IncidentReporting schoolBranding={schoolBranding} />;
+      case 'meetings':
+        return <Meetings schoolBranding={schoolBranding} />;
       // case 'communication':
       //   return <CommunicationCenter schoolBranding={schoolBranding} />;
       // case 'analytics':

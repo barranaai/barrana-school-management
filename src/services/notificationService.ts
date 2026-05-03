@@ -3,7 +3,15 @@ import { requestFirebaseNotificationPermission, onMessageListener, areNotificati
 
 export interface Notification {
   id: string;
-  type: 'report_approval' | 'due_report' | 'system' | 'general';
+  type:
+    | 'report_approval'
+    | 'due_report'
+    | 'system'
+    | 'general'
+    | 'incident'
+    | 'alert'
+    | 'report'
+    | 'message';
   title: string;
   message: string;
   isRead: boolean;
