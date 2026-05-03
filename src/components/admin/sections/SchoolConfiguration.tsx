@@ -78,6 +78,17 @@ import {
   History,
   Palette,
   FitnessCenter,
+  BabyChangingStation,
+  LocalDrink,
+  Restaurant,
+  Wc,
+  Bedtime,
+  Mood,
+  Toys,
+  Park,
+  HealthAndSafety,
+  Forum,
+  AutoAwesome,
 } from '@mui/icons-material';
 import {
   SKILL_MODULES,
@@ -86,8 +97,11 @@ import {
   SKILL_MODULE_CATEGORY_LABELS,
   SKILL_MODULE_CATEGORY_DESCRIPTIONS,
   SKILL_MODULE_CATEGORY_ORDER,
+  SKILL_MODULE_TEMPLATES,
+  getTemplateModules,
   type SkillModule,
   type SkillModuleCategory,
+  type SkillModuleTemplate,
 } from '../../../constants/skillModules';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
@@ -569,6 +583,17 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
     social_studies: <History />,
     the_arts: <Palette />,
     health_phys_ed: <FitnessCenter />,
+    // Daily Care Items (Daycare / Infant / Toddler / Preschool)
+    'diaper-changes': <BabyChangingStation />,
+    'bottle-feedings': <LocalDrink />,
+    'meals-and-snacks': <Restaurant />,
+    'bathroom-independence': <Wc />,
+    'naps-and-rest': <Bedtime />,
+    'mood-and-wellbeing': <Mood />,
+    'daily-activities-and-play': <Toys />,
+    'outdoor-and-physical': <Park />,
+    'health-observations': <HealthAndSafety />,
+    'communication-for-parents': <Forum />,
   };
 
   // Append a pre-built skill module's content block to the Template Content field.
@@ -578,6 +603,42 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
     if (isSkillModuleInserted(existing, module)) return;
     const separator = existing.trim().length > 0 ? '\n\n' : '';
     handleFormChange('content', `${existing}${separator}${module.content}`);
+  };
+
+  // Insert every module in a starter template's playlist, in order.
+  // Skips modules that are already present so re-clicking is safe.
+  // If the template name field is empty, also adopt the suggested name.
+  const handleAddStarterTemplate = (template: SkillModuleTemplate) => {
+    const modulesToInsert = getTemplateModules(template);
+    let next = formData.content || '';
+    let insertedCount = 0;
+    for (const module of modulesToInsert) {
+      if (isSkillModuleInserted(next, module)) continue;
+      const separator = next.trim().length > 0 ? '\n\n' : '';
+      next = `${next}${separator}${module.content}`;
+      insertedCount += 1;
+    }
+    if (insertedCount === 0) return;
+    if (!formData.name?.trim() && template.suggestedTemplateName) {
+      setFormData((prev: any) => ({
+        ...prev,
+        content: next,
+        name: template.suggestedTemplateName,
+      }));
+    } else {
+      handleFormChange('content', next);
+    }
+  };
+
+  // Count how many modules from a template are already inserted —
+  // used to render a "5 / 7 added" progress chip on each starter card.
+  const getTemplateInsertProgress = (template: SkillModuleTemplate) => {
+    const modules = getTemplateModules(template);
+    const total = modules.length;
+    const inserted = modules.filter((m) =>
+      isSkillModuleInserted(formData.content || '', m)
+    ).length;
+    return { inserted, total, allInserted: inserted === total && total > 0 };
   };
 
   // Load school branding from backend
@@ -1691,6 +1752,116 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
                     Click a module to insert a ready-made section into the Template Content below. You can edit it freely afterward.
                   </Typography>
+
+                  {/* Pre-Built Template Starters — one-click bundles of related modules */}
+                  {SKILL_MODULE_TEMPLATES.length > 0 && (
+                    <Box
+                      sx={{
+                        mb: 3,
+                        p: 2,
+                        borderRadius: 2,
+                        border: '1px dashed rgba(102, 126, 234, 0.4)',
+                        background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.06) 0%, rgba(118, 75, 162, 0.04) 100%)',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 1 }}>
+                        <Chip
+                          label="Quick Start"
+                          size="small"
+                          sx={{
+                            fontWeight: 700,
+                            letterSpacing: 0.5,
+                            color: '#fff',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          }}
+                        />
+                        <Typography variant="overline" sx={{ fontWeight: 700, color: 'text.primary', letterSpacing: 0.6 }}>
+                          Starter Templates
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          One click drops every module for that age group into the Template Content.
+                        </Typography>
+                      </Box>
+                      <Grid container spacing={1.5}>
+                        {SKILL_MODULE_TEMPLATES.map((template) => {
+                          const progress = getTemplateInsertProgress(template);
+                          return (
+                            <Grid item xs={12} sm={6} md={4} key={template.id}>
+                              <Card
+                                onClick={() => !progress.allInserted && handleAddStarterTemplate(template)}
+                                sx={{
+                                  cursor: progress.allInserted ? 'default' : 'pointer',
+                                  borderRadius: 2,
+                                  height: '100%',
+                                  border: '1px solid',
+                                  borderColor: progress.allInserted ? 'success.light' : 'rgba(102, 126, 234, 0.35)',
+                                  background: progress.allInserted
+                                    ? 'linear-gradient(135deg, rgba(76, 175, 80, 0.08) 0%, rgba(76, 175, 80, 0.04) 100%)'
+                                    : '#fff',
+                                  transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
+                                  '&:hover': progress.allInserted
+                                    ? {}
+                                    : {
+                                        transform: 'translateY(-2px)',
+                                        boxShadow: '0 8px 24px rgba(102, 126, 234, 0.22)',
+                                        borderColor: '#667eea',
+                                      },
+                                }}
+                              >
+                                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <Box
+                                        sx={{
+                                          width: 38,
+                                          height: 38,
+                                          borderRadius: '10px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          background: progress.allInserted
+                                            ? 'linear-gradient(135deg, #66bb6a 0%, #43a047 100%)'
+                                            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                          color: '#fff',
+                                        }}
+                                      >
+                                        <AutoAwesome sx={{ fontSize: 20 }} />
+                                      </Box>
+                                      {template.ageGroup && (
+                                        <Chip
+                                          label={template.ageGroup}
+                                          size="small"
+                                          sx={{
+                                            fontWeight: 600,
+                                            height: 22,
+                                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                                            color: '#667eea',
+                                          }}
+                                        />
+                                      )}
+                                    </Box>
+                                    <Chip
+                                      icon={progress.allInserted ? <CheckCircle sx={{ fontSize: 14 }} /> : undefined}
+                                      label={progress.allInserted ? 'All added' : `${progress.inserted} / ${progress.total}`}
+                                      size="small"
+                                      color={progress.allInserted ? 'success' : 'default'}
+                                      sx={{ fontWeight: 600, height: 22 }}
+                                    />
+                                  </Box>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.25 }}>
+                                    {template.name}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.4 }}>
+                                    {template.shortDescription}
+                                  </Typography>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          );
+                        })}
+                      </Grid>
+                    </Box>
+                  )}
 
                   {SKILL_MODULE_CATEGORY_ORDER.map((category, idx) => {
                     const modules = getModulesByCategory(category);
