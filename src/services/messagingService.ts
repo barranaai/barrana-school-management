@@ -1,34 +1,66 @@
 import { io, Socket } from 'socket.io-client';
 
-interface Message {
+/**
+ * Single in-app messaging attachment. Used both for direct attachments on
+ * a message and for items inside `metadata.attachments` (server denormalises
+ * uploads into both shapes for backward-compat with older clients).
+ */
+export interface MessageAttachment {
+  _id?: string;
+  filename?: string;
+  originalName?: string;
+  mimeType?: string;
+  size?: number;
+  url?: string;
+}
+
+export interface Message {
   _id: string;
   conversationId: string;
   senderId: string;
-  senderRole: string;
+  senderRole?: string;
   senderName: string;
-  recipientId: string;
-  recipientRole: string;
-  recipientName: string;
+  recipientId?: string;
+  recipientRole?: string;
+  recipientName?: string;
   content: string;
-  type: string;
+  type?: string;
   isRead: boolean;
-  readAt?: Date;
-  sentAt: Date;
+  /**
+   * Wire format is ISO 8601 string. The original local interface used
+   * `Date`, which never matched the JSON returned over fetch — kept as
+   * `string` to align with reality and avoid forcing unsafe casts.
+   */
+  readAt?: string;
+  sentAt: string;
   tempId?: string;
+  /**
+   * Direct attachments on a message. Populated for the optimistic local
+   * message echo and for messages returned from REST endpoints.
+   */
+  attachments?: MessageAttachment[];
+  /**
+   * Server-side denormalised payload (legacy schema). Some renderers read
+   * `message.metadata.attachments` for cross-version compatibility.
+   */
+  metadata?: {
+    attachments?: MessageAttachment[];
+    [key: string]: any;
+  };
 }
 
-interface Conversation {
+export interface Conversation {
   _id: string;
   participants: Array<{
     userId: string;
     role: string;
     name: string;
-    lastRead: Date;
+    lastRead: string;
   }>;
   subject: string;
   lastMessage?: {
     content: string;
-    sentAt: Date;
+    sentAt: string;
     senderId: string;
     senderName: string;
   };
@@ -37,7 +69,7 @@ interface Conversation {
     id: string;
     name: string;
     role: string;
-    email: string;
+    email?: string;
   };
 }
 

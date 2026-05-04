@@ -11,7 +11,7 @@ import {
   FormHelperText,
 } from '@mui/material';
 import { WhatsApp, CheckCircle, Error as ErrorIcon } from '@mui/icons-material';
-import { parsePhoneNumber, isValidPhoneNumber, CountryCode } from 'libphonenumber-js';
+import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 
 // Popular countries for quick access
 const POPULAR_COUNTRIES = [
@@ -123,6 +123,9 @@ const PhoneNumberInput: React.FC<PhoneNumberInputProps> = ({
         }
       }
     }
+    // Parse the initial `value` prop only on mount; subsequent updates are
+    // controlled by the user's interaction with the input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const validatePhone = (fullNumber: string) => {

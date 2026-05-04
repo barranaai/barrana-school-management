@@ -32,24 +32,17 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider,
-  Badge,
 } from '@mui/material';
 import {
   Assessment,
   People,
-  Schedule,
   Mic,
   AutoFixHigh,
-  Description,
-  PlayArrow,
   Send,
   Edit,
   Visibility,
   Search,
-  FilterList,
   CheckCircle,
-  Warning,
   Info,
   Pending,
   Archive,
@@ -90,7 +83,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
     return cardColors[Math.floor(Math.random() * cardColors.length)];
   };
   const { user } = useAuth();
-  const { reports: contextReports, students, getReportsByTeacherStudents } = useData();
+  const { reports: contextReports, students } = useData();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -234,6 +227,9 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
     if (user?.id) {
       loadReports();
     }
+    // `contextReports` is intentionally excluded — adding it would re-fetch
+    // every time the context updates, defeating the merge logic below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]); // Remove contextReports from dependency to avoid unnecessary re-renders
 
   // Debug: Log when students data changes
@@ -272,6 +268,9 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
         return prevReports;
       });
     }
+    // We only depend on the length of `contextReports`; depending on the full
+    // array would cause unnecessary re-runs on every context update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextReports.length, user?.id]); // Only when the length changes, not the entire array
 
   // Filter reports based on search and status
@@ -587,12 +586,20 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
     setIsEditing(false);
   };
 
-  const getStudentName = (report: Report) => {
-    if (report.studentId && typeof report.studentId === 'object') {
-      return `${report.studentId.firstName} ${report.studentId.lastName}`;
+  const getStudentName = (report: Report): string => {
+    const sid = report.studentId;
+    if (sid && typeof sid === 'object') {
+      return `${sid.firstName || ''} ${sid.lastName || ''}`.trim() || 'Unknown Student';
     }
-    // For DataContext reports, studentId might be a string
-    return report.studentId || 'Unknown Student';
+    // For DataContext reports, studentId might be a string ID — fall back
+    // to looking up the corresponding student in the local list, then to
+    // the raw ID string if no match exists, then to a sensible default.
+    if (typeof sid === 'string' && sid) {
+      const match = students.find((s) => s._id === sid);
+      if (match) return `${match.firstName} ${match.lastName}`;
+      return sid;
+    }
+    return 'Unknown Student';
   };
 
   const getStudentGrade = (report: Report) => {

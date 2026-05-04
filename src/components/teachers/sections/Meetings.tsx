@@ -31,14 +31,12 @@ import {
   Tabs,
   TextField,
   Typography,
-  Tooltip,
   Alert,
 } from '@mui/material';
 import {
   Event as EventIcon,
   Add,
   Refresh,
-  CalendarMonth,
   AccessTime,
   LocationOn,
   Videocam,
@@ -48,7 +46,6 @@ import {
   CheckCircle,
   PersonOff,
   Cancel,
-  Note,
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import {

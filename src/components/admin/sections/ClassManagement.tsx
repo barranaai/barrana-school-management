@@ -42,11 +42,8 @@ import {
   Refresh,
   Group,
   Info,
-  PersonAdd,
-  PersonRemove,
 } from '@mui/icons-material';
 import { useData } from '../../../contexts/DataContext';
-import { useAuth } from '../../../contexts/AuthContext';
 import { apiService, CreateClassData } from '../../../services/apiService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
@@ -153,8 +150,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     status: 'active' as 'active' | 'inactive' | 'archived',
   });
 
-  const { school, refreshData } = useData();
-  const { user } = useAuth();
+  const { school } = useData();
 
   // Get available grades from school data with fallback to default grades
   // If the school doesn't have gradeLevels configured, use standard grade levels

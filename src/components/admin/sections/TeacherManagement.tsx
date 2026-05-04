@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Box,
   Grid,
-  Card,
   CardContent,
   Typography,
   TextField,
@@ -45,40 +44,9 @@ import {
   CheckCircle,
   Warning,
   Info,
-  School,
   Email,
-  Phone,
-  CalendarToday,
-  Star,
   Refresh,
   Visibility,
-  MoreVert,
-  Download,
-  Upload,
-  Assessment,
-  Timer,
-  Book,
-  VideoLibrary,
-  Help,
-  Person,
-  Group,
-  Analytics,
-  Settings,
-  Notifications,
-  Dashboard,
-  ExpandMore,
-  ExpandLess,
-  FilterAlt,
-  Sort,
-  CloudUpload,
-  CloudDownload,
-  Print,
-  Share,
-  Favorite,
-  FavoriteBorder,
-  ThumbUp,
-  ThumbDown,
-  Grade,
   Work,
   Psychology,
   Science,
@@ -91,7 +59,6 @@ import {
 } from '@mui/icons-material';
 import { useData } from '../../../contexts/DataContext';
 import { useAuth } from '../../../contexts/AuthContext';
-import toast from 'react-hot-toast';
 import PhoneNumberInput from '../../common/PhoneNumberInput';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
@@ -127,12 +94,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
   const [filterGrade, setFilterGrade] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterEmailPermission, setFilterEmailPermission] = useState('');
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
-  const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [showFilters, setShowFilters] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
@@ -151,7 +114,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ schoolBranding })
     isActive: true,
   });
 
-  const { teachers, students, classes, reports, addTeacher, updateTeacher, deleteTeacher, analytics, school, refreshData, getStudentsByTeacherClasses, getReportsByTeacherStudents } = useData();
+  const { teachers, students, classes, reports, addTeacher, updateTeacher, deleteTeacher, school, refreshData, getStudentsByTeacherClasses, getReportsByTeacherStudents } = useData();
   const { user } = useAuth();
 
   // Function to get the total number of students for a teacher across all their assigned classes

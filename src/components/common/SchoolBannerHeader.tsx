@@ -60,6 +60,17 @@ function withLogoCacheBuster(resolvedUrl: string, branding: any): string {
 }
 
 const SchoolBannerHeader: React.FC<SchoolBannerHeaderProps> = ({ schoolBranding }) => {
+  // ─── Hooks must run before any early return (rules-of-hooks). ─────
+  // Compute logo dependencies up front so the effect's deps are stable
+  // even when `schoolBranding` is undefined.
+  const rawLogo = schoolBranding ? getRawSchoolLogo(schoolBranding) : null;
+  const updatedAt = schoolBranding?.updatedAt;
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [rawLogo, updatedAt]);
+
   if (!schoolBranding) return null;
 
   const primaryColor =
@@ -67,14 +78,8 @@ const SchoolBannerHeader: React.FC<SchoolBannerHeaderProps> = ({ schoolBranding 
   const secondaryColor =
     schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#7f0f4a';
 
-  const rawLogo = getRawSchoolLogo(schoolBranding);
   const logoUrl = rawLogo ? withLogoCacheBuster(resolveSchoolLogoUrl(rawLogo), schoolBranding) : null;
   const displayName = schoolBranding.schoolName || schoolBranding.name || 'School';
-  const [imgFailed, setImgFailed] = useState(false);
-
-  useEffect(() => {
-    setImgFailed(false);
-  }, [rawLogo, schoolBranding?.updatedAt]);
 
   const showImage = Boolean(logoUrl && !imgFailed);
 

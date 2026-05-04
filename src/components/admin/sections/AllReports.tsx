@@ -27,12 +27,10 @@ import {
   Grid,
   Tooltip,
   Badge,
-  Alert,
   Container,
   Fade,
   Grow,
   CircularProgress,
-  InputAdornment,
 } from '@mui/material';
 
 import {
@@ -40,23 +38,19 @@ import {
   PlayArrow,
   Stop,
   Description,
-  Person,
-  School,
   CalendarToday,
   Mic,
   TextFields,
   SmartToy,
   Download,
   Visibility,
-  FilterList,
   Assessment,
-  GetApp,
   Email,
   Image,
   VideoLibrary,
   AttachFile,
 } from '@mui/icons-material';
-import { apiService, Report } from '../../../services/apiService';
+import { apiService } from '../../../services/apiService';
 import { mediaService } from '../../../services/mediaService';
 import { useAuth } from '../../../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -172,6 +166,9 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
     loadReports();
     loadClasses();
     loadTeachers();
+    // Run once on mount; the loaders are defined later in the component and
+    // are stable for our purposes — adding them would cause repeated fetches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadReports = async () => {

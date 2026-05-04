@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { apiService, Student as ApiStudent, Teacher as ApiTeacher, Report as ApiReport, School as ApiSchool } from '../services/apiService';
+import { apiService, Student as ApiStudent, Teacher as ApiTeacher, Report as ApiReport } from '../services/apiService';
 import { useAuth } from './AuthContext';
 
 // Types
@@ -647,6 +647,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     loadData();
+    // `refreshData` is defined later in this provider and intentionally
+    // excluded — including it would create an infinite loop because the
+    // function identity changes on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, authLoading, user]); // Removed refreshData from dependencies
 
   // CRUD operations for teachers
@@ -766,6 +770,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       return () => clearTimeout(timeoutId);
     }
+    // `refreshData` is defined later in this provider and intentionally
+    // excluded — including it would re-trigger this guarded refresh loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolId, schoolData, hasAttemptedSchoolLoad]); // Removed refreshData from dependencies
   
   

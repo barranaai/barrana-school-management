@@ -6,7 +6,6 @@ import {
   MenuItem,
   Typography,
   Box,
-  Divider,
   Button,
   CircularProgress,
   Chip,
@@ -17,7 +16,6 @@ import {
   CheckCircle,
   Schedule,
   Assessment,
-  Close,
   ReportProblem,
 } from '@mui/icons-material';
 import notificationService, { type Notification } from '../../services/notificationService';

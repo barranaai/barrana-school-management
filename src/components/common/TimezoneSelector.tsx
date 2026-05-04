@@ -5,8 +5,6 @@ import {
   Chip,
   Typography,
   Box,
-  FormControl,
-  InputLabel,
 } from '@mui/material';
 import { Public } from '@mui/icons-material';
 import { getTimezoneOptions, type TimezoneOption } from '../../utils/timezoneUtils';

@@ -20,11 +20,9 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
-  Grid,
   IconButton,
   InputLabel,
   MenuItem,
-  Paper,
   Select,
   Stack,
   Tab,
@@ -36,14 +34,11 @@ import {
 import {
   Event as EventIcon,
   Refresh,
-  AccessTime,
   LocationOn,
   Videocam,
   Phone,
   Person,
   Cancel,
-  Schedule,
-  Note,
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import {

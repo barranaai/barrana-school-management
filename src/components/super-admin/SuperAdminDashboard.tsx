@@ -12,7 +12,6 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Avatar,
   Menu,
   MenuItem,
   Card,
@@ -43,39 +42,20 @@ import {
 } from '@mui/material';
 import {
   Dashboard,
-  Business,
   People,
   Payment,
   Analytics,
   Support,
   Settings,
   AccountCircle,
-  Notifications,
   School,
-  TrendingUp,
-  TrendingDown,
   CheckCircle,
-  Warning,
-  Schedule,
-  Email,
-  Phone,
   LocationOn,
   Edit,
   Delete,
   Visibility,
-  Send,
-  Archive,
-  Star,
-  StarBorder,
   Logout,
-  Person,
-  MonetizationOn,
-  Assessment,
   Description,
-  Security,
-  Cloud,
-  Storage,
-  Speed,
   Add,
   Info,
   ContactPhone,
@@ -93,7 +73,6 @@ import TimezoneSelector from '../common/TimezoneSelector';
 import {
   getGradeCodesForSchoolType,
   formatGradeForDisplay,
-  getGradeDisplayNamesForSchoolType
 } from '../../utils/gradeDisplayUtils';
 
 // Get countries from the library
@@ -126,8 +105,9 @@ const getGradeLevelDisplayName = (gradeLevel: string) => {
 };
 
 const SuperAdminDashboard: React.FC = () => {
-  const { user, logout } = useAuth();
-  const { students, teachers, reports, school } = useData();
+  const { logout } = useAuth();
+  // Note: students/teachers/reports/school are intentionally NOT destructured here
+  // — this dashboard fetches its own data via apiService below.
   const [currentSection, setCurrentSection] = useState('overview');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [schools, setSchools] = useState<any[]>([]);
@@ -144,6 +124,9 @@ const SuperAdminDashboard: React.FC = () => {
     }, 0);
     
     return () => clearTimeout(timer);
+    // `menuItems` is a static array defined later in the component; we only
+    // want this effect to run once on mount to handle the initial hash.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Update URL hash when section changes
@@ -201,7 +184,8 @@ const SuperAdminDashboard: React.FC = () => {
   const [states, setStates] = useState<any[]>([]);
   const [cities, setCities] = useState<any[]>([]);
   const [selectedCountryCode, setSelectedCountryCode] = useState('CA');
-  const [selectedStateCode, setSelectedStateCode] = useState('');
+  // Only the setter is used (state is consumed by `getStatesForCountry` via setter callsites).
+  const [, setSelectedStateCode] = useState('');
 
   const drawerWidth = 240;
 
@@ -291,13 +275,12 @@ const SuperAdminDashboard: React.FC = () => {
   };
 
   const handleSchoolTypeChange = (schoolType: string) => {
-    // Get grade levels for the selected school type
-    const gradeLevels = getGradeLevelsForSchoolType(schoolType);
-    
+    // Reset grade levels when the school type changes — the user picks
+    // them in the next step from the appropriate set for the new type.
     setSchoolForm({
       ...schoolForm,
       schoolType: schoolType,
-      gradeLevels: [] // Reset grade levels when school type changes
+      gradeLevels: [],
     });
   };
 

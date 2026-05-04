@@ -43,8 +43,7 @@ import {
   Visibility as VisibilityIcon,
   CalendarToday as CalendarIcon,
   Assignment as AssignmentIcon,
-  Clear as ClearIcon,
-  TrendingUp as TrendingUpIcon
+  Clear as ClearIcon
 } from '@mui/icons-material';
 import { apiService } from '../../../services/apiService';
 import { format } from 'date-fns';
@@ -166,6 +165,9 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
   useEffect(() => {
     fetchLogs();
     fetchStatistics();
+    // Re-fetch only when pagination changes; the fetch helpers are defined
+    // later in the component and would cause repeated runs if added.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, rowsPerPage]);
 
   const handleFilterChange = (field: string, value: any) => {

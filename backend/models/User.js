@@ -349,13 +349,14 @@ userSchema.virtual('displayName').get(function() {
   return this.fullName;
 });
 
-// Indexes for performance
-// Sparse index on email - only applies to non-null emails, allowing multiple null emails
-userSchema.index({ email: 1 }, { sparse: true });
+// Indexes for performance.
+// NOTE: `email` and `studentId` already have `unique: true, sparse: true`
+// in the field definitions above, which Mongoose uses to auto-create the
+// corresponding indexes. Defining them again here would cause Mongoose
+// to log "Duplicate schema index" warnings on boot, so we only declare
+// the *additional* compound / single-field indexes below.
 userSchema.index({ schoolId: 1, role: 1 });
 userSchema.index({ isActive: 1 });
-// Index for student ID for fast lookups
-userSchema.index({ studentId: 1 }, { unique: true, sparse: true });
 
 // Pre-save middleware to hash password
 userSchema.pre('save', async function(next) {

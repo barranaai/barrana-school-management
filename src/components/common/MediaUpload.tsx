@@ -16,7 +16,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Alert,
   Tooltip,
 } from '@mui/material';
 import {
@@ -26,7 +25,6 @@ import {
   Delete,
   Visibility,
   Close,
-  Add,
   Image,
   Movie,
 } from '@mui/icons-material';

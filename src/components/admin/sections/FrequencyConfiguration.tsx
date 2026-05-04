@@ -15,7 +15,6 @@ import {
   Button,
   Chip,
   Alert,
-  Divider,
   IconButton,
   Dialog,
   DialogTitle,
@@ -28,7 +27,6 @@ import {
   TableHead,
   TableRow,
   Paper,
-  ListSubheader,
 } from '@mui/material';
 import {
   Add,
@@ -99,6 +97,10 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
       setLocalSettings(initializeSettings(schoolSettings));
       setHasUnsavedChanges(false); // Reset unsaved changes flag on initialization
     }
+    // Intentionally re-run only when the serialized content of schoolSettings
+    // changes. Including the raw schoolSettings object would re-run on every
+    // render due to identity changes, and initializeSettings is defined later.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(schoolSettings)]); // Reinitialize whenever schoolSettings content changes
 
   // Helper function to initialize settings with defaults

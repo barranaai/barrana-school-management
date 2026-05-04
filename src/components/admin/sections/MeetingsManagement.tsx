@@ -34,7 +34,6 @@ import {
 import {
   Event as EventIcon,
   Refresh,
-  CalendarMonth,
   CheckCircle,
   Cancel as CancelIcon,
   PersonOff,
@@ -113,6 +112,9 @@ const MeetingsManagement: React.FC<Props> = ({ schoolBranding }) => {
 
   useEffect(() => {
     load();
+    // `load` is defined later in the component and intentionally excluded;
+    // including it would create an infinite refresh loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus]);
 
   const filtered = useMemo(() => {

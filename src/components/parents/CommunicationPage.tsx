@@ -12,7 +12,6 @@ import {
   ListItem,
   ListItemAvatar,
   ListItemText,
-  Divider,
   IconButton,
   Badge,
   CircularProgress,
@@ -41,50 +40,18 @@ import {
   CheckCircle,
   Circle,
   Description,
-  Image as ImageIcon,
-  VideoLibrary,
   InsertDriveFile,
   Download
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import messagingService from '../../services/messagingService';
+import messagingService, {
+  type Message,
+  type Conversation,
+} from '../../services/messagingService';
 import notificationService from '../../services/notificationService';
 
-interface Message {
-  _id: string;
-  conversationId: string;
-  senderId: string;
-  senderName: string;
-  content: string;
-  isRead: boolean;
-  sentAt: string;
-  tempId?: string;
-  metadata?: {
-    attachments?: Array<{
-      filename: string;
-      originalName: string;
-      mimeType: string;
-      size: number;
-      url: string;
-    }>;
-  };
-}
-
-interface Conversation {
-  _id: string;
-  subject: string;
-  lastMessage?: {
-    content: string;
-    sentAt: string;
-    senderName: string;
-  };
-  unreadCount: number;
-  otherParticipant?: {
-    id: string;
-    name: string;
-    role: string;
-  };
-}
+// Message and Conversation shapes are now imported from messagingService
+// so the wire format stays identical across admin/teacher/parent UIs.
 
 const CommunicationPage: React.FC = () => {
   const { user } = useAuth();
@@ -213,6 +180,10 @@ const CommunicationPage: React.FC = () => {
       messagingService.disconnect();
       notificationService.cleanup();
     };
+    // Initialization should only re-run when `user` changes; helpers like
+    // setupSocketListeners / showBrowserNotification and selectedConversation
+    // are intentionally excluded to avoid re-initialization loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // Load conversations

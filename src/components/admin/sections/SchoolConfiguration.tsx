@@ -91,7 +91,6 @@ import {
   AutoAwesome,
 } from '@mui/icons-material';
 import {
-  SKILL_MODULES,
   isSkillModuleInserted,
   getModulesByCategory,
   SKILL_MODULE_CATEGORY_LABELS,
@@ -100,7 +99,6 @@ import {
   SKILL_MODULE_TEMPLATES,
   getTemplateModules,
   type SkillModule,
-  type SkillModuleCategory,
   type SkillModuleTemplate,
 } from '../../../constants/skillModules';
 import { themeColors } from '../../../theme/adminTheme';
@@ -108,7 +106,6 @@ import NotificationIcon from '../../common/NotificationIcon';
 import {
   formatGradeForDisplay,
   getGradeDisplayNamesForSchoolType,
-  getGradeCodesForSchoolType,
   formatGradesForDisplay
 } from '../../../utils/gradeDisplayUtils';
 
@@ -298,6 +295,9 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
       }
     };
     loadSchools();
+    // selectedSchoolId is read inside but intentionally not a dep — we only
+    // load the schools list when the super-admin status changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin]);
 
   // Load selected school details (grades) for super admin
@@ -335,6 +335,8 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
       }
     };
     loadSelectedSchoolDetails();
+    // Intentionally only re-runs on super-admin / selected school changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin, selectedSchoolId]);
 
   // Load school logo on component mount
@@ -359,7 +361,25 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
     } else {
       console.log('⚠️  Not setting local settings - missing isSchoolAdmin or school.settings or settings is empty');
     }
+    // Re-run only when the serialized settings change; school?.settings as a
+    // raw object would change identity on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSchoolAdmin, school?.id, JSON.stringify(school?.settings)]);
+
+  // Load school branding and logo on component mount.
+  // Hook must run before the early return below (rules-of-hooks).
+  // Helper functions referenced here are defined later in the file —
+  // the closure captures them by name so they resolve when the effect
+  // callback runs, after the function body finishes evaluating.
+  React.useEffect(() => {
+    const schoolId = getCurrentSchoolId();
+    if (schoolId) {
+      loadSchoolBranding();
+      loadSchoolLogo();
+      loadCommunicationSettings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [school?.id, selectedSchoolId]);
 
   // Show authentication error message
   if (!isAuthenticated || !token) {
@@ -885,16 +905,6 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
       console.error('Error deleting logo:', error);
     }
   };
-
-  // Load school branding and logo on component mount
-  React.useEffect(() => {
-    const schoolId = getCurrentSchoolId();
-    if (schoolId) {
-      loadSchoolBranding();
-      loadSchoolLogo();
-      loadCommunicationSettings();
-    }
-  }, [school?.id, selectedSchoolId]);
 
   const loadSchoolLogo = async () => {
     const schoolId = getCurrentSchoolId();

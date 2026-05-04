@@ -42,8 +42,6 @@ import {
   Close,
   People,
 } from '@mui/icons-material';
-import { useAuth } from '../../../contexts/AuthContext';
-import { useData } from '../../../contexts/DataContext';
 import apiService from '../../../services/apiService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
@@ -81,8 +79,6 @@ interface ParentGroup {
 }
 
 const ParentGroupManagement: React.FC<ParentGroupManagementProps> = ({ schoolBranding }) => {
-  const { user } = useAuth();
-  const { school } = useData();
   const [groups, setGroups] = useState<ParentGroup[]>([]);
   const [allParents, setAllParents] = useState<Parent[]>([]);
   const [loading, setLoading] = useState(true);

@@ -2,11 +2,9 @@ import React from 'react';
 import {
   Box,
   Grid,
-  Card,
   CardContent,
   Typography,
   LinearProgress,
-  Chip,
   Avatar,
   List,
   ListItem,
@@ -14,7 +12,6 @@ import {
   ListItemAvatar,
   Divider,
   Button,
-  Alert,
   Paper,
   Container,
   Fade,
@@ -44,7 +41,7 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({ schoolBranding }) =
   const { students, teachers, reports, classes, analytics, school, isLoading } = useData();
 
   // Use analytics from DataContext
-  const { activeStudents, activeTeachers, completedReports, parentEngagement, classUtilization } = analytics;
+  const { activeTeachers, completedReports, parentEngagement, classUtilization } = analytics;
 
   // Calculate trends (comparing to previous period - for now using simple calculations)
   const studentTrend = students.length > 0 ? '+12%' : '0%';

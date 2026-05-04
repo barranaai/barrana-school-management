@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { apiService, User as ApiUser, LoginCredentials as ApiLoginCredentials } from '../services/apiService';
+import { apiService } from '../services/apiService';
 
 // Use localStorage for web app instead of AsyncStorage
 const storage = {

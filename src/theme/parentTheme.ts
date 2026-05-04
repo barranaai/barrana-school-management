@@ -152,6 +152,7 @@ const themeOptions: ThemeOptions = {
     '0 76px 152px rgba(0,0,0,0.44)',
     '0 80px 160px rgba(0,0,0,0.46)',
     '0 84px 168px rgba(0,0,0,0.48)',
+    '0 88px 176px rgba(0,0,0,0.50)',
   ],
   components: {
     MuiCard: {

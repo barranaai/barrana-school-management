@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Box,
   Grid,
@@ -75,8 +75,8 @@ import { reportTemplateService, type ReportTemplate } from '../../../services/re
 import { reportService, type CreateReportData } from '../../../services/reportService';
 import { aiService } from '../../../services/aiService';
 import { communicationService } from '../../../services/communicationService';
-import { REPORT_FREQUENCIES, type ReportFrequency } from '../../../constants/reportFrequencies';
-import { mediaService, type UploadedMedia } from '../../../services/mediaService';
+import { type ReportFrequency } from '../../../constants/reportFrequencies';
+import { type UploadedMedia } from '../../../services/mediaService';
 import MediaUpload from '../../common/MediaUpload';
 import MedicalInfoDisplay from '../../common/MedicalInfoDisplay';
 import { formatGradeForDisplay, areGradesEqual } from '../../../utils/gradeDisplayUtils';
@@ -180,7 +180,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   
   // Due status tracking
   const [dueStatusData, setDueStatusData] = useState<DueStatusData>({});
-  const [isCheckingDueStatus, setIsCheckingDueStatus] = useState(false);
+  const [, setIsCheckingDueStatus] = useState(false);
   const [checking, setChecking] = useState(false);
   // Due reports from centralized backend calculator (single source of truth)
   const [dueReportsFromBackend, setDueReportsFromBackend] = useState<Array<{
@@ -715,21 +715,27 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   // Calculate due reports based on templates and frequencies
   // SIMPLIFIED: Use backend calculator as single source of truth
   // All complex logic moved to backend/services/dueReportsCalculator.js
-  const dueReports = useMemo(() => {
+  const dueReports = useMemo<DueReport[]>(() => {
     console.log('🎯 Using due reports from centralized backend:', dueReportsFromBackend.length);
-    
-    // Convert backend format to frontend format
-    return dueReportsFromBackend.map(report => ({
+
+    // Convert backend format to frontend format. The backend guarantees
+    // `frequency` is one of the canonical ReportFrequency values, so the
+    // cast here is safe and keeps the rest of the code strictly typed.
+    return dueReportsFromBackend.map((report) => ({
       studentId: report.studentId,
       studentName: report.studentName,
       templateName: report.templateName,
-      frequency: report.frequency,
+      frequency: report.frequency as ReportFrequency,
       dueDate: new Date(report.dueDate),
       daysOverdue: report.daysOverdue,
       templateId: report.templateId,
-      reportStatus: report.reportStatus,
-      reportId: report.reportId
+      reportStatus: report.reportStatus as DueReport['reportStatus'],
+      reportId: report.reportId,
     }));
+    // We intentionally key the memo off `dueReportsFromBackend.length` — the
+    // backend is the single source of truth, and depending on the full array
+    // would recompute on every reference change without behavioural benefit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     dueReportsFromBackend.length // Use backend as single source of truth
   ]);
@@ -1908,6 +1914,10 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     };
 
     preCheckDueStatus();
+    // We intentionally only re-run when the count of students or templates
+    // changes; depending on the full arrays would cause excessive re-runs as
+    // their references update on every refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherStudents.length, reportTemplates.length]); // Only run when students or templates change
 
   // Check due reports and create notifications

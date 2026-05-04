@@ -1,33 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Drawer,
-  AppBar,
-  Toolbar,
   List,
   Typography,
   Divider,
-  IconButton,
   ListItem,
   ListItemIcon,
   ListItemText,
   Avatar,
   Menu,
   MenuItem,
-  Badge,
-  Chip,
-  Paper,
-  Container,
-  Fade,
-  Grow,
-  Grid,
-  Card,
-  CardContent,
-  LinearProgress,
-  Button,
-  Alert,
-  ListItemAvatar,
-  ListItemButton,
   ThemeProvider,
   CircularProgress,
 } from '@mui/material';
@@ -37,14 +19,8 @@ import {
   // Message,
   // Settings,
   AccountCircle,
-  Notifications,
-  School,
   Logout,
   // TrendingUp,
-  TrendingDown,
-  CalendarToday,
-  Star,
-  Refresh,
   Description,
   ExpandMore,
   ReportProblem,
@@ -52,10 +28,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
-import { useLanguage } from '../../contexts/LanguageContext';
 import { apiService } from '../../services/apiService';
-import LanguageSelector from '../common/LanguageSelector';
-import NotificationIcon from '../common/NotificationIcon';
 import TeacherOverview from './sections/TeacherOverview';
 import StudentManagement from './sections/StudentManagement';
 import ReportsListing from './sections/ReportsListing';
@@ -96,7 +69,7 @@ const TeacherDashboard: React.FC = () => {
   const [schoolBranding, setSchoolBranding] = useState<any>(null);
   const [loadingBranding, setLoadingBranding] = useState(true);
   const { user, logout } = useAuth();
-  const { students, reports, teachers, analytics, school } = useData();
+  const { school } = useData();
 
   // Create dynamic theme based on school branding
   const dynamicTheme = schoolBranding 
@@ -267,6 +240,9 @@ const TeacherDashboard: React.FC = () => {
     } else {
       setLoadingBranding(false);
     }
+    // `schoolName` is read inside guards to avoid clobbering an existing name;
+    // including it as a dep would re-run the effect each time the name updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, school]);
 
   const renderSection = () => {

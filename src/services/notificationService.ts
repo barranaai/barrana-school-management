@@ -1,4 +1,3 @@
-import apiService from './apiService';
 import { requestFirebaseNotificationPermission, onMessageListener, areNotificationsSupported } from '../config/firebase';
 
 export interface Notification {

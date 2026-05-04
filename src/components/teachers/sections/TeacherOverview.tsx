@@ -5,16 +5,12 @@ import {
   Card,
   CardContent,
   Typography,
-  LinearProgress,
   Chip,
-  Avatar,
   List,
   ListItem,
   ListItemText,
   ListItemAvatar,
   Divider,
-  Button,
-  Alert,
   Paper,
   Container,
   Fade,
@@ -27,10 +23,6 @@ import {
   Assessment,
   CheckCircle,
   Warning,
-  Info,
-  Star,
-  CalendarToday,
-  School,
   Mic,
 } from '@mui/icons-material';
 import { useData } from '../../../contexts/DataContext';
@@ -111,11 +103,11 @@ const TeacherOverview: React.FC<TeacherOverviewProps> = ({ schoolBranding }) => 
     const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0');
     return `#${toHex(newR)}${toHex(newG)}${toHex(newB)}`;
   };
-  const { students, reports, teachers, analytics, school, classes, getStudentsByTeacherClasses, getReportsByTeacherStudents } = useData();
+  const { classes, getStudentsByTeacherClasses, getReportsByTeacherStudents } = useData();
   const { user } = useAuth();
   
   const [dueReportsCount, setDueReportsCount] = React.useState(0);
-  const [loading, setLoading] = React.useState(true);
+  const [, setLoading] = React.useState(true);
 
   // Get teacher's students using the new helper function
   const teacherStudents = user?.id ? getStudentsByTeacherClasses(user.id) : [];

@@ -12,7 +12,6 @@ import {
   ListItem,
   ListItemAvatar,
   ListItemText,
-  Divider,
   IconButton,
   Badge,
   CircularProgress,
@@ -56,13 +55,14 @@ import {
   Group,
   Close,
   Description,
-  Image as ImageIcon,
-  VideoLibrary,
   InsertDriveFile,
   Download
 } from '@mui/icons-material';
 import { useAuth } from '../../../contexts/AuthContext';
-import messagingService from '../../../services/messagingService';
+import messagingService, {
+  type Message,
+  type Conversation as MessagingConversation,
+} from '../../../services/messagingService';
 import notificationService from '../../../services/notificationService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
@@ -72,32 +72,13 @@ interface AdminCommunicationCenterProps {
   schoolBranding?: any;
 }
 
-interface Message {
-  _id: string;
-  conversationId: string;
-  senderId: string;
-  senderName: string;
-  content: string;
-  isRead: boolean;
-  sentAt: string;
-  tempId?: string;
-}
-
-interface Conversation {
-  _id: string;
-  subject: string;
-  lastMessage?: {
-    content: string;
-    sentAt: string;
-    senderName: string;
-  };
-  unreadCount: number;
-  otherParticipant?: {
-    id: string;
-    name: string;
-    role: string;
-    email?: string;
-  };
+/**
+ * Local view-model for conversations rendered in the admin center.
+ * Extends the messaging-service `Conversation` so we can keep the optional
+ * UI-only `subject` + `unreadCount` shape the component already relies on.
+ */
+type Conversation = MessagingConversation & {
+  // Keep alignment with the imported type; everything else inherits.
   metadata?: {
     studentName?: string;
   };
@@ -116,7 +97,7 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
   const [typing, setTyping] = useState<string | null>(null);
   const [newConversationDialog, setNewConversationDialog] = useState(false);
   const [parents, setParents] = useState<any[]>([]);
-  const [selectedParent, setSelectedParent] = useState('');
+  const [, setSelectedParent] = useState('');
   const [newMessageContent, setNewMessageContent] = useState('');
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<'notification' | 'announcement' | 'reminder' | 'personal'>('personal');
@@ -300,6 +281,11 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       messagingService.disconnect();
       notificationService.cleanup();
     };
+    // Initialization should run only when `user` changes; the helpers
+    // (loadConversations, setupSocketListeners, showBrowserNotification)
+    // and selectedConversation are intentionally excluded — they are defined
+    // later in the component or would re-trigger the effect on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // Load conversations

@@ -25,8 +25,6 @@ import {
   TableRow,
   Paper,
   Alert,
-  Tabs,
-  Tab,
   CircularProgress,
   Divider,
   Checkbox,
@@ -37,15 +35,11 @@ import {
   Edit,
   Delete,
   Event as EventIcon,
-  Group,
-  Visibility,
   Email,
   Sms,
   WhatsApp,
   Close,
-  AttachFile,
   CloudUpload,
-  InsertDriveFile,
 } from '@mui/icons-material';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -103,9 +97,7 @@ interface ParentGroup {
 }
 
 const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding }) => {
-  const { user } = useAuth();
   const { school, classes } = useData();
-  const [activeTab, setActiveTab] = useState(0);
   const [events, setEvents] = useState<Event[]>([]);
   const [parentGroups, setParentGroups] = useState<ParentGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -293,7 +285,13 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
     setOpenEventDialog(true);
     
     // Pre-fill the form with existing event data
-    setEventForm({
+    // Spread the previous state so all recurrence-related fields keep their
+    // shape, then overwrite only the fields the event provides. The recurrence
+    // metadata is read off the event via `as any` because it's a server-only
+    // extension not modeled on the local Event interface.
+    const ev = event as any;
+    setEventForm((prev) => ({
+      ...prev,
       title: event.title,
       description: event.description || '',
       startDate: event.startDate.split('T')[0], // Convert to YYYY-MM-DD format
@@ -303,9 +301,15 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
       location: event.location || '',
       targetType: event.targetType || 'all',
       targetGrade: event.targetGrade || '',
-      targetClass: event.targetClass || '',
-      targetGroup: event.targetGroup || '',
-    });
+      targetClass: typeof event.targetClass === 'string' ? event.targetClass : '',
+      targetGroup: typeof event.targetGroup === 'string' ? event.targetGroup : '',
+      isRecurring: !!ev.isRecurring,
+      recurrencePattern: ev.recurrencePattern || 'none',
+      recurrenceInterval: ev.recurrenceInterval ?? 1,
+      recurrenceDays: Array.isArray(ev.recurrenceDays) ? ev.recurrenceDays : [],
+      recurrenceEndDate: ev.recurrenceEndDate || '',
+      recurrenceCount: ev.recurrenceCount ?? null,
+    }));
     
     // Set existing attachments
     if (event.attachments) {

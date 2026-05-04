@@ -18,11 +18,6 @@ import {
   DialogContent,
   DialogActions,
   Badge,
-  ListItemAvatar,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  ListItemSecondaryAction,
   CircularProgress,
   FormControl,
   InputLabel,
@@ -38,7 +33,7 @@ import {
   Paper,
   ThemeProvider,
 } from '@mui/material';
-import parentTheme, { themeColors, createParentTheme } from '../../theme/parentTheme';
+import { themeColors, createParentTheme } from '../../theme/parentTheme';
 import {
   Dashboard,
   People,
@@ -47,11 +42,7 @@ import {
   Settings,
   ReportProblem,
   Event as EventIcon,
-  AccountCircle,
   Notifications,
-  School,
-  CheckCircle,
-  Warning,
   Logout,
   ExpandMore,
   ChevronLeft,
@@ -119,7 +110,6 @@ const ParentsUI: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   
   const { user, logout } = useAuth();
-  const { students, reports, parents, teachers } = useData();
 
   // Fetch parent's children and reports from API
   React.useEffect(() => {
@@ -456,6 +446,9 @@ const ParentsUI: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
+    // handleNextMedia / handlePrevMedia are defined later in the component;
+    // they read fresh state via closures and intentionally aren't deps here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightboxOpen, lightboxMedia.length]);
 
   const handleContactTeacher = () => {

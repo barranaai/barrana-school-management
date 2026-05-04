@@ -10,6 +10,12 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
   message?: string;
+  /**
+   * Some create-user endpoints (e.g. POST /teachers) return an
+   * auto-generated password at the top level alongside the user data.
+   * Optional everywhere; consumers must null-check before use.
+   */
+  generatedPassword?: string;
 }
 
 export interface LoginCredentials {
@@ -418,6 +424,246 @@ export interface IncidentListFilters {
   skip?: number;
 }
 
+// ─── Expenses types ──────────────────────────────────────────────────
+
+export type ExpenseCategory =
+  | 'salaries'
+  | 'rent'
+  | 'utilities'
+  | 'supplies'
+  | 'food'
+  | 'transport'
+  | 'maintenance'
+  | 'software'
+  | 'marketing'
+  | 'training'
+  | 'insurance'
+  | 'taxes'
+  | 'events'
+  | 'fees'
+  | 'other';
+
+export type ExpensePaymentMethod =
+  | 'cash'
+  | 'card'
+  | 'bank_transfer'
+  | 'cheque'
+  | 'e_transfer'
+  | 'other';
+
+export type ExpenseTaxType = 'GST' | 'HST' | 'PST' | 'QST' | 'OTHER';
+
+export type ExpenseStatus = 'recorded' | 'void';
+
+export interface ExpenseTax {
+  type: ExpenseTaxType;
+  rate?: number | null;
+  amount: number; // major units (CAD)
+}
+
+export interface ExpenseLineItem {
+  description: string;
+  amount: number; // major units (CAD)
+}
+
+export interface ExpenseAttachment {
+  _id: string;
+  filename: string;
+  originalName?: string;
+  mimeType?: string;
+  size?: number;
+  url: string; // auth-gated download path
+  isReceipt?: boolean;
+  uploadedAt?: string;
+  uploadedBy?: string | { _id: string; firstName: string; lastName: string };
+}
+
+export interface ExpenseStagedAttachment {
+  filename: string;
+  originalName?: string;
+  mimeType?: string;
+  size?: number;
+  storagePath: string;
+  isReceipt?: boolean;
+}
+
+export interface ExpenseEditHistoryEntry {
+  editedAt: string;
+  editedBy?: string | { _id: string; firstName: string; lastName: string };
+  summary?: string;
+  fieldsChanged?: string[];
+}
+
+export interface ExpenseOcrMeta {
+  processed: boolean;
+  processedAt?: string;
+  model?: string | null;
+  confidence?: number | null;
+  rawText?: string;
+}
+
+export interface Expense {
+  _id: string;
+  schoolId: string;
+  expenseNumber: string;
+  incurredAt: string;
+  recordedAt: string;
+  recordedBy:
+    | string
+    | { _id: string; firstName: string; lastName: string; email?: string; role?: string };
+  category: ExpenseCategory;
+  subcategory?: string;
+  vendorName?: string;
+  description?: string;
+  tags?: string[];
+  lineItems?: ExpenseLineItem[];
+  subtotal: number; // major units
+  taxes?: ExpenseTax[];
+  taxTotal: number; // major units
+  total: number; // major units
+  currency: string;
+  paymentMethod?: ExpensePaymentMethod;
+  paymentReference?: string;
+  isPaid?: boolean;
+  paidAt?: string;
+  attachments?: ExpenseAttachment[];
+  ocr?: ExpenseOcrMeta;
+  status: ExpenseStatus;
+  voidedAt?: string;
+  voidedBy?: string | { _id: string; firstName: string; lastName: string };
+  voidReason?: string;
+  isLocked?: boolean;
+  lockedAt?: string;
+  lockedBy?: string | { _id: string; firstName: string; lastName: string };
+  editHistory?: ExpenseEditHistoryEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExpenseEnums {
+  categories: ExpenseCategory[];
+  paymentMethods: ExpensePaymentMethod[];
+  taxTypes: ExpenseTaxType[];
+  statuses: ExpenseStatus[];
+  currency: string;
+  maxAttachments: number;
+}
+
+export interface ExpenseStats {
+  byStatus: Partial<Record<ExpenseStatus, number>>;
+  last30Days: { total: number; count: number };
+  monthToDate: { total: number; count: number };
+  yearToDate: { total: number; count: number };
+  currency: string;
+}
+
+export interface ExpenseListFilters {
+  status?: ExpenseStatus;
+  category?: ExpenseCategory;
+  paymentMethod?: ExpensePaymentMethod;
+  vendor?: string;
+  from?: string;
+  to?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ExpenseListResponse {
+  data: Expense[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface ExpenseOcrResult {
+  attachment: ExpenseStagedAttachment;
+  parsed: {
+    vendorName?: string | null;
+    incurredAt?: string | null;
+    subtotal?: number | null;
+    taxes?: ExpenseTax[];
+    total?: number | null;
+    currency?: string | null;
+    paymentMethod?: ExpensePaymentMethod | null;
+    category?: ExpenseCategory | null;
+    lineItems?: ExpenseLineItem[];
+    confidence?: number | null;
+  };
+  ocr: ExpenseOcrMeta;
+  error?: string;
+  warning?: string;
+}
+
+export interface CreateExpenseInput {
+  incurredAt: string;
+  category: ExpenseCategory;
+  subcategory?: string;
+  vendorName?: string;
+  description?: string;
+  tags?: string[];
+  subtotal: number;
+  taxes?: ExpenseTax[];
+  total?: number;
+  paymentMethod?: ExpensePaymentMethod;
+  paymentReference?: string;
+  isPaid?: boolean;
+  paidAt?: string | null;
+  lineItems?: ExpenseLineItem[];
+  attachments?: ExpenseStagedAttachment[];
+  ocr?: ExpenseOcrMeta;
+}
+
+// ─── Phase 2: Reports & Analytics ───────────────────────────────────────
+
+export type ExpenseReportDimension =
+  | 'category'
+  | 'paymentMethod'
+  | 'vendor'
+  | 'taxType'
+  | 'day'
+  | 'week'
+  | 'month'
+  | 'year';
+
+export interface ExpenseReportSummary {
+  range: { from: string | null; to: string | null };
+  currency: string;
+  total: number;
+  subtotal: number;
+  taxTotal: number;
+  count: number;
+  avg: number;
+  largest: number;
+  paid: { count: number; total: number };
+  unpaid: { count: number; total: number };
+  statusCounts: Partial<Record<ExpenseStatus, number>>;
+}
+
+export interface ExpenseReportRow {
+  key: string | null;
+  label: string;
+  total: number;
+  count: number;
+  percentage: number;
+  /** Only present for time-series dimensions (day/week/month/year). */
+  subtotal?: number;
+  taxTotal?: number;
+  /** Only present for the `vendor` dimension. */
+  lastDate?: string;
+}
+
+export interface ExpenseReportFilters {
+  from?: string;
+  to?: string;
+  includeVoid?: boolean;
+  category?: ExpenseCategory;
+  paymentMethod?: ExpensePaymentMethod;
+  status?: ExpenseStatus;
+}
+
+export interface ExpenseExportFilters extends ExpenseReportFilters {
+  format: 'csv' | 'pdf';
+}
+
 export interface Class {
   _id: string;
   id?: string; // For backward compatibility
@@ -577,9 +823,7 @@ class ApiService {
   }
 
   async logout(): Promise<ApiResponse<void>> {
-    const response = await this.request<void>('/auth/logout', {
-      method: 'POST',
-    });
+    const response = await this.request<void>('/auth/logout', 'POST');
     this.clearToken();
     return response;
   }
@@ -892,24 +1136,47 @@ class ApiService {
     return this._request<T>(endpoint, options);
   }
 
-  // Convenient request method with HTTP method and body
+  /**
+   * Generic request convenience method.
+   *
+   * Signature is intentionally backwards-compatible with all existing
+   * callsites in the codebase, including the 4-argument form that passes
+   * query parameters as the last argument.
+   *
+   * Examples:
+   *   apiService.request('/parent-groups')                              // GET
+   *   apiService.request('/events/123', 'DELETE')                       // DELETE
+   *   apiService.request('/events', 'POST', { title: 'X' })             // POST + body
+   *   apiService.request('/users', 'GET', undefined, { role: 'parent' })// GET + query
+   */
   async request<T = any>(
     endpoint: string,
     method: string = 'GET',
-    body?: any
+    body?: any,
+    queryParams?: Record<string, any>
   ): Promise<ApiResponse<T>> {
+    let url = endpoint;
+    if (queryParams && typeof queryParams === 'object') {
+      const params = new URLSearchParams();
+      Object.entries(queryParams).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') params.append(k, String(v));
+      });
+      const qs = params.toString();
+      if (qs) url += (endpoint.includes('?') ? '&' : '?') + qs;
+    }
+
     const options: RequestInit = {
       method: method.toUpperCase(),
     };
 
-    if (body && method.toUpperCase() !== 'GET') {
+    if (body !== undefined && method.toUpperCase() !== 'GET') {
       options.body = JSON.stringify(body);
       options.headers = {
         'Content-Type': 'application/json',
       };
     }
 
-    return this.makeRequest<T>(endpoint, options);
+    return this.makeRequest<T>(url, options);
   }
 
   // ─── Incidents API ─────────────────────────────────────────────────
@@ -1112,6 +1379,231 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ reason }),
     });
+  }
+
+  // ─── Expenses API ──────────────────────────────────────────────────
+
+  async getExpenseEnums(): Promise<ApiResponse<ExpenseEnums>> {
+    return this._request<ExpenseEnums>('/expenses/enums');
+  }
+
+  async getExpenseStats(): Promise<ApiResponse<ExpenseStats>> {
+    return this._request<ExpenseStats>('/expenses/stats');
+  }
+
+  async getExpenses(
+    filters: ExpenseListFilters = {}
+  ): Promise<ApiResponse<Expense[]> & { pagination?: ExpenseListResponse['pagination'] }> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.append(k, String(v));
+    });
+    const qs = params.toString();
+    return this._request<Expense[]>(`/expenses${qs ? `?${qs}` : ''}`);
+  }
+
+  async getExpense(id: string): Promise<ApiResponse<Expense>> {
+    return this._request<Expense>(`/expenses/${id}`);
+  }
+
+  async createExpense(input: CreateExpenseInput): Promise<ApiResponse<Expense>> {
+    return this._request<Expense>('/expenses', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async updateExpense(id: string, input: Partial<CreateExpenseInput>): Promise<ApiResponse<Expense>> {
+    return this._request<Expense>(`/expenses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async voidExpense(id: string, reason?: string): Promise<ApiResponse<Expense>> {
+    return this._request<Expense>(`/expenses/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  async toggleExpenseLock(id: string, lock: boolean): Promise<ApiResponse<Expense>> {
+    return this._request<Expense>(`/expenses/${id}/lock`, {
+      method: 'POST',
+      body: JSON.stringify({ lock }),
+    });
+  }
+
+  /**
+   * Upload one or more attachments to an EXISTING expense. Uses raw fetch
+   * with FormData (the default _request always sets JSON headers).
+   */
+  async uploadExpenseAttachments(
+    id: string,
+    files: File[]
+  ): Promise<ApiResponse<Expense>> {
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append('files', f);
+      const token = this.getToken();
+      const res = await fetch(`${API_BASE_URL}/expenses/${id}/attachments`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        return { success: false, error: json.error || json.message || 'Upload failed' };
+      }
+      return json;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Upload failed' };
+    }
+  }
+
+  async deleteExpenseAttachment(
+    expenseId: string,
+    attachmentId: string
+  ): Promise<ApiResponse<Expense>> {
+    return this._request<Expense>(
+      `/expenses/${expenseId}/attachments/${attachmentId}`,
+      { method: 'DELETE' }
+    );
+  }
+
+  /**
+   * Upload a single receipt for OCR. Returns parsed data + a *staged*
+   * attachment which the form passes back to createExpense() so the file
+   * is only saved once (see backend POST /expenses/ocr).
+   */
+  async ocrReceipt(file: File): Promise<ApiResponse<ExpenseOcrResult>> {
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token = this.getToken();
+      const res = await fetch(`${API_BASE_URL}/expenses/ocr`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        return { success: false, error: json.error || json.message || 'OCR failed' };
+      }
+      return json;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'OCR failed' };
+    }
+  }
+
+  /**
+   * Build the auth-gated URL for a receipt download. Receipts can't be
+   * loaded with a plain `<img src>` because the route requires a Bearer
+   * token, so callers should fetch via this method which returns a Blob
+   * URL the UI can render or open in a new tab.
+   */
+  async fetchExpenseAttachment(url: string): Promise<string | null> {
+    try {
+      const token = this.getToken();
+      const fullUrl = url.startsWith('http') ? url : url; // path is absolute under /api
+      const res = await fetch(fullUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    } catch {
+      return null;
+    }
+  }
+
+  // ─── Phase 2: Reports & Analytics ──────────────────────────────────
+
+  async getExpenseReportSummary(
+    filters: ExpenseReportFilters = {}
+  ): Promise<ApiResponse<ExpenseReportSummary>> {
+    const qs = this._buildQuery(filters);
+    return this._request<ExpenseReportSummary>(`/expenses/reports/summary${qs}`);
+  }
+
+  async getExpenseReportGroup(
+    dimension: ExpenseReportDimension,
+    filters: ExpenseReportFilters & { limit?: number } = {}
+  ): Promise<ApiResponse<ExpenseReportRow[]>> {
+    const qs = this._buildQuery({ ...filters, dimension });
+    return this._request<ExpenseReportRow[]>(`/expenses/reports/group${qs}`);
+  }
+
+  async getExpenseTopVendors(
+    filters: ExpenseReportFilters & { limit?: number } = {}
+  ): Promise<ApiResponse<ExpenseReportRow[]>> {
+    const qs = this._buildQuery(filters);
+    return this._request<ExpenseReportRow[]>(`/expenses/reports/top-vendors${qs}`);
+  }
+
+  async getExpenseTaxBreakdown(
+    filters: ExpenseReportFilters = {}
+  ): Promise<ApiResponse<ExpenseReportRow[]>> {
+    const qs = this._buildQuery(filters);
+    return this._request<ExpenseReportRow[]>(`/expenses/reports/tax-breakdown${qs}`);
+  }
+
+  /**
+   * Trigger an Expense report download (CSV or PDF). Returns a Blob URL +
+   * a sensible filename so the caller can build an `<a download>` link.
+   * The browser downloads the actual file via fetch with the Bearer token,
+   * since the `<a>` tag wouldn't carry auth headers.
+   */
+  async exportExpenses(
+    filters: ExpenseExportFilters
+  ): Promise<{ success: true; blobUrl: string; filename: string } | { success: false; error: string }> {
+    try {
+      const qs = this._buildQuery(filters);
+      const token = this.getToken();
+      const res = await fetch(`${API_BASE_URL}/expenses/export${qs}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        let msg = `Export failed (${res.status})`;
+        try {
+          const j = await res.json();
+          msg = j.error || j.message || msg;
+        } catch {
+          // ignore — non-JSON body
+        }
+        return { success: false, error: msg };
+      }
+      const blob = await res.blob();
+      const stamp = new Date().toISOString().slice(0, 10);
+      // Pull filename out of Content-Disposition if the server set one
+      const cd = res.headers.get('content-disposition') || '';
+      const m = /filename="?([^"]+)"?/i.exec(cd);
+      const filename =
+        m?.[1] || `expenses-${stamp}.${filters.format === 'pdf' ? 'pdf' : 'csv'}`;
+      return { success: true, blobUrl: URL.createObjectURL(blob), filename };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Export failed' };
+    }
+  }
+
+  /**
+   * Build a `?key=value&...` query string from a filter object, dropping
+   * empty values. Booleans serialize to "1"/"0" so the backend can parse
+   * with parseBoolean(). Used by Phase 2 report endpoints.
+   */
+  private _buildQuery(filters: Record<string, any>): string {
+    const params = new URLSearchParams();
+    Object.entries(filters || {}).forEach(([k, v]) => {
+      if (v === undefined || v === null || v === '') return;
+      if (typeof v === 'boolean') {
+        params.append(k, v ? '1' : '0');
+      } else {
+        params.append(k, String(v));
+      }
+    });
+    const qs = params.toString();
+    return qs ? `?${qs}` : '';
   }
 }
 

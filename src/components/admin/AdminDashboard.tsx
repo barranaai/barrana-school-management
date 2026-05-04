@@ -3,13 +3,11 @@ import {
   Box,
   List,
   Typography,
-  IconButton,
   ListItem,
   ListItemIcon,
   ListItemText,
   Avatar,
   Paper,
-  Container,
   Grow,
   CircularProgress,
   ThemeProvider,
@@ -30,6 +28,7 @@ import {
   Settings,
   ReportProblem,
   EventAvailable,
+  AttachMoney,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/apiService';
@@ -46,6 +45,7 @@ import CalendarManagement from './sections/CalendarManagement';
 import ParentGroupManagement from './sections/ParentGroupManagement';
 import NotificationLogs from './sections/NotificationLogs';
 import AdminCommunicationCenter from './sections/AdminCommunicationCenter';
+import ExpensesList from './sections/Expenses/ExpensesList';
 
 const drawerWidth = 250;
 
@@ -56,6 +56,7 @@ const menuItems = [
   { text: 'Class Management', icon: <Group />, section: 'classes', color: '#ff9a9e' },
   { text: 'School Configuration', icon: <Settings />, section: 'reports', color: '#4facfe' },
   { text: 'All Reports', icon: <Assessment />, section: 'all-reports', color: '#4facfe' },
+  { text: 'Expenses', icon: <AttachMoney />, section: 'expenses', color: '#2e7d32' },
   { text: 'Incidents', icon: <ReportProblem />, section: 'incidents', color: '#f44336' },
   { text: 'Meetings', icon: <EventAvailable />, section: 'meetings', color: '#43e97b' },
   { text: 'Calendar Management', icon: <Event />, section: 'calendar', color: '#43e97b' },
@@ -155,6 +156,8 @@ const AdminDashboard: React.FC = () => {
         return <SchoolConfiguration schoolBranding={schoolBranding} />;
       case 'all-reports':
         return <AllReports schoolBranding={schoolBranding} />;
+      case 'expenses':
+        return <ExpensesList schoolBranding={schoolBranding} />;
       case 'incidents':
         return <IncidentManagement schoolBranding={schoolBranding} />;
       case 'meetings':

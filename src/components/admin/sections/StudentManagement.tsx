@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Card,
@@ -27,8 +27,6 @@ import {
   Grid,
   Checkbox,
   Tooltip,
-  Badge,
-  Alert,
   Container,
   Fade,
   Grow,
@@ -39,12 +37,8 @@ import {
   Edit,
   Delete,
   Visibility,
-  FilterList,
   Download,
   Upload,
-  MoreVert,
-  School,
-  Person,
   Email,
   Phone,
 } from '@mui/icons-material';
@@ -197,7 +191,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   // State for field-specific validation errors
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const { students, addStudent, updateStudent, deleteStudent, classes, teachers, school, isLoading, refreshData } = useData();
+  const { students, addStudent, updateStudent, deleteStudent, classes, school, isLoading, refreshData } = useData();
   
   console.log('StudentManagement - students from DataContext:', students);
   console.log('StudentManagement - students length:', students.length);
@@ -488,13 +482,21 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     setSelectedStudentData(null);
   };
 
-  const handleFormChange = (field: string, value: string) => {
-    console.log(`StudentManagement - handleFormChange: ${field} = "${value}"`);
+  /**
+   * Generic field setter used by every form input.
+   *
+   * `value` is intentionally typed as `unknown` because the form holds a
+   * mix of plain strings (most fields) and structured values (notably
+   * `medicalInfo`, edited via `MedicalInfoEditor`). Each consumer below
+   * treats the value as the type the matching field expects.
+   */
+  const handleFormChange = (field: string, value: unknown) => {
+    console.log(`StudentManagement - handleFormChange: ${field} =`, value);
     setFormData(prev => {
       const newData = {
         ...prev,
         [field]: value,
-      };
+      } as typeof prev;
       console.log('StudentManagement - Updated formData:', newData);
       return newData;
     });
@@ -517,7 +519,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     }
     
     // Auto-populate grade when class is selected
-    if (field === 'class' && value) {
+    if (field === 'class' && typeof value === 'string' && value) {
       const selectedClass = availableClasses.find(cls => cls.name === value);
       if (selectedClass) {
         setFormData(prev => ({

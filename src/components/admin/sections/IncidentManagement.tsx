@@ -53,7 +53,6 @@ import {
   Delete as DeleteIcon,
   History as HistoryIcon,
   Person,
-  Group as GroupIcon,
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import {
@@ -156,6 +155,9 @@ const IncidentManagement: React.FC<Props> = ({ schoolBranding }) => {
 
   useEffect(() => {
     load();
+    // `load` is defined later in the component and intentionally excluded;
+    // including it would create an infinite refresh loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterSeverity, filterType, filterStatus]);
 
   const filtered = useMemo(() => {
