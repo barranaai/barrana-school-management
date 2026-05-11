@@ -33,7 +33,7 @@ const { body, validationResult } = require('express-validator');
 const { protect, authorize } = require('../middleware/auth');
 const Expense = require('../models/Expense');
 const School = require('../models/School');
-const { extractFromReceipt } = require('../services/expenseOcrService');
+const { extractFromReceipt, extractFromPdfReceipt } = require('../services/expenseOcrService');
 const expenseReportService = require('../services/expenseReportService');
 const { generatePDF } = require('../services/pdfService');
 const { logger } = require('../utils/logger');
@@ -979,21 +979,11 @@ router.post(
       isReceipt: true,
     };
 
-    // PDFs aren't OCR'd in v1 — store, return empty parsed.
-    if (/^application\/pdf$/i.test(file.mimetype)) {
-      return res.json({
-        success: true,
-        data: {
-          attachment: stagedAttachment,
-          parsed: {},
-          ocr: { processed: false, model: null, confidence: null },
-          warning: 'PDF receipts are stored but not auto-scanned in this version.',
-        },
-      });
-    }
-
     try {
-      const result = await extractFromReceipt(file.path);
+      const isPdf = /^application\/pdf$/i.test(file.mimetype);
+      const result = isPdf
+        ? await extractFromPdfReceipt(file.path)
+        : await extractFromReceipt(file.path);
       if (!result.ok) {
         return res.json({
           success: true,
@@ -1002,6 +992,7 @@ router.post(
             parsed: {},
             ocr: { processed: false, model: null, confidence: null },
             error: result.error,
+            ...(isPdf ? { warning: 'PDF stored, but auto-scan confidence is low. Please review fields manually.' } : {}),
           },
         });
       }

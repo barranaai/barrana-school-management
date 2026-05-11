@@ -138,7 +138,7 @@ const SchoolBannerHeader: React.FC<SchoolBannerHeaderProps> = ({ schoolBranding 
                     variant="body2"
                     sx={{ color: 'white', opacity: 0.95, display: 'flex', alignItems: 'center', gap: 1 }}
                   >
-                    📍 {schoolBranding.address}
+                    📍 {typeof schoolBranding.address === 'string' ? schoolBranding.address : [schoolBranding.address?.street, schoolBranding.address?.city, schoolBranding.address?.state, schoolBranding.address?.zipCode, schoolBranding.address?.country].filter(Boolean).join(', ')}
                   </Typography>
                 </Box>
               )}

@@ -692,7 +692,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                     {schoolBranding.address && (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Typography variant="body2" sx={{ color: 'white', opacity: 0.95, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          📍 {schoolBranding.address}
+                          📍 {typeof schoolBranding.address === 'string' ? schoolBranding.address : [schoolBranding.address?.street, schoolBranding.address?.city, schoolBranding.address?.state, schoolBranding.address?.zipCode, schoolBranding.address?.country].filter(Boolean).join(', ')}
                         </Typography>
                       </Box>
                     )}
