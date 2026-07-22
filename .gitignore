@@ -77,3 +77,7 @@ GoogleService-Info.plist
 # Temporary documentation files
 *.md
 !README.md
+
+# Financial / internal tracking (do not commit)
+Barrana_Development_Cost_Tracker.xlsx
+*_Cost_Tracker.xlsx

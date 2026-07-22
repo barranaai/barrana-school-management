@@ -1,107 +1,283 @@
-BARRANA AI PROJECT REVIEW
-=========================
+BARRANA.AI SCHOOL MANAGEMENT SYSTEM — PROJECT REVIEW
+=====================================================
 
-Date: November 19, 2025
-Project Status: Active Development / Prototype Phase
-Overall Health: Moderate. The project demonstrates a solid functional foundation with a clear separation of concerns (Backend, Web, Mobile). However, there are CRITICAL security vulnerabilities and significant architectural issues that must be addressed immediately.
+Date: July 8, 2026
+Reviewed by: Engineering review pass (backend + web frontend + mobile app)
+Project Status: Active Development / Prototype maturity
+Repo state at review: main @ 8598a7d (fix: show school banner on Incidents/Meetings)
 
---------------------------------------------------------------------------------
+Scope of this pass:
+  - Backend  : /backend            (Node.js / Express / MongoDB / Mongoose, 63 JS files)
+  - Web      : /src                (React 18 / TypeScript / MUI v5, 81 TS/TSX files)
+  - Mobile   : /BarranaMobileApp   (React Native 0.79 / Expo SDK 53)
 
-1. BACKEND REVIEW (/backend)
-
-Architecture & Structure:
-- Framework: Express.js with MongoDB (Mongoose).
-- Structure: Standard MVC-like structure.
-- Middleware: Good use of `helmet`, `compression`, and custom `auditLog`.
-
-🚨 CRITICAL SECURITY ISSUES:
-
-1. Path Traversal / Arbitrary File Read (P0):
-   - File: `routes/reports.js`
-   - Endpoint: `GET /api/reports/test-media/:filename`
-   - Issue: The endpoint uses `path.join` with user-controlled input (`req.params.filename`) without sanitization.
-   - Vulnerability: An attacker can request `../../config.env` to read sensitive environment variables (DB credentials, API keys).
-   - Fix: Validate `filename` to ensure it contains no path separators or `..`, or use a safe file serving library.
-
-2. Debug/Test Endpoints in Production (P0):
-   - File: `routes/auth.js`
-   - Issue: `/test-login` bypasses auth and logs sensitive data.
-   - Fix: Remove or restrict to development environment.
-
-3. Rate Limiting Disabled (P0):
-   - File: `routes/auth.js`
-   - Issue: `authLimiter` is explicitly bypassed.
-   - Fix: Re-enable immediately.
-
-Code Quality & Logic:
-
-- Logic Duplication: The due date calculation logic in `utils/dateUtils.js` (implied) appears to be duplicated in the mobile app.
-- Models: `User.js` is monolithic (400+ lines) and mixes concerns (Auth, Profile, Settings).
+All findings below were verified against the current source. File:line references
+are accurate as of the commit above. This file supersedes the Nov 19, 2025 review;
+several issues from that review are STILL PRESENT and are marked [STILL OPEN].
 
 --------------------------------------------------------------------------------
-
-2. FRONTEND WEB REVIEW (/src)
-
-Architecture:
-- Framework: React with TypeScript.
-- State Management: Context API (`AuthContext`).
-
-Security & Quality:
-
-- Token Storage (P1):
-  - File: `contexts/AuthContext.tsx`
-  - Issue: JWT tokens are stored in `localStorage`.
-  - Risk: Vulnerable to XSS attacks.
-  - Recommendation: Switch to `httpOnly` cookies or ensure strict CSP.
-
-- Type Safety:
-  - File: `services/apiService.ts`
-  - Issue: Loose typing (`any`) in several API responses.
-  - Recommendation: Define strict interfaces for all API responses.
-
+OVERALL HEALTH
 --------------------------------------------------------------------------------
 
-3. MOBILE APP REVIEW (/BarranaMobileApp)
+Functionally rich and feature-complete across four roles (super-admin, school
+admin, teacher, parent): AI reporting, incident reporting, parent-teacher meetings,
+messaging, PDF generation, calendar/events, multi-tenant by schoolId.
 
-Architecture:
-- Framework: React Native (Expo).
+Engineering maturity is prototype-grade. The most serious problems are:
+  1. Verified P0 security holes (disabled auth rate limiting, unauthenticated AI
+     routes, path traversal, open CORS, debug endpoints).
+  2. Cross-tenant data leaks in a multi-tenant SaaS (P1).
+  3. Heavy technical debt: god components (2,000-3,800 line files), ~3,000+ lines
+     of dead code, ~800 console.log calls, near-zero test coverage.
 
-🚨 CRITICAL ISSUES:
+Newer modules (incidents, meetings) are noticeably better engineered and enforce
+tenancy correctly — use them as the template for remediating older code.
 
-1. "God Component" Anti-Pattern (P1):
-   - File: `screens/StudentsScreen.tsx`
-   - Size: ~3500 lines.
-   - Issue: Handles UI, API calls, Audio Logic, AI Logic, and complex Date Logic.
-   - Risk: Extremely hard to maintain and test.
-   - Fix: Refactor into smaller components (`AudioRecorder`, `ReportGenerator`) and hooks (`useAudio`, `useReport`).
+================================================================================
+1. CRITICAL SECURITY (P0) — FIX BEFORE ANY FURTHER DEPLOYMENT
+================================================================================
 
-2. Duplicated Business Logic (P1):
-   - File: `screens/StudentsScreen.tsx` (Lines 691-773)
-   - Issue: Re-implements complex report due date logic (Daily, Weekly, Bi-Weekly, etc.) that exists in the backend.
-   - Risk: Inconsistency between App and Backend.
-   - Fix: Move this logic to the backend. The app should ask the API "Is this report due?" rather than calculating it locally.
+1.1 Auth rate limiting DISABLED [STILL OPEN]
+    backend/routes/auth.js:12-16
+    `authLimiter` is a no-op that logs "Rate limiter bypassed for debugging" and
+    calls next(). The real limiter (50/15min) is commented out at lines 18-27.
+    Impact: unlimited brute-force against /login and /register.
+    Fix: restore the real rateLimit() limiter.
 
-3. Hardcoded Credentials (P0):
-   - File: `App.tsx`
-   - Issue: Demo credentials included in source.
-   - Fix: Remove immediately.
+1.2 ALL /api/ai/* routes are UNAUTHENTICATED
+    backend/routes/ai.js:53, 121, 195, 305 (no `protect` middleware)
+    Impact: anyone on the internet can call generate-report / transcription /
+    file upload, burning OpenAI spend and uploading arbitrary files.
+    Fix: add protect + authorize(...) to every AI route.
+
+1.3 Path traversal + public file read [STILL OPEN]
+    backend/routes/reports.js:670 AND 1583 (endpoint registered TWICE)
+    GET /api/reports/test-media/:filename joins req.params.filename into a path
+    with no sanitization and no auth. Combined with the public static mount
+    (server.js:60), files under uploads/ are world-readable.
+    Fix: delete the endpoint (and its duplicate), or sanitize (reject "/" and "..").
+
+1.4 Debug / test endpoints live in production [STILL OPEN]
+    - POST /api/auth/test-login  — bypasses middleware, logs credential metadata
+      backend/routes/auth.js:508-545
+    - GET  /api/auth/debug/users — unauthenticated user count   auth.js:480-487
+    - GET  /api/auth/test        — public probe                 auth.js:470-477
+    - POST /api/reports/test-temp-media / test-upload — public uploads
+      reports.js:1626, 1665
+    Fix: remove, or gate behind NODE_ENV !== 'production'.
+
+1.5 CORS wide open
+    backend/server.js:88-94 — origin: true + credentials: true reflects ANY origin.
+    Impact: any website can make credentialed cross-origin requests.
+    Fix: explicit allowlist (mirror the Socket.io whitelist in socketService.js).
+
+1.6 Rate-limit skip precedence bug
+    backend/server.js:76
+      skip: (req) => NODE_ENV === 'development' && req.ip === '::1' || req.ip === '127.0.0.1'
+    Parses as (dev && ::1) || 127.0.0.1, so 127.0.0.1 ALWAYS skips the limiter,
+    even in production. Fix: wrap the OR in parentheses.
+
+1.7 Open registration with privileged roles
+    backend/routes/auth.js:32-38 — public /register accepts role:'school_admin'
+    with no approval flow. Fix: restrict self-registration; require admin invite.
+
+1.8 Helmet CSP disabled
+    backend/server.js:63-65 — contentSecurityPolicy: false.
+    Fix: enable a real CSP (relevant given frontend uses dangerouslySetInnerHTML).
+
+1.9 MOBILE: hardcoded HTTP API + cleartext [STILL OPEN - relocated]
+    BarranaMobileApp/apiService.ts:5-7 — http://191.101.233.56/api hardcoded for
+    both __DEV__ and prod; no HTTPS. Android network_security_config.xml permits
+    cleartext. Impact: tokens/PII in plaintext.
+    Fix: EXPO_PUBLIC_API_URL env var + HTTPS.
+
+1.10 MOBILE: login logs credentials [STILL OPEN - relocated]
+    BarranaMobileApp/apiService.ts:226-249 — logs email, password length, full
+    response body and token. Fix: strip all credential/token logging.
+
+================================================================================
+2. MULTI-TENANT ISOLATION (P1) — CROSS-SCHOOL DATA LEAKS
+================================================================================
+
+Most business-critical class of bug for a multi-tenant SaaS. A school_admin or
+teacher can access another school's data in these places:
+
+2.1 ?schoolId= query overrides tenant filter for non-super-admins
+    backend/routes/reports.js:398-403
+    backend/routes/reportTemplates.js:12-19
+    Fix: ignore client-supplied schoolId unless req.user.role === 'super_admin'.
+
+2.2 GET /api/events/:id has no schoolId check (PUT/DELETE do)
+    backend/routes/events.js:132-149 (contrast events.js:395, 530)
+
+2.3 Report media routes don't verify report.schoolId === req.user.schoolId
+    backend/routes/reports.js:1706 (GET), 1846 (POST), 1891 (DELETE)
+
+2.4 Logo upload/get/delete missing school-ownership check
+    backend/routes/schools.js:520, 525, 546 (contrast branding PUT at 465-469)
+
+2.5 report-approval-notification trusts schoolId from request body
+    backend/routes/communication.js:14-28
+
+2.6 authorizeSchool middleware EXISTS but is never wired to any route
+    backend/middleware/auth.js:79-103 — ready-made tenant guard, unused.
+
+================================================================================
+3. WEB FRONTEND (/src)
+================================================================================
+
+Stack note: apiService.ts uses native fetch, NOT axios (axios only in 5 legacy
+satellite services). React Query is installed but effectively unused.
+
+3.1 Security
+    - JWT stored in localStorage (XSS-exfiltratable); read directly in many
+      components, bypassing apiService.  contexts/AuthContext.tsx:291
+    - 4x dangerouslySetInnerHTML with NO sanitization (no DOMPurify):
+        admin/sections/AllReports.tsx:1739
+        admin/sections/AdminCommunicationCenter.tsx:1225
+        parents/CommunicationPage.tsx:802
+        admin/sections/CalendarManagement.tsx:1484
+    - Generated admin password shown in a UI snackbar:
+        super-admin/SuperAdminDashboard.tsx:562
+    - AuthContext reducer + DataContext log full state/payloads (PII) to console.
+    - config/firebase.ts:7-13 has placeholder fallbacks ("YOUR_API_KEY") — unsafe
+      if deployed without REACT_APP_* env vars set.
+
+3.2 Architecture — god components (top offenders, line counts)
+        teachers/sections/StudentManagement.tsx   3,848
+        super-admin/SuperAdminDashboard.tsx        2,927
+        parents/ParentsUI.tsx                      2,800
+        admin/sections/AllReports.tsx              2,465
+        admin/sections/SchoolConfiguration.tsx     2,390
+        teachers/sections/ReportsListing.tsx       2,384
+        admin/sections/AdminCommunicationCenter.tsx 2,248
+        services/apiService.ts                     1,119
+
+3.3 Dead / orphaned code (~3,000+ lines, not imported anywhere)
+        teachers/TeachersUI.tsx                    965
+        admin/sections/SystemSettings.tsx          674
+        admin/sections/CommunicationCenter.tsx     537 (mock prototype)
+        admin/sections/AdvancedAnalytics.tsx       462
+        dashboard/AdvancedDashboard.tsx            447
+        teachers/sections/CommunicationCenter.tsx  126 (commented out)
+
+3.4 State & data
+    - React Query: BOTH react-query (v3) and @tanstack/react-query (v4) installed;
+      only v3, and only as an unused provider in index.tsx. ZERO useQuery/
+      useMutation anywhere. All fetching is manual useEffect + useState / Context.
+    - DataContext.tsx (820 lines): parents array never populated;
+      analytics.recentActivity is hardcoded fake data (lines ~720-724).
+
+3.5 Type safety
+    - ~504 `any` usages across src/ (apiService.ts:14, DataContext.tsx:32, etc.)
+    - Duplicate/divergent type defs: User/Student/Report/Class defined in both
+      apiService.ts and DataContext.tsx (with _id vs id mismatches), reconciled
+      via `as any` casts.
+
+3.6 Consistency
+    - Duplicate deps: react-hot-toast + react-toastify (only former used).
+    - API base URL differs per service: '/api' vs http://localhost:5050 vs no
+      prefix (notificationService) — production misconfig risk.
+
+================================================================================
+4. MOBILE APP (/BarranaMobileApp)
+================================================================================
+
+4.1 God component [STILL OPEN]
+    screens/StudentsScreen.tsx — 3,624 lines. Combines student list UI, report
+    workflow, voice recording, transcription, media upload, due-report logic,
+    timezone math, and an in-app debug console. 20+ useState hooks.
+
+4.2 Duplicated business logic [STILL OPEN]
+    - getReportForCurrentPeriod (StudentsScreen.tsx:691-773) re-implements report
+      period matching (Daily/Weekly/Bi-Weekly/Monthly/etc.) still used by the UI
+      at lines 1425 and 1745. Backend already owns this (dueReportsCalculator.js).
+    - ~475 lines of DEAD due-date calculator (lines 775-1249) marked "DEPRECATED"
+      but never called. Remove it.
+    - apiService.ts:380-409 (getStudents) and 443-486 (getReports) return hardcoded
+      MOCK data on API failure, masking real backend errors.
+
+4.3 Entry-point confusion
+    index.ts loads App.v5-full.tsx (teacher-only; drops parent dashboard + demo
+    login present in the unused App.tsx). 7 App variant files (v1-v5, minimal, main).
+
+4.4 Config
+    - REST -> hardcoded IP 191.101.233.56; Socket.io -> localhost:5050. Messaging
+      is likely broken against the production backend.
+    - EXPO_PUBLIC_API_URL referenced by messaging/attachments but NOT by the main
+      API client. No .env file.
+
+4.5 Demo credentials [STILL OPEN]
+    App.tsx:158-168 hardcoded demo logins (teacher@demo.com/demo12345, etc.), not
+    gated by __DEV__. Also documented in README.md:42-48. (App.tsx is currently the
+    inactive entry, but the credentials remain in source.)
+
+4.6 Auth storage (GOOD): auth_token/user_data in Expo SecureStore (apiService.ts:10-11).
+
+================================================================================
+5. LIKELY RUNTIME BUGS (worth verifying)
+================================================================================
+
+5.1 backend/services/reminderScheduler.js:15 — require('./socketService') destructures
+    getIO, which is not a named export -> cron socket emit may throw / no-op.
+5.2 Socket room mismatch: cron emits to `user_${id}` (reminderScheduler.js:482) but
+    sockets join `user:${id}` (socketService.js:75) -> reminders may never arrive.
+5.3 mobile services/messagingService.ts:64 — apiService.getToken() is async but not
+    awaited; a Promise is passed as the socket auth token.
+5.4 Duplicate routes (dead second registration): reports.js test-media (670/1583),
+    reports.js check-due (717/1967), reportTemplates.js /grade/:grade (103/351).
+
+================================================================================
+6. TESTING & OBSERVABILITY
+================================================================================
+
+    - Backend: NO tests.  Mobile: NO tests.
+    - Frontend: only 2 util test files (due-date math); ~98% untested.
+    - ~800 console.log/error total (frontend ~550, backend ~200, mobile ~250),
+      many logging full payloads / PII.
+    - No error tracking (Sentry). No frontend global error boundary or centralized
+      API error interceptor.
+
+================================================================================
+7. WHAT'S GOOD
+================================================================================
+
+    - Clean separation: backend / web / mobile; consistent role-based dashboards.
+    - Incidents + meetings modules enforce tenancy correctly (scopeQueryToUser) and
+      use atomic booking — good template for fixing older code.
+    - Sensible middleware: helmet, compression, audit logging, node-cron scheduler.
+    - Mobile uses Expo SecureStore for tokens.
+    - Strong typed interfaces for newer domains in apiService.ts.
+
+================================================================================
+8. PRIORITIZED ACTION PLAN
+================================================================================
+
+P0 — before any further deployment
+    1. Remove/gate all test-*, /debug/*, /test-login endpoints.
+    2. Add protect + role checks to every /api/ai/* route.
+    3. Restore real authLimiter; fix server.js:76 skip precedence.
+    4. Lock CORS to an explicit allowlist.
+    5. Delete/sanitize test-media (and its duplicate).
+    6. Mobile: EXPO_PUBLIC_API_URL + HTTPS; strip credential logging.
+
+P1 — tenant isolation
+    7. Ignore client schoolId for non-super-admins; add schoolId checks on
+       events/report-media/logos; wire up authorizeSchool middleware.
+
+P2 — hardening & debt
+    8. Sanitize all dangerouslySetInnerHTML (DOMPurify).
+    9. Stop logging tokens/PII; strip debug console.logs.
+   10. Remove duplicate deps (@tanstack/react-query, react-toastify).
+   11. Delete dead code (orphaned web components, mobile dead due-date logic).
+   12. Consolidate frontend on one HTTP client + one API base URL.
+   13. Remove duplicate backend routes.
+
+P3 — long-term
+   14. Split god components (StudentsScreen, StudentManagement, ParentsUI, reports.js).
+   15. Add tests for due-date logic and tenant scoping; add Sentry.
+   16. Refactor monolithic User.js / School.js models.
 
 --------------------------------------------------------------------------------
-
-SUMMARY OF RECOMMENDATIONS
-
-Immediate Actions (P0 - Security Critical):
-1. [Backend] Fix Path Traversal in `routes/reports.js`.
-2. [Backend] Remove `/test-login` and re-enable rate limiting in `routes/auth.js`.
-3. [Mobile] Remove hardcoded credentials from `App.tsx`.
-4. [Backend] Restrict CORS in `server.js`.
-
-Short-term Improvements (P1 - Stability & Quality):
-1. [Mobile] Refactor `StudentsScreen.tsx` to extract logic into hooks/components.
-2. [Mobile] Remove duplicated date logic; rely on Backend API for due status.
-3. [Frontend] Move token storage to a more secure mechanism if possible.
-
-Long-term Goals (P2 - Maintainability):
-1. [Backend] Refactor `User.js` model.
-2. [Infra] Implement centralized logging and error tracking (Sentry).
-3. [Testing] Add unit tests for the critical due date calculation logic to ensure Backend/Mobile consistency (if mobile logic must remain).
+END OF REVIEW
+--------------------------------------------------------------------------------
