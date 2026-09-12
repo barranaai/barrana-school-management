@@ -1,8 +1,13 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const moment = require('moment-timezone');
 const Report = require('../models/Report');
+const { canExposeProgressReport, finalizedParentContent } = require('../utils/reportPublication');
 const ReportTemplate = require('../models/ReportTemplate');
+const Progress = require('../models/Progress');
+const ChildParticipation = require('../models/ChildParticipation');
+const DeliveredSession = require('../models/DeliveredSession');
 const User = require('../models/User');
 const School = require('../models/School');
 const { calculateDueDate, isReportDue, getCurrentDateInTimezone, getStartOfFrequencyPeriod } = require('../utils/dateUtils');
@@ -10,6 +15,8 @@ const { gradesMatch } = require('../utils/gradeUtils');
 const loggerUtils = require('../utils/logger');
 const logger = loggerUtils.logger;
 const { protect, authorize } = require('../middleware/auth');
+const { developmentOnly } = require('../middleware/environment');
+const { canAccessReport, canAccessStudent, belongsToSchool, scopeSchoolId } = require('../middleware/resourceAuthorization');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -22,10 +29,59 @@ try {
 }
 const { sendReportEmail } = require('../services/emailService');
 const firebaseService = require('../services/firebaseService');
+const { createReportPdf } = require('../services/reportPdf');
 
 // Maximum number of media attachments (images + videos combined) per report.
 // Enforced on create and on append-media routes. Mirrored in the Report model.
 const MAX_REPORT_ATTACHMENTS = 10;
+
+// Create a deterministic, Progress-backed draft without introducing AI or changing legacy report creation.
+router.post('/from-progress/:progressId', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = scopeSchoolId(req.user, req.body?.schoolId);
+    if (!mongoose.Types.ObjectId.isValid(schoolId) || !mongoose.Types.ObjectId.isValid(req.params.progressId)) return res.status(404).json({ success: false, message: 'Progress not found' });
+    const progress = await Progress.findOne({ _id: req.params.progressId, schoolId });
+    if (!progress) return res.status(404).json({ success: false, message: 'Progress not found' });
+    const participation = await ChildParticipation.findOne({ _id: progress.childParticipationId, schoolId });
+    const session = participation && await DeliveredSession.findOne({ _id: participation.deliveredSessionId, schoolId });
+    if (!participation || !session || String(progress.schoolId) !== String(schoolId)) return res.status(404).json({ success: false, message: 'Progress context not found' });
+    if (['cancelled', 'absent', 'excused'].includes(participation.status)) return res.status(409).json({ success: false, message: 'Progress source participation is not valid for a report' });
+    if (session.status === 'cancelled') return res.status(409).json({ success: false, message: 'Progress source session is cancelled' });
+    if (req.user.role === 'teacher' && String(session.deliveredBy) !== String(req.user._id)) return res.status(403).json({ success: false, message: 'Not authorized to create a report for this Progress' });
+    const template = req.body?.templateId && await ReportTemplate.findOne({ _id: req.body.templateId, schoolId, isActive: true });
+    if (!template) return res.status(400).json({ success: false, message: 'A valid active templateId is required' });
+    const templateSnapshot = {
+      templateId: template._id,
+      name: template.name,
+      grade: template.grade,
+      reportFrequency: template.reportFrequency,
+      content: template.content,
+      customFields: (template.customFields || []).map(field => ({
+        name: field.name,
+        type: field.type,
+        isRequired: field.isRequired,
+        options: field.options,
+        defaultValue: field.defaultValue
+      })),
+      settings: template.settings ? {
+        includeStudentPhoto: template.settings.includeStudentPhoto,
+        includeTeacherSignature: template.settings.includeTeacherSignature,
+        includeSchoolLogo: template.settings.includeSchoolLogo,
+        autoSendToParents: template.settings.autoSendToParents,
+        requireTeacherApproval: template.settings.requireTeacherApproval
+      } : undefined
+    };
+    const existing = await Report.findOne({ schoolId, progressId: progress._id, status: { $in: ['draft', 'review', 'approved', 'sent'] } });
+    if (existing) return res.status(409).json({ success: false, message: 'A report already exists for this Progress', data: { reportId: existing._id } });
+    const objectiveText = (progress.objectiveResults || []).map(o => `${o.sequence}. ${o.title}: ${o.status}${o.instructorNote ? ` — ${o.instructorNote}` : ''}`).join('\n');
+    const parameterText = (progress.parameterResults || []).map(p => `${p.parameterLabel}: ${String(p.value)}${p.note ? ` — ${p.note}` : ''}`).join('\n');
+    const content = [`Session: ${session.title}`, objectiveText && `Objectives:\n${objectiveText}`, parameterText && `Parameters:\n${parameterText}`, progress.observations && `Observations:\n${progress.observations}`, progress.recommendations && `Recommendations:\n${progress.recommendations}`].filter(Boolean).join('\n\n');
+    const snapshot = { progressId: progress._id, childParticipationId: participation._id, deliveredSessionId: session._id, programId: session.programId, levelId: session.levelId, objectiveResults: progress.objectiveResults, parameterResults: progress.parameterResults, observations: progress.observations, recommendations: progress.recommendations, overallStatus: progress.overallStatus, capturedAt: new Date(), progressUpdatedAt: progress.updatedAt };
+    const start = session.scheduledAt || new Date();
+    const report = await Report.create({ title: req.body.title || `${session.title} Progress Report`, schoolId, studentId: participation.childId, teacherId: session.deliveredBy, templateId: template._id, templateSnapshot, content: content || 'Progress report draft', customFieldValues: {}, reportType: 'progress', reportPeriod: { startDate: start, endDate: session.deliveredAt || start }, status: 'draft', progressId: progress._id, childParticipationId: participation._id, deliveredSessionId: session._id, progressSnapshot: snapshot, aiGenerated: { isAiGenerated: false } });
+    res.status(201).json({ success: true, message: 'Progress-backed report draft created', data: report });
+  } catch (error) { res.status(400).json({ success: false, message: error.code === 11000 ? 'A report already exists for this Progress' : error.message }); }
+});
 
 // Check if ffmpeg is available
 let ffmpeg = null;
@@ -395,12 +451,8 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), as
     const { schoolId, teacherId, studentId, status, limit = 50, page = 1 } = req.query;
     const query = {};
 
-    // Set school filter
-    if (schoolId) {
-      query.schoolId = schoolId;
-    } else if (req.user.role !== 'super_admin') {
-      query.schoolId = req.user.schoolId;
-    }
+    const scopedSchoolId = scopeSchoolId(req.user, schoolId);
+    if (scopedSchoolId) query.schoolId = scopedSchoolId;
 
     // Additional filters
     if (teacherId) query.teacherId = teacherId;
@@ -595,7 +647,7 @@ router.get('/due-status', protect, authorize('teacher', 'school_admin', 'super_a
 // @desc    Debug frontend due report calculations
 // @route   POST /api/reports/debug-due-calculations
 // @access  Private (teacher)
-router.post('/debug-due-calculations', protect, authorize('teacher'), async (req, res) => {
+router.post('/debug-due-calculations', developmentOnly, protect, authorize('teacher'), async (req, res) => {
   try {
     const { studentId, templateId, frontendCalculations } = req.body;
     
@@ -667,7 +719,7 @@ router.post('/debug-due-calculations', protect, authorize('teacher'), async (req
 // @desc    Test media file access
 // @route   GET /api/reports/test-media/:filename
 // @access  Public
-router.get('/test-media/:filename', async (req, res) => {
+router.get('/test-media/:filename', developmentOnly, protect, async (req, res) => {
   try {
     const { filename } = req.params;
     const filePath = path.join(__dirname, '..', 'uploads', 'media', filename);
@@ -893,14 +945,13 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
       });
     }
 
-    // Verify template exists
-    const template = await ReportTemplate.findById(templateId);
-    if (!template) {
-      return res.status(404).json({
-        success: false,
-        message: 'Report template not found'
-      });
-    }
+    const [template, student] = await Promise.all([
+      ReportTemplate.findById(templateId), User.findById(studentId)
+    ]);
+    if (!template || !belongsToSchool(req.user, template))
+      return res.status(404).json({ success: false, message: 'Report template not found' });
+    if (!await canAccessStudent(req.user, student))
+      return res.status(404).json({ success: false, message: 'Student not found' });
 
     // Enforce due-date rules for teachers based on school settings
     // Super Admin and School Admin can bypass enforcement; only enforce for teachers
@@ -1232,6 +1283,19 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
 // @desc    Update report
 // @route   PUT /api/reports/:id
 // @access  Private (teacher who created it, school_admin, super_admin)
+// Compare-and-swap for Progress-backed draft/review writes. __v is Mongoose's
+// revision token; the separate application 'version' field remains unchanged.
+const editableProgressRevision = report => ({
+  _id: report._id, schoolId: report.schoolId, teacherId: report.teacherId,
+  progressId: report.progressId, status: { $in: ['draft', 'review'] },
+  finalizedSnapshot: null,
+  __v: report.__v === undefined ? { $exists: false } : report.__v
+});
+const staleReportResponse = res => res.status(409).json({
+  success: false, code: 'REPORT_REVISION_CONFLICT',
+  message: 'Report changed or was finalized. Reload before trying again.'
+});
+
 router.put('/:id', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
   try {
     const report = await Report.findById(req.params.id);
@@ -1243,6 +1307,11 @@ router.put('/:id', protect, authorize('teacher', 'school_admin', 'super_admin'),
       });
     }
 
+    if (!canAccessReport(req.user, report))
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    if (['approved', 'sent', 'archived'].includes(report.status)) {
+      return res.status(409).json({ success: false, message: 'Finalized reports cannot be edited' });
+    }
     // Check if user has permission to update
     const canUpdate = 
       req.user.role === 'super_admin' ||
@@ -1262,33 +1331,23 @@ router.put('/:id', protect, authorize('teacher', 'school_admin', 'super_admin'),
       customFieldValues,
       reportType,
       reportPeriod,
-      status,
       voiceRecording,
       aiGenerated,
       tags,
       categories
     } = req.body;
 
-    // Update report
-    const updatedReport = await Report.findByIdAndUpdate(
-      req.params.id,
-      {
-        title,
-        content,
-        customFieldValues,
-        reportType,
-        reportPeriod,
-        status,
-        voiceRecording,
-        aiGenerated,
-        tags,
-        categories
-      },
-      { new: true, runValidators: true }
-    )
+    const changes = { title, content, customFieldValues, reportType, reportPeriod,
+      voiceRecording, aiGenerated, tags, categories };
+    const updatedReport = await (report.progressId
+      ? Report.findOneAndUpdate(editableProgressRevision(report),
+        { $set: changes, $inc: { __v: 1 } }, { new: true, runValidators: true })
+      : Report.findByIdAndUpdate(req.params.id, changes, { new: true, runValidators: true }))
     .populate('studentId', 'firstName lastName grade studentClass class')
     .populate('teacherId', 'firstName lastName')
     .populate('templateId', 'name reportFrequency');
+
+    if (!updatedReport && report.progressId) return staleReportResponse(res);
 
     res.json({
       success: true,
@@ -1324,7 +1383,26 @@ router.patch('/:id/approve', protect, authorize('teacher', 'school_admin', 'supe
       });
     }
 
-    await report.approve(req.user._id, req.user.role, req.body.comments);
+    if (!canAccessReport(req.user, report))
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    if (['approved', 'sent', 'archived'].includes(report.status)) return res.status(409).json({ success: false, message: 'Report is already finalized' });
+    if (report.progressId && (!report.progressSnapshot || !report.templateSnapshot)) return res.status(409).json({ success: false, message: 'Progress-backed report snapshots are incomplete' });
+    if (report.progressId) {
+      const finalizedSnapshot = {
+        finalizedAt: new Date(), finalizedBy: req.user._id,
+        reportContent: report.content, customFieldValues: report.customFieldValues,
+        progressSnapshot: report.progressSnapshot, templateSnapshot: report.templateSnapshot,
+        attachments: (report.attachments || []).map(a => ({ filename: a.filename, originalName: a.originalName, mimeType: a.mimeType, size: a.size, url: a.url, uploadedAt: a.uploadedAt })),
+        parentVisibleContent: report.content,
+        reportMetadata: { title: report.title, reportType: report.reportType, reportPeriod: report.reportPeriod }
+      };
+      const finalized = await Report.findOneAndUpdate(editableProgressRevision(report), {
+        $set: { status: 'approved', finalizedSnapshot },
+        $push: { approvals: { userId: req.user._id, role: req.user.role, status: 'approved', comments: req.body.comments, approvedAt: finalizedSnapshot.finalizedAt } },
+        $inc: { __v: 1 }
+      }, { new: true, runValidators: true });
+      if (!finalized) return staleReportResponse(res);
+    } else await report.approve(req.user._id, req.user.role, req.body.comments);
 
     const updatedReport = await Report.findById(req.params.id)
       .populate('studentId', 'firstName lastName grade studentClass class')
@@ -1352,235 +1430,90 @@ router.patch('/:id/approve', protect, authorize('teacher', 'school_admin', 'supe
 });
 
 // @desc    Send report to parents
-// @route   PATCH /api/reports/:id/send
-// @access  Private (teacher who created it, school_admin, super_admin)
-router.patch('/:id/send', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+// Both public endpoints execute this handler exactly once. No implicit resend.
+// This process-local guard prevents overlapping requests; it is not a distributed lock.
+const publishing = new Set();
+function deliveryData(report) {
+  const published = report.progressId ? finalizedParentContent(report) : null;
+  return {
+    studentName: [report.studentId.firstName, report.studentId.lastName].join(' '),
+    teacherName: [report.teacherId.firstName, report.teacherId.lastName].join(' '),
+    reportTitle: published ? published.title : report.title,
+    reportContent: published ? published.content : report.content,
+    reportDate: new Date(published ? report.finalizedSnapshot.finalizedAt : report.createdAt).toISOString().slice(0, 10),
+    schoolName: report.schoolId.name, schoolId: String(report.schoolId._id),
+    schoolLogo: report.schoolId.branding?.logo || report.schoolId.logo || null,
+    reportId: String(report._id), studentId: String(report.studentId._id),
+    attachments: published ? published.attachments : (report.attachments || [])
+  };
+}
+const reportQuery = id => Report.findById(id)
+  .populate('studentId', 'firstName lastName parentEmail')
+  .populate('teacherId', 'firstName lastName')
+  .populate('schoolId', 'name branding logo');
+async function publishReport(req, res) {
+  const key = String(req.params.id).toLowerCase();
+  if (publishing.has(key)) return res.status(409).json({ success: false, outcome: 'publication_blocked', message: 'Publication is in progress or requires reconciliation; do not resend automatically' });
+  publishing.add(key);
+  let accepted = false;
   try {
-    const { parentEmails } = req.body;
-    const report = await Report.findById(req.params.id);
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        message: 'Report not found'
-      });
+    const report = await reportQuery(req.params.id);
+    if (!report || !canAccessReport(req.user, report)) return res.status(404).json({ success: false, outcome: 'not_authorized', message: 'Report not found' });
+    if (report.status === 'sent') return res.status(409).json({ success: false, outcome: 'already_sent', message: 'Report was already sent; no email was sent again' });
+    if (report.status === 'archived' || (report.progressId && (report.status !== 'approved' || !canExposeProgressReport(report)))) return res.status(409).json({ success: false, outcome: 'not_finalized', message: 'Report must be approved with a valid finalized snapshot' });
+    const recipients = req.body.parentEmails || [req.body.parentEmail];
+    const expected = report.studentId?.parentEmail?.trim().toLowerCase();
+    if (!Array.isArray(recipients) || !recipients.length || !expected || recipients.some(email => typeof email !== 'string' || email.trim().toLowerCase() !== expected)) return res.status(403).json({ success: false, outcome: 'not_authorized', message: 'Recipient is not authorized for this report' });
+    // The current child model has one parent email. Deduplicate aliases/array entries.
+    const data = { ...deliveryData(report), parentEmail: expected };
+    const parentUser = await User.findOne({ schoolId: report.schoolId._id, role: 'parent', email: expected }).select('phoneNumber phone preferences fcmTokens');
+    data.parentPhoneNumber = parentUser?.phoneNumber || parentUser?.phone;
+    data.whatsappEnabled = parentUser?.preferences?.notifications?.whatsapp || false;
+    data.parentId = parentUser?._id;
+    data.preparePdf = options => createReportPdf(report, { ...data, ...options });
+    const result = await sendReportEmail(data);
+    if (result.simulated) return res.json({ success: false, outcome: 'simulated', message: 'Development simulation only; report was not sent', data: { reportId: report._id, simulated: true, transportAccepted: false } });
+    if (!result.transportAccepted) throw Object.assign(new Error('Email transport did not accept the message'), { code: 'delivery_failure' });
+    accepted = true;
+    report.status = 'sent';
+    report.parentCommunication = { ...(report.parentCommunication?.toObject?.() || report.parentCommunication || {}), isSent: true, sentAt: result.acceptedAt, sentTo: [{ email: expected, method: 'email' }] };
+    report.pdfArtifact = result.pdfArtifact;
+    try { await report.save(); } catch (_) {
+      // Keep the local guard until reconciliation/restart; never automatically resend.
+      return res.status(500).json({ success: false, outcome: 'persistence_failure', message: 'Transport accepted the email, but report persistence failed. Reconcile before any retry.', data: { reportId: report._id, transportAccepted: true, messageId: result.messageId } });
     }
-
-    if (!parentEmails || !Array.isArray(parentEmails) || parentEmails.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Parent emails are required'
-      });
-    }
-
-    await report.sendToParents(parentEmails);
-
-    const updatedReport = await Report.findById(req.params.id)
-      .populate('studentId', 'firstName lastName grade studentClass class')
-      .populate('teacherId', 'firstName lastName')
-      .populate('templateId', 'name reportFrequency');
-
-    res.json({
-      success: true,
-      message: 'Report sent to parents successfully',
-      data: updatedReport
+    publishing.delete(key);
+    setImmediate(async () => {
+      try { if (parentUser?.fcmTokens?.length) await firebaseService.sendNotificationToUser(parentUser, { title: 'Report sent', body: data.reportTitle + ' was accepted by the email transport.', type: 'report_sent' }, { reportId: String(report._id) }); }
+      catch (_) { logger.warn('Report push notification failed'); }
     });
+    return res.json({ success: true, outcome: 'sent', message: 'Email transport accepted the report; inbox delivery is not confirmed', data: { reportId: report._id, transportAccepted: true, simulated: false, messageId: result.messageId, sentAt: result.acceptedAt, pdfUrl: '/api/parents/me/reports/' + report._id + '/pdf' } });
   } catch (error) {
-    logger.error('Error sending report', {
-      service: 'reports',
-      error: error.message,
-      user: req.user._id,
-      reportId: req.params.id
-    });
-    res.status(500).json({
-      success: false,
-      message: 'Error sending report',
-      error: error.message
-    });
-  }
-});
+    accepted = accepted || error.transportAccepted === true;
+    const outcome = accepted ? 'persistence_failure' : (['pdf_failure', 'configuration_failure'].includes(error.code) ? error.code : 'delivery_failure');
+    return res.status(outcome === 'configuration_failure' ? 503 : 502).json({ success: false, outcome, message: accepted ? 'Transport accepted; completion failed. Reconcile before retry.' : outcome === 'pdf_failure' ? 'PDF generation failed; no email was sent' : 'Email publication failed; report remains unsent', data: { transportAccepted: accepted } });
+  } finally { if (!accepted) publishing.delete(key); }
+}
+router.patch('/:id/send', protect, authorize('teacher', 'school_admin', 'super_admin'), publishReport);
+router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'super_admin'), publishReport);
 
-// @desc    Send report email to parent
-// @route   POST /api/reports/:id/send-email
-// @access  Private (teacher who created it, school_admin, super_admin)
-router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+// Explicit human-authorized repair; never sends email or changes approval/communication.
+router.post('/:id/regenerate-pdf', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
   try {
-    const { parentEmail } = req.body;
-    
-    if (!parentEmail) {
-      return res.status(400).json({
-        success: false,
-        message: 'Parent email is required'
-      });
-    }
-
-    // Find the report with populated data
-    const report = await Report.findById(req.params.id)
-      .populate('studentId', 'firstName lastName grade studentClass class parentEmail studentGrade')
-      .populate('teacherId', 'firstName lastName')
-      .populate('schoolId', 'name branding logo');
-
-    // Get parent user account to check phone number and WhatsApp preferences
-    let parentUser = null;
-    if (report.studentId && report.studentId.parentEmail) {
-      parentUser = await User.findOne({ 
-        email: report.studentId.parentEmail,
-        role: 'parent'
-      }).select('phoneNumber phone preferences');
-    }
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        message: 'Report not found'
-      });
-    }
-
-    // Check if user has permission to send this report
-    if (req.user.role === 'teacher' && report.teacherId._id.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only send reports you created'
-      });
-    }
-
-    // Get student and teacher names
-    const studentName = `${report.studentId.firstName} ${report.studentId.lastName}`;
-    const teacherName = `${report.teacherId.firstName} ${report.teacherId.lastName}`;
-    const schoolName = report.schoolId?.name || 'Barrana.ai School';
-    
-    // Get school logo as a relative file path (pdfService reads it from disk)
-    let schoolLogo = null;
-    if (report.schoolId?.branding?.logo) {
-      schoolLogo = report.schoolId.branding.logo; // e.g. /uploads/logos/school-xxx.png
-    } else if (report.schoolId?.logo) {
-      schoolLogo = report.schoolId.logo; // legacy fallback
-    }
-    logger.info(`School logo for email/PDF: ${schoolLogo || 'none (no logo uploaded)'}`)
-
-    // Prepare email data with WhatsApp information
-    const emailData = {
-      parentEmail,
-      studentName,
-      teacherName,
-      reportTitle: report.title,
-      reportContent: report.content,
-      reportDate: new Date(report.createdAt).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      }),
-      schoolName,
-      schoolId: report.schoolId._id.toString(),
-      schoolLogo: schoolLogo,
-      reportId: report._id.toString(),
-      attachments: report.attachments || [],  // ✅ FIX: Include attachments
-      // WhatsApp integration data
-      parentPhoneNumber: parentUser?.phoneNumber || parentUser?.phone || null,
-      whatsappEnabled: parentUser?.preferences?.notifications?.whatsapp || false
-    };
-
-    logger.info(`Preparing to send email with ${report.attachments?.length || 0} attachment(s)`);
-    logger.info(`WhatsApp settings for parent:`, {
-      hasParentUser: !!parentUser,
-      phoneNumber: emailData.parentPhoneNumber,
-      whatsappEnabled: emailData.whatsappEnabled,
-      parentPreferences: parentUser?.preferences
-    });
-
-    // Send the email
-    const emailResult = await sendReportEmail(emailData);
-
-    // Update report status to 'sent' and save PDF path if email was successful
-    if (emailResult.success) {
-      report.status = 'sent';
-      report.sentAt = new Date();
-      
-      // Save PDF path and URL if it was generated
-      if (emailResult.pdfPath) {
-        report.pdfPath = emailResult.pdfPath;
-        // Convert file path to URL (e.g., /uploads/pdfs/report-xxx.pdf)
-        const pdfFilename = path.basename(emailResult.pdfPath);
-        report.pdfUrl = `/uploads/pdfs/${pdfFilename}`;
-        logger.info(`Saving PDF to report - Path: ${report.pdfPath}, URL: ${report.pdfUrl}`);
-      }
-      
-      await report.save();
-      
-      logger.info(`Report ${report._id} status updated to 'sent' with pdfUrl: ${report.pdfUrl || 'none'}`);
-      
-      // Send push notification to parent (don't wait for it)
-      setImmediate(async () => {
-        try {
-          if (parentUser && parentUser.fcmTokens && parentUser.fcmTokens.length > 0) {
-            const reportTitle = report.templateId?.name || report.title || 'Report';
-            
-            // Send push notification
-            await firebaseService.sendNotificationToUser(
-              parentUser,
-              {
-                title: '📧 Report Sent',
-                body: `${reportTitle} for ${studentName} has been sent to your email.`,
-                type: 'report_sent',
-                priority: 'high'
-              },
-              {
-                reportId: report._id.toString(),
-                studentId: report.studentId._id.toString(),
-                studentName: studentName,
-                reportTitle: reportTitle,
-                teacherName: teacherName,
-                reportType: report.reportType,
-                pdfPath: report.pdfPath || null
-              }
-            );
-            
-            logger.info(`Push notification sent to parent for report sent`, {
-              parentEmail: parentEmail,
-              studentName: studentName,
-              reportId: report._id
-            });
-          }
-        } catch (notifError) {
-          // Log but don't fail the request
-          logger.error('Error sending push notification for sent report:', {
-            error: notifError.message,
-            reportId: report._id
-          });
-        }
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Report email sent successfully',
-      data: {
-        reportId: report._id,
-        emailResult,
-        pdfPath: report.pdfPath
-      }
-    });
-
-  } catch (error) {
-    logger.error('Error sending report email', {
-      service: 'reports',
-      error: error.message,
-      user: req.user._id,
-      reportId: req.params.id
-    });
-    
-    res.status(500).json({
-      success: false,
-      message: 'Error sending report email',
-      error: error.message
-    });
-  }
+    const report = await reportQuery(req.params.id);
+    if (!report || !canAccessReport(req.user, report)) return res.status(404).json({ success: false, message: 'Report not found' });
+    if (!['approved', 'sent'].includes(report.status) || (report.progressId && !canExposeProgressReport(report))) return res.status(409).json({ success: false, message: 'Report is not finalized' });
+    const pdf = await createReportPdf(report, deliveryData(report));
+    report.pdfArtifact = pdf.artifact;
+    await report.save();
+    res.json({ success: true, data: { reportId: report._id, pdfUrl: '/api/parents/me/reports/' + report._id + '/pdf' } });
+  } catch (_) { res.status(500).json({ success: false, message: 'PDF regeneration failed' }); }
 });
 
 // @desc    Test media file access
 // @route   GET /api/reports/test-media/:filename
 // @access  Public (for testing)
-router.get('/test-media/:filename', async (req, res) => {
+router.get('/test-media/:filename', developmentOnly, protect, async (req, res) => {
   try {
     const { filename } = req.params;
     const filePath = path.join(__dirname, '../uploads/media', filename);
@@ -1623,7 +1556,7 @@ router.get('/test-media/:filename', async (req, res) => {
 // @desc    Test temp-media endpoint (without auth)
 // @route   POST /api/reports/test-temp-media
 // @access  Public (for testing)
-router.post('/test-temp-media', tempUploadWithErrorHandling, async (req, res) => {
+router.post('/test-temp-media', developmentOnly, protect, tempUploadWithErrorHandling, async (req, res) => {
   try {
     console.log('=== TEST TEMP MEDIA UPLOAD ===');
     console.log('Files received:', req.files ? req.files.length : 0);
@@ -1662,7 +1595,7 @@ router.post('/test-temp-media', tempUploadWithErrorHandling, async (req, res) =>
 // @desc    Test upload endpoint
 // @route   POST /api/reports/test-upload
 // @access  Public (for testing)
-router.post('/test-upload', upload.array('media', 1), async (req, res) => {
+router.post('/test-upload', developmentOnly, protect, upload.array('media', 1), async (req, res) => {
   try {
     console.log('Test upload request:', {
       filesCount: req.files ? req.files.length : 0,
@@ -1724,6 +1657,9 @@ router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 's
       });
     }
 
+    if (!canAccessReport(req.user, report))
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    if (report.progressId && ['approved', 'sent', 'archived'].includes(report.status)) return res.status(409).json({ success: false, message: 'Finalized reports cannot have media changed' });
     // Check if user has permission to upload media for this report
     if (req.user.role === 'teacher' && report.teacherId.toString() !== req.user._id.toString()) {
       console.log('Permission denied for user:', req.user._id, 'report teacher:', report.teacherId);
@@ -1856,6 +1792,8 @@ router.get('/:reportId/media', protect, authorize('teacher', 'school_admin', 'su
       });
     }
 
+    if (!canAccessReport(req.user, report))
+      return res.status(404).json({ success: false, message: 'Report not found' });
     // Check if user has permission to view media for this report
     if (req.user.role === 'teacher' && report.teacherId.toString() !== req.user._id.toString()) {
       return res.status(403).json({
@@ -1901,6 +1839,9 @@ router.delete('/:reportId/media/:mediaId', protect, authorize('teacher', 'school
       });
     }
 
+    if (!canAccessReport(req.user, report))
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    if (report.progressId && ['approved', 'sent', 'archived'].includes(report.status)) return res.status(409).json({ success: false, message: 'Finalized reports cannot have media changed' });
     // Check if user has permission to delete media for this report
     if (req.user.role === 'teacher' && report.teacherId.toString() !== req.user._id.toString()) {
       return res.status(403).json({

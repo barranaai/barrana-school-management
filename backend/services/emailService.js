@@ -598,26 +598,15 @@ const sendWelcomeEmail = async (emailData) => {
 
 // Send report email to parent
 const sendReportEmail = async (emailData) => {
-  let pdfPath = null;
+  let transportAccepted = false;
+  let acceptedMessageId;
   
   try {
     const transporter = createTransporter();
     
     if (!transporter) {
-      // Mock email service for development when credentials are not configured
-      logger.info('Mock email service: Email would be sent in production', {
-        to: emailData.parentEmail,
-        subject: `Student Report: ${emailData.studentName} - ${emailData.reportTitle}`,
-        studentName: emailData.studentName,
-        teacherName: emailData.teacherName,
-        attachmentsCount: emailData.attachments?.length || 0
-      });
-      
-      return {
-        success: true,
-        messageId: `mock-${Date.now()}`,
-        message: 'Email sent successfully (mock service)'
-      };
+      if (process.env.NODE_ENV !== 'production') return { success: false, simulated: true, transportAccepted: false, message: 'Development simulation: no email transport configured' };
+      throw Object.assign(new Error('Email transport is not configured'), { code: 'configuration_failure' });
     }
 
     const { parentEmail, studentName, teacherName, reportTitle, reportContent, reportDate, schoolName, schoolId, attachments, reportId, schoolLogo } = emailData;
@@ -651,37 +640,12 @@ const sendReportEmail = async (emailData) => {
       schoolBranding
     });
 
-    // Generate PDF for the report
-    const pdfService = require('./pdfService');
-    let pdfInfo = null;
-    
+    // Fail before transport if the canonical verified artifact cannot be produced.
+    let pdfInfo;
     try {
-      logger.info(`[EMAIL-PDF] Step 1: Starting PDF generation for report: "${reportTitle}", student: "${studentName}"`);
-      logger.info(`[EMAIL-PDF] schoolLogo provided: ${schoolLogo || 'none'}`);
-      logger.info(`[EMAIL-PDF] reportContent length: ${reportContent ? reportContent.length : 0} chars`);
-      
-      pdfInfo = await pdfService.generateReportPDF({
-        studentName,
-        teacherName,
-        reportTitle,
-        reportContent,
-        reportDate,
-        schoolName,
-        schoolLogo,
-        reportId,
-        schoolBranding
-      });
-      pdfPath = pdfInfo.path;
-      
-      logger.info(`[EMAIL-PDF] Step 2: PDF generated successfully`);
-      logger.info(`[EMAIL-PDF]   filename: ${pdfInfo.filename}`);
-      logger.info(`[EMAIL-PDF]   path: ${pdfPath}`);
-      logger.info(`[EMAIL-PDF]   size: ${pdfInfo.size} bytes`);
-      logger.info(`[EMAIL-PDF]   file exists check: ${fs.existsSync(pdfPath)}`);
-    } catch (pdfError) {
-      logger.error(`[EMAIL-PDF] FAILED to generate PDF: ${pdfError.message}`, { stack: pdfError.stack });
-      // Continue sending email without PDF if generation fails
-    }
+      pdfInfo = await emailData.preparePdf({ schoolBranding });
+      if (!pdfInfo?.bytes || !pdfInfo?.artifact) throw new Error('No verified PDF');
+    } catch (_) { throw Object.assign(new Error('PDF generation failed'), { code: 'pdf_failure' }); }
 
     // Process attachments - convert URLs to file paths
     const emailAttachments = [];
@@ -692,25 +656,8 @@ const sendReportEmail = async (emailData) => {
       logger.info('[EMAIL-PDF] Step 3a: School logo added as inline CID attachment');
     }
     
-    // Add PDF as attachment
-    if (pdfInfo && pdfPath) {
-      const pdfExists = fs.existsSync(pdfPath);
-      logger.info(`[EMAIL-PDF] Step 3b: pdfInfo exists=${!!pdfInfo}, pdfPath=${pdfPath}, file exists=${pdfExists}`);
-      if (pdfExists) {
-        emailAttachments.push({
-          filename: pdfInfo.filename,
-          path: pdfPath,
-          contentType: 'application/pdf',
-          contentDisposition: 'attachment'
-        });
-        logger.info(`[EMAIL-PDF] Step 3c: PDF added to attachments list - ${pdfInfo.filename}`);
-      } else {
-        logger.error(`[EMAIL-PDF] PDF file not found on disk at: ${pdfPath}`);
-      }
-    } else {
-      logger.warn(`[EMAIL-PDF] Step 3b: No PDF to attach - pdfInfo=${!!pdfInfo}, pdfPath=${pdfPath}`);
-    }
-    
+    emailAttachments.push({ filename: pdfInfo.filename, content: pdfInfo.bytes, contentType: 'application/pdf', contentDisposition: 'attachment' });
+
     // Add media attachments
     if (attachments && Array.isArray(attachments) && attachments.length > 0) {
       for (const att of attachments) {
@@ -752,7 +699,11 @@ const sendReportEmail = async (emailData) => {
     logger.info(`Sending email with ${emailAttachments.length} attachment(s) to ${parentEmail}`);
 
     const result = await transporter.sendMail(mailOptions);
-    
+    const acceptedRecipients = (result.accepted || []).map(value => String(value.address || value).toLowerCase());
+    if (!acceptedRecipients.includes(parentEmail.toLowerCase())) throw new Error('Recipient was not accepted by the email transport');
+    transportAccepted = true;
+    acceptedMessageId = result.messageId;
+    const acceptedAt = new Date();
     logger.info(`Email sent successfully to ${parentEmail} for student ${studentName}`, {
       attachmentsCount: emailAttachments.length,
       pdfIncluded: !!pdfInfo,
@@ -776,7 +727,7 @@ const sendReportEmail = async (emailData) => {
       subject: `Student Report: ${studentName} - ${reportTitle}`,
       messagePreview: emailData.summary || 'Daily report for student',
       status: 'sent',
-      sentAt: new Date(),
+      sentAt: acceptedAt,
       providerMessageId: result.messageId,
       hasAttachments: emailAttachments.length > 0,
       attachments: emailAttachments.map(att => ({
@@ -784,11 +735,6 @@ const sendReportEmail = async (emailData) => {
         type: att.contentType
       }))
     });
-    
-    // Keep PDF for parent access (don't delete)
-    if (pdfPath && fs.existsSync(pdfPath)) {
-      logger.info(`PDF saved for parent access: ${pdfPath}`);
-    }
     
     // Send WhatsApp notification if enabled
     let whatsappResult = null;
@@ -869,24 +815,18 @@ const sendReportEmail = async (emailData) => {
       message: 'Email sent successfully',
       attachmentsIncluded: emailAttachments.length,
       pdfGenerated: !!pdfInfo,
-      pdfPath: pdfPath, // Return the PDF path to save in database
+      pdfArtifact: pdfInfo.artifact,
+      transportAccepted: true,
+      acceptedAt,
       whatsappSent: whatsappResult?.success || false
     };
 
   } catch (error) {
     logger.error('Error sending email:', error);
     
-    // Clean up PDF on error
-    if (pdfPath && fs.existsSync(pdfPath)) {
-      try {
-        fs.unlinkSync(pdfPath);
-        logger.info(`Cleaned up PDF after error: ${pdfPath}`);
-      } catch (cleanupError) {
-        logger.error('Error cleaning up PDF:', cleanupError);
-      }
-    }
-    
-    throw new Error(`Failed to send email: ${error.message}`);
+    error.transportAccepted = transportAccepted;
+    error.messageId = acceptedMessageId;
+    throw error;
   }
 };
 

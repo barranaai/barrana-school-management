@@ -1,3 +1,4 @@
+import { requestReportPublication, PublicationResponse } from './reportPublicationService';
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5050/api';
 
 export interface Report {
@@ -327,32 +328,9 @@ class ReportService {
   }
 
   // Send report to parents
-  async sendReportToParents(id: string, parentEmails: string[]): Promise<ApiResponse<Report>> {
-    try {
-      // Send email to each parent
-      const results = [];
-      for (const parentEmail of parentEmails) {
-        const response = await fetch(`${API_BASE_URL}${this.baseUrl}/${id}/send-email`, {
-          method: 'POST',
-          headers: this.getHeaders(),
-          body: JSON.stringify({ parentEmail }),
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-          throw new Error(data.message || `HTTP error! status: ${response.status}`);
-        }
-        
-        results.push(data);
-      }
-      
-      // Return the last result (they should all be the same)
-      return results[results.length - 1];
-    } catch (error) {
-      console.error('Error sending report:', error);
-      throw error;
-    }
+  async sendReportToParents(id: string, parentEmails: string[]): Promise<PublicationResponse> {
+    // One request for one publication; the backend validates/deduplicates recipients.
+    return requestReportPublication(API_BASE_URL + this.baseUrl + '/' + id + '/send-email', this.getHeaders(), { parentEmails });
   }
 
   // Get reports by teacher

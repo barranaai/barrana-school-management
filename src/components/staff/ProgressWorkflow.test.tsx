@@ -1,0 +1,42 @@
+import React from 'react';
+import { act, Simulate } from 'react-dom/test-utils';
+import { createRoot, Root } from 'react-dom/client';
+import ProgressWorkflow from './ProgressWorkflow';
+import { useAuth } from '../../contexts/AuthContext';
+import { workflowService, WorkflowError, conflictMessage } from '../../services/progressWorkflowService';
+jest.mock('../../contexts/AuthContext', () => ({ useAuth: jest.fn() }));
+jest.mock('../../services/progressWorkflowService', () => ({ ...jest.requireActual('../../services/progressWorkflowService'), workflowService: jest.fn() }));
+const session = { _id:'session', title:'Swimming', status:'completed', classId:'class', programId:'program', levelId:'level', plannedSessionSnapshot:{title:'Floating lesson',objectives:[{objectiveId:'objective',title:'Float'}]} };
+const progress = { _id:'progress',childParticipationId:'participation',objectiveResults:[],parameterResults:[],observations:'Observed floating',overallStatus:'in_progress' };
+const draft = { _id:'report',progressId:'progress',status:'draft',title:'Swimming report',content:'Review this draft',customFieldValues:{},templateSnapshot:{customFields:[]} };
+let api: any;
+beforeEach(()=>{
+  (useAuth as jest.Mock).mockReturnValue({user:{_id:'teacher',role:'teacher',schoolId:'school'},token:'test-token'});
+  api={sessions:jest.fn().mockResolvedValue([session]),session:jest.fn().mockResolvedValue({session,children:[{_id:'participation',childId:'child',status:'active'}],users:[{_id:'child',firstName:'Ava',lastName:'Test',parentEmail:'parent@test.local'}],program:{name:'Swimming'},level:{name:'Beginner'},parameters:[],templates:[{_id:'template',name:'Progress template'}]}),progress:jest.fn().mockResolvedValue([]),findReport:jest.fn().mockResolvedValue(undefined),saveProgress:jest.fn().mockResolvedValue(progress),draft:jest.fn().mockResolvedValue(draft),edit:jest.fn().mockResolvedValue(draft),approve:jest.fn().mockResolvedValue({...draft,status:'approved',finalizedSnapshot:{parentVisibleContent:'Final text',reportMetadata:{title:'Final title'}}}),send:jest.fn()};
+  (workflowService as jest.Mock).mockReturnValue(api);
+});
+let root: Root; let host: HTMLDivElement;
+beforeEach(()=>{host=document.createElement('div');document.body.appendChild(host);root=createRoot(host);});
+afterEach(()=>{act(()=>root.unmount());host.remove();});
+const step = async (fn:()=>void) => {await act(async()=>{fn();});};
+const text = () => document.body.textContent || '';
+function button(name:string): HTMLButtonElement {const b=Array.from(document.querySelectorAll('button')).find(b=>b.textContent===name);if(!b)throw new Error('Missing button: '+name);return b;}
+function field(name:string): HTMLElement {const l=Array.from(document.querySelectorAll('label')).find(l=>l.textContent===name);if(!l)throw new Error('Missing field: '+name);return document.getElementById(l.htmlFor)!;}
+async function choose(name:string, option:RegExp) {await step(()=>Simulate.mouseDown(field(name),{button:0}));const item=Array.from(document.querySelectorAll('[role="option"]')).find(e=>option.test(e.textContent || ''));if(!item)throw Error('Missing option');await step(()=>Simulate.click(item));}
+async function openChild() {await step(()=>root.render(<ProgressWorkflow />));await choose('Delivered session',/Swimming/);await choose('Participating child',/Ava/);expect(button('Save progress')).toBeInTheDocument();}
+test('parent cannot access staff workflow or trigger API loading',async()=>{(useAuth as jest.Mock).mockReturnValue({user:{role:'parent'},token:'parent'});await step(()=>root.render(<ProgressWorkflow />));expect(text()).toContain('Staff access only');expect(api.sessions).not.toHaveBeenCalled();});
+test('creates Progress, then explicitly generates a draft without approval or delivery',async()=>{
+ await openChild();await step(()=>Simulate.change(field('Internal observations'),{target:{value:'Floating observed'}} as any));await step(()=>Simulate.click(button('Save progress')));
+ expect(api.saveProgress).toHaveBeenCalledWith(undefined,expect.objectContaining({childParticipationId:'participation',observations:'Floating observed',objectiveResults:[expect.objectContaining({objectiveId:'objective',status:'not_observed'})]}));
+ await choose('Report template',/Progress template/);await step(()=>Simulate.click(button('Generate report draft')));
+ expect(text()).toContain('DRAFT — not sent to parents');expect(api.draft).toHaveBeenCalledWith('progress','template');expect(api.approve).not.toHaveBeenCalled();expect(api.send).not.toHaveBeenCalled();expect(text()).not.toContain('Send finalized report');
+});
+test('updates existing Progress rather than creating another record',async()=>{api.progress.mockResolvedValue([progress]);await openChild();await step(()=>Simulate.click(button('Save progress')));expect(api.saveProgress).toHaveBeenCalledWith('progress',expect.any(Object));});
+test('approval requires confirmation and finalized content becomes read-only',async()=>{
+ api.progress.mockResolvedValue([progress]);api.findReport.mockResolvedValue(draft);await openChild();await step(()=>Simulate.click(button('Approve / Finalize')));expect(api.approve).not.toHaveBeenCalled();await step(()=>Simulate.click(button('Confirm finalization')));
+ expect(text()).toContain('Finalized');expect(api.approve).toHaveBeenCalledWith('report');expect(field('Parent-visible content')).toHaveAttribute('readonly');expect(text()).not.toContain('Save draft');expect(api.send).not.toHaveBeenCalled();
+});
+test('409 keeps unsaved report work and requires explicit refresh',async()=>{
+ api.progress.mockResolvedValue([progress]);api.findReport.mockResolvedValue(draft);api.edit.mockRejectedValue(new WorkflowError('conflict',409,'REPORT_REVISION_CONFLICT'));await openChild();await step(()=>Simulate.change(field('Parent-visible content'),{target:{value:'My unsaved work'}} as any));await step(()=>Simulate.click(button('Save draft')));expect(text()).toContain(conflictMessage);expect(field('Parent-visible content')).toHaveValue('My unsaved work');expect(api.findReport).toHaveBeenCalledTimes(1);expect(api.approve).not.toHaveBeenCalled();
+});
+test('finalized report on initial load never exposes draft edit actions',async()=>{api.progress.mockResolvedValue([progress]);api.findReport.mockResolvedValue({...draft,status:'sent',finalizedSnapshot:{parentVisibleContent:'Final text',reportMetadata:{title:'Final'}}});await openChild();expect(field('Parent-visible content')).toHaveValue('Final text');expect(text()).not.toContain('Approve / Finalize');expect(text()).not.toContain('Send finalized report');});

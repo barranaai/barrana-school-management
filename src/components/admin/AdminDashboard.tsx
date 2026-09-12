@@ -1,3 +1,4 @@
+import ProgressWorkflow from '../staff/ProgressWorkflow';
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -50,6 +51,7 @@ import ExpensesList from './sections/Expenses/ExpensesList';
 const drawerWidth = 250;
 
 const menuItems = [
+  { text: 'Session Progress', icon: <Assessment />, section: 'session-progress', color: '#4facfe' },
   { text: 'Executive Summary', icon: <Dashboard />, section: 'dashboard', color: '#667eea' },
   { text: 'Student Management', icon: <People />, section: 'students', color: '#764ba2' },
   { text: 'Teacher Management', icon: <School />, section: 'teachers', color: '#f093fb' },
@@ -144,6 +146,7 @@ const AdminDashboard: React.FC = () => {
 
   const renderSection = () => {
     switch (currentSection) {
+      case 'session-progress': return <ProgressWorkflow />;
       case 'dashboard':
         return <ExecutiveSummary schoolBranding={schoolBranding} />;
       case 'students':

@@ -30,6 +30,12 @@ const reportSchema = new mongoose.Schema({
     ref: 'ReportTemplate',
     required: [true, 'Template ID is required']
   },
+  progressId: { type: mongoose.Schema.Types.ObjectId, ref: 'Progress' },
+  childParticipationId: { type: mongoose.Schema.Types.ObjectId, ref: 'ChildParticipation', index: true },
+  deliveredSessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveredSession', index: true },
+  progressSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+  templateSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+  finalizedSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
   
   // Report Content
   content: {
@@ -174,6 +180,13 @@ const reportSchema = new mongoose.Schema({
     default: []
   },
   
+  // Canonical private artifact. pdfUrl below is legacy data only.
+  pdfArtifact: {
+    type: new mongoose.Schema({ key: { type: String, required: true, match: /^[a-f0-9-]{36}\.pdf$/ },
+      sha256: { type: String, required: true, match: /^[a-f0-9]{64}$/ },
+      sourceHash: { type: String, required: true, match: /^[a-f0-9]{64}$/ } }, { _id: false }),
+    default: undefined
+  },
   // PDF URL for generated report
   pdfUrl: {
     type: String,
@@ -258,6 +271,7 @@ const reportSchema = new mongoose.Schema({
 reportSchema.index({ schoolId: 1, studentId: 1, createdAt: -1 });
 reportSchema.index({ teacherId: 1, status: 1 });
 reportSchema.index({ schoolId: 1, status: 1, createdAt: -1 });
+reportSchema.index({ progressId: 1 }, { unique: true, partialFilterExpression: { progressId: { $exists: true } } });
 reportSchema.index({ templateId: 1 });
 reportSchema.index({ 'reportPeriod.startDate': 1, 'reportPeriod.endDate': 1 });
 
@@ -370,18 +384,7 @@ reportSchema.methods.approve = function(userId, role, comments) {
   return this.save();
 };
 
-// Instance method to send to parents
-reportSchema.methods.sendToParents = function(parentEmails) {
-  this.parentCommunication.isSent = true;
-  this.parentCommunication.sentAt = new Date();
-  this.parentCommunication.sentTo = parentEmails.map(email => ({
-    email,
-    method: 'email'
-  }));
-  this.status = 'sent';
-  
-  return this.save();
-};
+// Publication is performed by the shared authorized delivery route, not a state-only model method.
 
 // Instance method to increment view count
 reportSchema.methods.incrementViewCount = function() {

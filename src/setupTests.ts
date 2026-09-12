@@ -36,6 +36,7 @@ const originalConsoleWarn = console.warn;
 beforeEach(() => {
   // Clear all mocks before each test
   jest.clearAllMocks();
+  (window.performance.now as jest.Mock).mockImplementation(() => Date.now());
   
   // Reset localStorage and sessionStorage
   localStorageMock.getItem.mockClear();
@@ -70,11 +71,6 @@ Object.defineProperty(window, 'performance', {
 // Mock moment timezone for consistent test results
 jest.mock('moment-timezone', () => {
   const actualMoment = jest.requireActual('moment-timezone');
-  return {
-    ...actualMoment,
-    tz: {
-      ...actualMoment.tz,
-      guess: jest.fn(() => 'America/New_York'),
-    },
-  };
+  actualMoment.tz.guess = jest.fn(() => 'America/New_York');
+  return actualMoment;
 });

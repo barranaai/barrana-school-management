@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const path = require('path');
 const Event = require('../models/Event');
 const User = require('../models/User');
 const ParentGroup = require('../models/ParentGroup');
@@ -223,7 +224,10 @@ function initializePDFCleanup() {
   cron.schedule('0 3 * * *', async () => {
     try {
       logger.info('Starting scheduled PDF cleanup');
-      const result = await cleanupOldPDFs(7); // Delete PDFs older than 7 days
+      // Fail closed if retained references cannot be read. Protect historical PDFs too.
+      const reports = await Report.find({ status: { $in: ['approved', 'sent', 'archived'] } }).select('pdfUrl pdfPath').lean();
+      const retained = reports.flatMap(report => [report.pdfUrl, report.pdfPath]).filter(value => typeof value === 'string').map(value => path.basename(value.replace(/\\/g, '/')));
+      const result = await cleanupOldPDFs(7, retained);
       logger.info(`PDF cleanup completed: ${result.deleted} files deleted`);
     } catch (error) {
       logger.error('Error during scheduled PDF cleanup:', error);

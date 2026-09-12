@@ -1,3 +1,4 @@
+import { requestReportPublication, PublicationResponse } from './reportPublicationService';
 // API Service for Barrana.ai
 // This service handles all HTTP requests to the backend
 
@@ -1116,14 +1117,8 @@ class ApiService {
     });
   }
 
-  async sendReportEmail(reportId: string, parentEmail: string): Promise<ApiResponse<{ reportId: string; emailResult: any }>> {
-    return this._request<{ reportId: string; emailResult: any }>(`/reports/${reportId}/send-email`, {
-      method: 'POST',
-      body: JSON.stringify({ parentEmail }),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+  async sendReportEmail(reportId: string, parentEmail: string): Promise<PublicationResponse> {
+    return requestReportPublication(API_BASE_URL + '/reports/' + reportId + '/send-email', this.getHeaders(), { parentEmail });
   }
 
   // Health check

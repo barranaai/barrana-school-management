@@ -526,12 +526,12 @@ const generateReportPDF = async (reportData) => {
     </html>
   `;
 
-  const filename = `report-${studentName.replace(/\s+/g, '-')}-${Date.now()}.pdf`;
+  const filename = reportData.filename || `report-${studentName.replace(/\s+/g, '-')}-${Date.now()}.pdf`;
 
   return await generatePDF({
     html,
     filename,
-    outputDir: 'uploads/pdfs',
+    outputDir: reportData.outputDir || 'uploads/pdfs',
     includeBackground: true,
     format: 'A4',
     margin: {
@@ -633,7 +633,7 @@ const deletePDF = async (pdfPath) => {
  * Clean up old PDF files (older than specified days)
  * @param {number} days - Delete PDFs older than this many days
  */
-const cleanupOldPDFs = async (days = 30) => {
+const cleanupOldPDFs = async (days = 30, retainedFilenames = []) => {
   try {
     const pdfDir = path.join(__dirname, '..', 'uploads/pdfs');
     
@@ -649,6 +649,8 @@ const cleanupOldPDFs = async (days = 30) => {
     for (const file of files) {
       const filePath = path.join(pdfDir, file);
       const stats = fs.statSync(filePath);
+      // Retained report artifacts live in a subdirectory; cleanup is temporary-only.
+      if (!stats.isFile() || retainedFilenames.includes(file)) continue;
       const age = now - stats.mtimeMs;
 
       if (age > maxAge) {

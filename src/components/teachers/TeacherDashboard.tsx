@@ -1,3 +1,4 @@
+import ProgressWorkflow from '../staff/ProgressWorkflow';
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -43,6 +44,7 @@ import { createTeacherTheme } from '../../theme/teacherTheme';
 const drawerWidth = 250;
 
 const menuItems = [
+  { text: 'Session Progress', icon: <Description />, section: 'session-progress', color: '#4facfe' },
   { text: 'Teacher Overview', icon: <Dashboard />, section: 'overview', color: '#667eea' },
   { text: 'My Students', icon: <People />, section: 'students', color: '#764ba2' },
   { text: 'My Reports', icon: <Description />, section: 'reports-listing', color: '#4facfe' },
@@ -247,6 +249,7 @@ const TeacherDashboard: React.FC = () => {
 
   const renderSection = () => {
     switch (currentSection) {
+      case 'session-progress': return <ProgressWorkflow />;
       case 'overview':
         return <TeacherOverview schoolBranding={schoolBranding} />;
       case 'students':

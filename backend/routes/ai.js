@@ -6,6 +6,12 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
+const User = require('../models/User');
+const Report = require('../models/Report');
+const ReportTemplate = require('../models/ReportTemplate');
+const { canAccessStudent, canAccessReport, belongsToSchool } = require('../middleware/resourceAuthorization');
+
+router.use(protect, authorize('teacher', 'school_admin', 'super_admin'));
 
 // Configure multer for file uploads
 const upload = multer({
@@ -59,9 +65,11 @@ router.post('/generate-report', async (req, res) => {
       });
     }
     
-    console.log('🤖 AI Report Generation Request:', req.body);
-    
-    const { transcription, studentName, grade, template, templateId, timestamp } = req.body;
+    const { transcription, studentName, grade, template, templateId, timestamp, studentId, reportId } = req.body;
+    if (studentId && !await canAccessStudent(req.user, await User.findById(studentId)))
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    if (reportId && !canAccessReport(req.user, await Report.findById(reportId)))
+      return res.status(404).json({ success: false, message: 'Report not found' });
     
     if (!transcription || !studentName) {
       return res.status(400).json({
@@ -74,10 +82,9 @@ router.post('/generate-report', async (req, res) => {
     let templateData = null;
     if (templateId) {
       try {
-        const ReportTemplate = require('../models/ReportTemplate');
         templateData = await ReportTemplate.findById(templateId);
-        console.log('🔍 Found template:', templateData ? templateData.name : 'Not found');
-        console.log('🔍 Template has AI prompt:', !!templateData?.aiPrompt);
+        if (!templateData || !belongsToSchool(req.user, templateData))
+          return res.status(404).json({ success: false, message: 'Report template not found' });
       } catch (error) {
         console.error('Error fetching template:', error);
         // Continue with static template if database fetch fails

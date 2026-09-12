@@ -1,0 +1,2 @@
+const mongoose=require('mongoose');
+const schema=new mongoose.Schema({schoolId:{type:mongoose.Schema.Types.ObjectId,ref:'School',required:true,index:true},name:{type:String,required:true,trim:true},description:{type:String,trim:true},isActive:{type:Boolean,default:true},displayOrder:{type:Number,default:0},metadata:{type:mongoose.Schema.Types.Mixed,default:{}}},{timestamps:true}); schema.index({schoolId:1,name:1}); module.exports=mongoose.model('Program',schema);

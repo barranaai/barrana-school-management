@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ReportTemplate = require('../models/ReportTemplate');
 const { protect, authorize } = require('../middleware/auth');
+const { scopeSchoolId } = require('../middleware/resourceAuthorization');
 const { logger } = require('../utils/logger');
 
 // @desc    Get all report templates for a school
@@ -12,11 +13,8 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), as
     const { schoolId } = req.query;
     const query = {};
 
-    if (schoolId) {
-      query.schoolId = schoolId;
-    } else if (req.user.role !== 'super_admin') {
-      query.schoolId = req.user.schoolId;
-    }
+    const scopedSchoolId = scopeSchoolId(req.user, schoolId);
+    if (scopedSchoolId) query.schoolId = scopedSchoolId;
 
     const templates = await ReportTemplate.find(query)
       .populate('schoolId', 'name')

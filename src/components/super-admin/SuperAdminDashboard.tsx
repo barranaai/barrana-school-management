@@ -1,3 +1,4 @@
+import ProgressWorkflow from '../staff/ProgressWorkflow';
 import React, { useState, useEffect } from 'react';
 import {
   Box,
@@ -190,6 +191,7 @@ const SuperAdminDashboard: React.FC = () => {
   const drawerWidth = 240;
 
   const menuItems = [
+  { text: 'Session Progress', icon: <Description />, section: 'session-progress', color: '#4facfe' },
     { text: 'Global Overview', section: 'overview', icon: <Dashboard /> },
     { text: 'School Management', section: 'schools', icon: <School /> },
     { text: 'School Configuration', section: 'reportTemplates', icon: <Description /> },
@@ -692,6 +694,7 @@ const SuperAdminDashboard: React.FC = () => {
 
   const renderSection = () => {
     switch (currentSection) {
+      case 'session-progress': return <ProgressWorkflow />;
       case 'overview':
         return <GlobalOverview />;
       case 'schools':

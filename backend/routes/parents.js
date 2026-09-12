@@ -2,14 +2,43 @@ const express = require('express');
 const { protect, authorize } = require('../middleware/auth');
 const User = require('../models/User');
 const Report = require('../models/Report');
+const { canExposeProgressReport, finalizedParentContent } = require('../utils/reportPublication');
 const Event = require('../models/Event');
 const School = require('../models/School');
 const Class = require('../models/Class');
 const { logger } = require('../utils/logger');
-const path = require('path');
 const fs = require('fs').promises;
+const { readReportPdf } = require('../services/reportPdf');
 
 const router = express.Router();
+const parentReportView = report => {
+  if (report.progressId) {
+    if (!canExposeProgressReport(report)) return null;
+    const child = report.studentId;
+    return {
+      _id: report._id,
+      studentId: child && child._id ? { _id: child._id, firstName: child.firstName, lastName: child.lastName, studentId: child.studentId } : child,
+      status: report.status,
+      ...finalizedParentContent(report),
+      pdfUrl: report.pdfArtifact ? `/api/parents/me/reports/${report._id}/pdf` : null,
+      sentAt: report.parentCommunication?.sentAt || null
+    };
+  }
+  const snap = report.finalizedSnapshot;
+  return {
+    _id: report._id,
+    studentId: report.studentId,
+    title: snap?.reportMetadata?.title || report.title,
+    reportPeriod: snap?.reportMetadata?.reportPeriod || report.reportPeriod,
+    reportType: snap?.reportMetadata?.reportType || report.reportType,
+    status: report.status,
+    content: snap?.parentVisibleContent || report.content,
+    customFieldValues: snap?.customFieldValues || report.customFieldValues,
+    attachments: snap?.attachments || (report.attachments || []),
+    pdfUrl: report.pdfArtifact ? `/api/parents/me/reports/${report._id}/pdf` : null,
+    sentAt: report.parentCommunication?.sentAt || null
+  };
+};
 
 // @desc    Get parent's children
 // @route   GET /api/parents/me/children
@@ -97,6 +126,7 @@ router.get('/me/reports', protect, authorize('parent'), async (req, res) => {
 
     // Get all reports for these students
     const reports = await Report.find({
+      schoolId: req.user.schoolId,
       studentId: { $in: studentIds },
       status: 'sent' // Only show sent reports
     })
@@ -115,12 +145,8 @@ router.get('/me/reports', protect, authorize('parent'), async (req, res) => {
 
     // Add PDF URL if exists
     const reportsWithPdf = reports.map(report => {
-      logger.info(`Report ${report._id}: pdfPath = ${report.pdfPath}, generating pdfUrl = ${report.pdfPath ? `/api/parents/me/reports/${report._id}/pdf` : null}`);
-      return {
-        ...report,
-        pdfUrl: report.pdfPath ? `/api/parents/me/reports/${report._id}/pdf` : null
-      };
-    });
+      return parentReportView(report);
+    }).filter(Boolean);
 
     logger.info(`Returning ${reportsWithPdf.length} reports to parent ${req.user.email}`);
 
@@ -148,13 +174,13 @@ router.get('/me/reports', protect, authorize('parent'), async (req, res) => {
 // @access  Private (Parent only)
 router.get('/me/reports/:id', protect, authorize('parent'), async (req, res) => {
   try {
-    const report = await Report.findById(req.params.id)
+    const report = await Report.findOne({ _id: req.params.id, schoolId: req.user.schoolId })
       .populate('studentId', 'firstName lastName studentId parentEmail')
       .populate('teacherId', 'firstName lastName email')
       .populate('templateId', 'name type')
       .lean();
 
-    if (!report) {
+    if (!report || (report.progressId && !canExposeProgressReport(report))) {
       return res.status(404).json({
         success: false,
         message: 'Report not found'
@@ -171,10 +197,7 @@ router.get('/me/reports/:id', protect, authorize('parent'), async (req, res) => 
 
     res.json({
       success: true,
-      data: {
-        ...report,
-        pdfUrl: report.pdfPath ? `/api/parents/me/reports/${report._id}/pdf` : null
-      }
+      data: parentReportView(report)
     });
   } catch (error) {
     logger.error('Error fetching report:', error);
@@ -193,11 +216,11 @@ router.get('/me/reports/:id/pdf', protect, authorize('parent'), async (req, res)
   try {
     logger.info(`Parent ${req.user.email} requesting PDF for report ${req.params.id}`);
     
-    const report = await Report.findById(req.params.id)
+    const report = await Report.findOne({ _id: req.params.id, schoolId: req.user.schoolId })
       .populate('studentId', 'parentEmail firstName lastName')
       .lean();
 
-    if (!report) {
+    if (!report || (report.progressId && !canExposeProgressReport(report))) {
       logger.warn(`Report ${req.params.id} not found`);
       return res.status(404).json({
         success: false,
@@ -205,7 +228,6 @@ router.get('/me/reports/:id/pdf', protect, authorize('parent'), async (req, res)
       });
     }
 
-    logger.info(`Report found: pdfPath = ${report.pdfPath}, studentEmail = ${report.studentId.parentEmail}`);
 
     // Verify parent has access
     if (report.studentId.parentEmail !== req.user.email) {
@@ -215,42 +237,18 @@ router.get('/me/reports/:id/pdf', protect, authorize('parent'), async (req, res)
         message: 'Not authorized to view this report'
       });
     }
+    if (!['approved', 'sent'].includes(report.status)) return res.status(404).json({ success: false, message: 'Report not available' });
 
-    // Check if PDF exists
-    if (!report.pdfPath) {
-      logger.warn(`Report ${req.params.id} has no pdfPath`);
-      return res.status(404).json({
-        success: false,
-        message: 'PDF not available for this report'
-      });
-    }
-
-    const pdfPath = path.join(__dirname, '..', report.pdfPath);
-    logger.info(`Attempting to serve PDF from: ${pdfPath}`);
-
-    try {
-      await fs.access(pdfPath);
-      logger.info(`PDF file exists at: ${pdfPath}`);
-    } catch (err) {
-      logger.error(`PDF file not found at: ${pdfPath}`, err);
-      return res.status(404).json({
-        success: false,
-        message: 'PDF file not found'
-      });
-    }
-
-    // Set headers for PDF download
-    const studentName = `${report.studentId.firstName}_${report.studentId.lastName}`;
-    const fileName = `Report_${studentName}_${report.date.toISOString().split('T')[0]}.pdf`;
-
-    logger.info(`Serving PDF: ${fileName}`);
-
+    let bytes;
+    try { bytes = await readReportPdf(report); }
+    catch (_) { return res.status(404).json({ success: false, code: 'PDF_UNAVAILABLE', message: 'PDF unavailable; authorized regeneration is required' }); }
+    const date = report.finalizedSnapshot?.finalizedAt || report.reportPeriod?.endDate || report.createdAt;
+    const stamp = new Date(date).toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-
-    // Stream the file
-    const fileStream = require('fs').createReadStream(pdfPath);
-    fileStream.pipe(res);
+    res.setHeader('Content-Disposition', 'inline; filename="Report_' + stamp + '.pdf"');
+    res.setHeader('Cache-Control', 'private, no-store');
+    // Send the exact verified bytes; no second file open or filesystem path exposure.
+    res.end(bytes);
 
   } catch (error) {
     logger.error('Error downloading report PDF:', error);

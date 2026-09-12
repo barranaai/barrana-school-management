@@ -34,25 +34,26 @@ export interface AIInsight {
 }
 
 class AIService {
-  private apiKey: string | null = null;
-  private baseUrl: string = 'https://api.openai.com/v1';
+  private baseUrl: string = '/api/ai';
+
+  private authHeaders(): Record<string, string> {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
 
   constructor() {
     // Frontend uses backend API, no direct OpenAI key needed
-    this.apiKey = 'backend-api'; // Placeholder to indicate backend usage
-    
+    localStorage.removeItem('openai_api_key');
     console.log('AIService initialized - Using backend API for AI operations');
   }
 
   // Initialize with API key
-  initialize(apiKey: string) {
-    this.apiKey = apiKey;
-    localStorage.setItem('openai_api_key', apiKey);
-    console.log('AIService initialized with API key');
+  initialize(_apiKey?: string) {
+    // Browser-side provider keys are intentionally ignored.
   }
 
   // Set API key manually (not needed for backend API usage)
-  setApiKey(apiKey: string) {
+  setApiKey(_apiKey?: string) {
     console.log('AIService: Using backend API, direct API key not required');
   }
 
@@ -70,8 +71,9 @@ class AIService {
       }
       
       // Use backend API endpoint instead of calling OpenAI directly
-      const response = await fetch('/api/ai/process-voice', {
+      const response = await fetch(`${this.baseUrl}/process-voice`, {
         method: 'POST',
+        headers: this.authHeaders(),
         body: formData
       });
 
@@ -107,10 +109,11 @@ class AIService {
       console.log('🤖 Web AI Report Generation Request:', request);
       
       // Use the backend API endpoint instead of calling OpenAI directly
-      const response = await fetch('/api/ai/generate-report', {
+      const response = await fetch(`${this.baseUrl}/generate-report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...this.authHeaders(),
         },
         body: JSON.stringify({
           transcription: request.transcription,
@@ -162,95 +165,31 @@ class AIService {
 
   // Check if API key is configured
   isConfigured(): boolean {
-    const configured = !!this.apiKey;
-    console.log('AIService.isConfigured() called - Result:', configured);
-    console.log('Current apiKey:', this.apiKey ? 'SET' : 'NOT SET');
-    return configured;
+    return true;
   }
 
   // Get API key status
   getApiKeyStatus(): { configured: boolean; source: string } {
-    if (process.env.REACT_APP_OPENAI_API_KEY) {
-      return { configured: true, source: 'environment' };
-    } else if (localStorage.getItem('openai_api_key')) {
-      return { configured: true, source: 'localStorage' };
-    } else {
-      return { configured: false, source: 'none' };
-    }
+    return { configured: true, source: 'backend' };
   }
 
   // Test API connection
   async testConnection(): Promise<AIResponse> {
-    if (!this.apiKey) {
-      return {
-        success: false,
-        error: 'API key not configured. Please add your OpenAI API key in settings.'
-      };
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/models`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`API test failed: ${response.statusText}`);
-      }
-
-      return {
-        success: true,
-        data: 'API connection successful'
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'API test failed'
-      };
-    }
+    return { success: true, data: 'AI requests are handled by the backend' };
   }
 
   // Get usage statistics
   async getUsage(): Promise<AIResponse> {
-    if (!this.apiKey) {
-      return {
-        success: false,
-        error: 'API key not configured'
-      };
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/usage`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Usage fetch failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      return {
-        success: true,
-        data: result
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Usage fetch failed'
-      };
-    }
+    return { success: false, error: 'Provider usage is not exposed to the browser' };
   }
 
   // Get AI insights for a student
   async getStudentInsights(studentId: string): Promise<AIInsight[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/insights/student/${studentId}`, {
+      const response = await fetch(`${this.baseUrl}/insights?studentId=${encodeURIComponent(studentId)}`, {
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
+          ...this.authHeaders(),
         }
       });
 
