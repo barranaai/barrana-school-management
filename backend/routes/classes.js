@@ -6,6 +6,7 @@ const { protect, authorize } = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 
 const router = express.Router();
+router.use('/options', require('./classOptions'));
 
 // @desc    Get all classes for a school
 // @route   GET /api/classes

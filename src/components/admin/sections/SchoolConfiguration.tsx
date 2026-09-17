@@ -7,6 +7,8 @@ import apiService from '../../../services/apiService';
 import { schoolService } from '../../../services/schoolService';
 import { useNavigate } from 'react-router-dom';
 import FrequencyConfiguration from './FrequencyConfiguration';
+import ProgramManagement from './ProgramManagement';
+import { Tabs, Tab } from '@mui/material';
 import {
   Box,
   Grid,
@@ -113,7 +115,14 @@ interface SchoolConfigurationProps {
   schoolBranding?: any;
 }
 
-const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBranding }) => {
+const SchoolConfiguration: React.FC<SchoolConfigurationProps> = (props) => {
+  const { user } = useAuth();
+  const [section, setSection] = useState('existing');
+  if (!user || !['school_admin', 'super_admin'].includes(user.role)) return <Alert severity="error">Administrator access required.</Alert>;
+  return <Box><Tabs value={section} onChange={(_, value) => setSection(value)} aria-label="School configuration sections"><Tab value="existing" label="School settings" /><Tab value="programs" label="Programs" /></Tabs>{section === 'programs' ? <ProgramManagement /> : <ExistingSchoolConfiguration {...props} />}</Box>;
+};
+
+const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBranding }) => {
   const { school } = useData();
   const { user, isAuthenticated, token } = useAuth();
   const navigate = useNavigate();
@@ -2398,4 +2407,4 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBrandin
   );
 };
 
-export default SchoolConfiguration; 
+export default SchoolConfiguration;
