@@ -15,7 +15,7 @@ beforeEach(()=>{
   (useAuth as jest.Mock).mockReturnValue({user:{_id:'admin',role:'school_admin',schoolId:'s'},token:'synthetic-token'});
   (fetch as jest.Mock).mockReset().mockImplementation((url:string,o:any)=>{
     if(o.method!=='GET')return Promise.resolve(reply(occurrence));
-    return Promise.resolve(reply(url.includes('/planned-sessions/')?planned:url.includes('/classes/options')?[{_id:'c',schoolId:'s',name:'Assigned class'}]:rows));
+    return Promise.resolve(reply(url.includes('/planned-sessions/')?planned:url.includes('/classes/options')?[{_id:'c',schoolId:'s',name:'Assigned class'}]:url.includes('/child-participations/eligible')?{eligible:[],participations:[]}:rows));
   });
   host=document.createElement('div');document.body.appendChild(host);root=createRoot(host);
 });
@@ -28,7 +28,7 @@ function field(name:string){const label=Array.from(document.querySelectorAll('la
 const change=(name:string,value:string)=>step(()=>Simulate.change(field(name),{target:{value}} as any));
 const writes=()=> (fetch as jest.Mock).mock.calls.filter(([,o])=>o.method!=='GET');
 test('context, list, dates, class, creator and back navigation',async()=>{
-  await render();expect(document.body).toHaveTextContent('Program → Level → Roadmap — Version 2 → Practice → Delivered Sessions');expect(document.body).toHaveTextContent('Assigned class');expect(document.body).toHaveTextContent('Delivered By: You');expect(document.body).toHaveTextContent('scheduled');expect(document.body).toHaveTextContent('09:00:00 UTC');await click('Back to Planned Sessions');expect(props.onBack).toHaveBeenCalled();
+  await render();expect(document.body).toHaveTextContent('Program → Level → Roadmap — Version 2 → Practice → Delivered Sessions');expect(document.body).toHaveTextContent('Assigned class');expect(document.body).toHaveTextContent('Delivered By: You');expect(document.body).toHaveTextContent('scheduled');expect(document.body).toHaveTextContent('09:00:00 UTC');await click('Manage Participants');expect(document.body).toHaveTextContent('Historical title → Participants');await click('Back to Delivered Sessions');await click('Back to Planned Sessions');expect(props.onBack).toHaveBeenCalled();
 });
 test('creation validates required fields, uses class options and refreshes',async()=>{
   await render();await click('Add Delivered Session');expect(button('Save Delivered Session')).toBeDisabled();

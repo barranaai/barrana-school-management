@@ -9,7 +9,7 @@ const id = n => String(n).padStart(24, '0');
 function fixture() {
   const schoolId = id(1), teacherId = id(2), childId = id(3), enrollmentId = id(4), classId = id(5);
   return { childId, enrollmentId,
-    teacher: { _id: teacherId, schoolId, role: 'teacher' }, child: { _id: childId, schoolId, role: 'student' },
+    teacher: { _id: teacherId, schoolId, role: 'teacher' }, child: { _id: childId, schoolId, role: 'student', firstName: 'Maya', lastName: 'Test' },
     session: { _id: id(6), schoolId, classId, programId: id(7), levelId: id(8), deliveredBy: teacherId, status: 'scheduled', scheduledAt: new Date('2026-09-19') },
     cls: { _id: classId, schoolId, isActive: true, assignedTeachers: [{ teacherId }] },
     enrollment: { _id: enrollmentId, schoolId, childId, programId: id(7), currentLevelId: id(8), status: 'active', startDate: '2026-09-15', classAssignments: [{ classId, status: 'active', effectiveFrom: '2026-09-15' }] }
@@ -19,14 +19,21 @@ function route(f) {
   const routes = [], writes = [];
   const router = { use() {} }; for (const method of ['get','post','put','delete']) router[method] = (url,...handlers) => routes.push({method,url,handlers});
   const participation = { _id:id(9), schoolId:id(1), deliveredSessionId:id(6), status:'active', async save(){writes.push('save');} };
-  const models = { Class: { findOne:async()=>f.cls }, User:{findOne:async()=>f.child}, Enrollment:{findOne:async()=>f.enrollment}, DeliveredSession:{findOne:async()=>f.session}, ChildParticipation:{findOne:async()=>participation,create:async body=>{writes.push('create');return body;}} };
+  const existing = f.existingParticipations || [];
+  const models = {
+    Class: { findOne:async()=>f.cls },
+    User:{findOne:async()=>f.child,find:()=>({select:async()=>[f.child]})},
+    Enrollment:{findOne:async()=>f.enrollment,find:async()=>[f.enrollment]},
+    DeliveredSession:{findOne:async()=>f.session},
+    ChildParticipation:{findOne:async()=>participation,find:()=>({sort:async()=>existing}),create:async body=>{writes.push('create');return body;}}
+  };
   const deps = { express:{Router:()=>router}, mongoose, '../middleware/auth':{protect(){},authorize:()=> (_req,_res,next)=>next()}, '../middleware/resourceAuthorization':{scopeSchoolId:user=>user.schoolId}, '../utils/operationalParticipationAuthorization':require('../utils/operationalParticipationAuthorization') };
   for(const [name,model] of Object.entries(models))deps['../models/'+name]=model;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../routes/childParticipations.js'),'utf8'),{module:{exports:{}},require:name=>{assert.ok(deps[name],name);return deps[name];}});
-  return {writes,async call(method='post',url='/',body={schoolId:id(1),deliveredSessionId:id(6),childId:f.childId,enrollmentId:f.enrollmentId}) {
-    const req={user:f.teacher,body,query:{},params:{id:id(9)}};const res={statusCode:200,status(n){this.statusCode=n;return this;},json(b){this.body=b;return this;}};
+  return {writes,async call(method='post',url='/',body={schoolId:id(1),deliveredSessionId:id(6),childId:f.childId,enrollmentId:f.enrollmentId},query={}) {
+    const req={user:f.teacher,body,query,params:{id:id(9)}};const res={statusCode:200,status(n){this.statusCode=n;return this;},json(b){this.body=b;return this;}};
     for(const handler of routes.find(r=>r.method===method&&r.url===url).handlers){let next=false;await handler(req,res,()=>{next=true;});if(!next)break;}return res;
-  }};
+}};
 }
 const cases = {
   'valid without legacy fields': [()=>{},true],
@@ -55,6 +62,16 @@ for(const status of ['paused','pending','completed','withdrawn','cancelled']) ca
 for(const [name,[change,allowed]] of Object.entries(cases))test(name+' (actual helper and POST route)',async()=>{const f=fixture();change(f);assert.equal(canCreateOperationalParticipation(f),allowed);const r=route(f);const response=await r.call();if(allowed){assert.equal(response.statusCode,201);assert.deepEqual(r.writes,['create']);}else{assert.ok([400,403].includes(response.statusCode));assert.deepEqual(r.writes,[]);}});
 test('historical owner can read/update after membership and enrollment end',async()=>{const f=fixture();f.cls.assignedTeachers=[];f.enrollment.status='withdrawn';const r=route(f);assert.equal((await r.call('get','/:id')).statusCode,200);assert.equal((await r.call('put','/:id',{status:'absent'})).statusCode,200);assert.deepEqual(r.writes,['save']);});
 test('historical nonowner remains denied',async()=>{const f=fixture();f.session.deliveredBy=id(99);const r=route(f);assert.equal((await r.call('get','/:id')).statusCode,404);assert.equal((await r.call('put','/:id',{status:'absent'})).statusCode,403);assert.deepEqual(r.writes,[]);});
+test('eligible roster reuses operational authorization and performs no writes',async()=>{
+  const f=fixture();const r=route(f);const response=await r.call('get','/eligible',{}, {schoolId:id(1),deliveredSessionId:id(6)});
+  assert.equal(response.statusCode,200);assert.equal(response.body.data.eligible.length,1);assert.equal(String(response.body.data.eligible[0].childId),f.childId);
+  assert.deepEqual(response.body.data.participations,[]);assert.deepEqual(r.writes,[]);
+});
+test('eligible roster excludes an existing participation and returns its safe display row',async()=>{
+  const f=fixture();f.existingParticipations=[{_id:id(9),schoolId:id(1),deliveredSessionId:id(6),childId:f.childId,enrollmentId:f.enrollmentId,status:'active'}];
+  const r=route(f);const response=await r.call('get','/eligible',{}, {schoolId:id(1),deliveredSessionId:id(6)});
+  assert.equal(response.statusCode,200);assert.equal(response.body.data.eligible.length,0);assert.equal(response.body.data.participations.length,1);assert.equal(response.body.data.participations[0].firstName,f.child.firstName);assert.deepEqual(r.writes,[]);
+});
 test('legacy child helper retains direct teacher/class behavior without enrollment fallback',async()=>{
   const box={module:{exports:{}},require:name=>{assert.equal(name,'../models/Class');return {exists:async q=>q._id===id(5)&&q.schoolId===id(1)&&q['assignedTeachers.teacherId']===id(2)};}};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../middleware/resourceAuthorization.js'),'utf8'),box);

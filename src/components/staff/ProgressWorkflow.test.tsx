@@ -6,7 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { workflowService, WorkflowError, conflictMessage } from '../../services/progressWorkflowService';
 jest.mock('../../contexts/AuthContext', () => ({ useAuth: jest.fn() }));
 jest.mock('../../services/progressWorkflowService', () => ({ ...jest.requireActual('../../services/progressWorkflowService'), workflowService: jest.fn() }));
-const session = { _id:'session', title:'Swimming', status:'completed', classId:'class', programId:'program', levelId:'level', plannedSessionSnapshot:{title:'Floating lesson',objectives:[{objectiveId:'objective',title:'Float'}]} };
+jest.mock('../admin/sections/SessionParticipationManagement', () => ({ __esModule: true, default: (props:any) => <div>Participation manager for {props.session.title}<button onClick={props.onClose}>Back from participants</button></div> }));
+const session = { _id:'session', schoolId:'school', title:'Swimming', status:'completed', classId:'class', programId:'program', levelId:'level', plannedSessionSnapshot:{title:'Floating lesson',objectives:[{objectiveId:'objective',title:'Float'}]} };
 const progress = { _id:'progress',childParticipationId:'participation',objectiveResults:[],parameterResults:[],observations:'Observed floating',overallStatus:'in_progress' };
 const draft = { _id:'report',progressId:'progress',status:'draft',title:'Swimming report',content:'Review this draft',customFieldValues:{},templateSnapshot:{customFields:[]} };
 let api: any;
@@ -25,6 +26,7 @@ function field(name:string): HTMLElement {const l=Array.from(document.querySelec
 async function choose(name:string, option:RegExp) {await step(()=>Simulate.mouseDown(field(name),{button:0}));const item=Array.from(document.querySelectorAll('[role="option"]')).find(e=>option.test(e.textContent || ''));if(!item)throw Error('Missing option');await step(()=>Simulate.click(item));}
 async function openChild() {await step(()=>root.render(<ProgressWorkflow />));await choose('Delivered session',/Swimming/);await choose('Participating child',/Ava/);expect(button('Save progress')).toBeInTheDocument();}
 test('parent cannot access staff workflow or trigger API loading',async()=>{(useAuth as jest.Mock).mockReturnValue({user:{role:'parent'},token:'parent'});await step(()=>root.render(<ProgressWorkflow />));expect(text()).toContain('Staff access only');expect(api.sessions).not.toHaveBeenCalled();});
+test('teacher can open participation management only after selecting an authorized session',async()=>{await step(()=>root.render(<ProgressWorkflow />));expect(text()).not.toContain('Participation manager');await choose('Delivered session',/Swimming/);await step(()=>Simulate.click(button('Manage Participants')));expect(text()).toContain('Participation manager for Swimming');await step(()=>Simulate.click(button('Back from participants')));expect(text()).toContain('Participating child');});
 test('creates Progress, then explicitly generates a draft without approval or delivery',async()=>{
  await openChild();await step(()=>Simulate.change(field('Internal observations'),{target:{value:'Floating observed'}} as any));await step(()=>Simulate.click(button('Save progress')));
  expect(api.saveProgress).toHaveBeenCalledWith(undefined,expect.objectContaining({childParticipationId:'participation',observations:'Floating observed',objectiveResults:[expect.objectContaining({objectiveId:'objective',status:'not_observed'})]}));

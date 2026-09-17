@@ -6,6 +6,7 @@ import { Level } from '../../../services/levelService';
 import { Roadmap } from '../../../services/roadmapService';
 import { PlannedSession } from '../../../services/plannedSessionService';
 import { DeliveredSession, DeliveryStatus, deliveredSessionService, deliveredSessionFailure, nextDeliveryStatuses } from '../../../services/deliveredSessionService';
+import SessionParticipationManagement from './SessionParticipationManagement';
 
 interface Context { schoolId: string; program: Program; level: Level; roadmap: Roadmap; plannedSession: PlannedSession; onBack: () => void; }
 const displayDate = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString().replace('T', ' ').replace('.000Z', ' UTC') : 'Not recorded';
@@ -43,6 +44,7 @@ function Occurrences({ program, level, roadmap, plannedSession, onBack, token, u
   const [adjustments, setAdjustments] = useState('');
   const [action, setAction] = useState<{ row: DeliveredSession; status: DeliveryStatus }>();
   const [detail, setDetail] = useState<DeliveredSession>();
+  const [participationSession, setParticipationSession] = useState<DeliveredSession>();
   useEffect(() => {
     let active = true; setLoading(true); setData(undefined);
     api.load().then(value => { if (active) { setData(value); setBlocked(false); } })
@@ -52,7 +54,7 @@ function Occurrences({ program, level, roadmap, plannedSession, onBack, token, u
   const disabled = loading || busy || blocked || !data;
   const owns = (row: DeliveredSession) => role !== 'teacher' || row.deliveredBy === userId;
   const className = (id: string) => data?.classes.find(c => c._id === id)?.name || 'Class ID: ' + id;
-  function refresh() { setForm(undefined); setAction(undefined); setDetail(undefined); setError(false); setSuccess(''); setReload(n => n + 1); }
+  function refresh() { setForm(undefined); setAction(undefined); setDetail(undefined); setParticipationSession(undefined); setError(false); setSuccess(''); setReload(n => n + 1); }
   function open(row?: DeliveredSession) {
     setForm({ row }); setClassId(row?.classId || ''); setScheduledAt(inputDate(row?.scheduledAt));
     setNotes(row?.deliveryNotes || ''); setAdjustments(row?.methodologyAdjustments || ''); setSuccess('');
@@ -74,6 +76,7 @@ function Occurrences({ program, level, roadmap, plannedSession, onBack, token, u
     catch (_) { setError(true); setBlocked(true); } finally { setBusy(false); }
   }
   const feedback = error && <Alert severity="error">{deliveredSessionFailure}</Alert>;
+  if (participationSession) return <SessionParticipationManagement token={token} schoolId={roadmap.schoolId} session={participationSession} onClose={() => setParticipationSession(undefined)} />;
   return <Stack spacing={2}>
     <Button disabled={busy} onClick={onBack}>Back to Planned Sessions</Button>
     <Typography variant="h5">{program.name} → {level.name} → {roadmap.name} — Version {roadmap.version} → {data?.planned.title || plannedSession.title} → Delivered Sessions</Typography>
@@ -90,6 +93,7 @@ function Occurrences({ program, level, roadmap, plannedSession, onBack, token, u
       <Typography>Delivered By: {row.deliveredBy === userId ? 'You' : 'Staff ID: ' + row.deliveredBy}</Typography>
       <Typography>Scheduled At: {displayDate(row.scheduledAt)}</Typography><Typography>Delivered At: {displayDate(row.deliveredAt)}</Typography>
       <Typography sx={{ whiteSpace: 'pre-wrap' }}>Delivery Notes: {row.deliveryNotes || 'None'}</Typography>
+      <Button onClick={() => setParticipationSession(row)}>Manage Participants</Button>
       <Button onClick={() => setDetail(row)}>View planned snapshot</Button>
       {owns(row) && !!nextDeliveryStatuses[row.status]?.length && <Stack direction="row" spacing={1}>
         <Button disabled={disabled} onClick={() => open(row)}>Edit Occurrence</Button>

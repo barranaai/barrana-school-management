@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import { identity, Parameter, Participation, Progress, Session, WorkflowReport, WorkflowService, workflowError, workflowService } from '../../services/progressWorkflowService';
+import SessionParticipationManagement from '../admin/sections/SessionParticipationManagement';
 
 const objectiveStatuses = ['not_observed', 'achieved', 'partially_achieved', 'not_achieved', 'needs_improvement'];
 const label = (value: string) => value.replace(/_/g, ' ');
@@ -37,20 +38,23 @@ function StaffWorkflow({ token, role, userSchool }: { token: string; role: strin
     {!school && <Alert severity="info">Choose a school to view its sessions.</Alert>}
     {school && !loading && !error && sessions.length === 0 && <Alert severity="info">No delivered sessions are available. Sessions must be configured before recording progress.</Alert>}
     {sessions.length > 0 && <TextField select label="Delivered session" value={selected} onChange={e => setSelected(e.target.value)}>{sessions.map(s => <MenuItem key={s._id} value={s._id}>{s.title} — {date(s.scheduledAt)} ({label(s.status)})</MenuItem>)}</TextField>}
-    {selected && <SessionEntry key={school + selected} api={api} sessionId={selected} />}
+    {selected && <SessionEntry key={school + selected} api={api} sessionId={selected} token={token} schoolId={school} />}
   </Stack>;
 }
-function SessionEntry({ api, sessionId }: { api: WorkflowService; sessionId: string }) {
+function SessionEntry({ api, sessionId, token, schoolId }: { api: WorkflowService; sessionId: string; token: string; schoolId: string }) {
   const [data, setData] = useState<Awaited<ReturnType<WorkflowService['session']>>>();
   const [error, setError] = useState(''); const [selected, setSelected] = useState('');
+  const [managingParticipants, setManagingParticipants] = useState(false);
   useEffect(() => { let active = true; api.session(sessionId).then(r => { if(active) setData(r); }).catch(e => { if(active) setError(workflowError(e)); }); return () => { active = false; }; }, [api, sessionId]);
   if(error) return <Alert severity="error">{error}</Alert>;
   if(!data) return <CircularProgress aria-label="Loading session" />;
   const { session, children, users } = data;
+  if(managingParticipants) return <SessionParticipationManagement token={token} schoolId={schoolId} session={session as any} onClose={() => setManagingParticipants(false)} />;
   const classChild = users.find(u => identity(u.classId) === session.classId && u.studentClass);
   const child = children.find(p => p._id === selected);
   const user = users.find(u => u._id === identity(child?.childId));
   return <Stack spacing={2}><Paper sx={{ p: 2 }}><Typography variant="h5">{session.plannedSessionSnapshot.title}</Typography><Typography>Class: {classChild?.studentClass || session.classId}</Typography><Typography>Program: {data.program.name} · Level: {data.level.name}</Typography><Typography>Scheduled: {date(session.scheduledAt)} · Delivered: {date(session.deliveredAt)}</Typography><Chip label={label(session.status)} /><Typography variant="h6" sx={{mt:2}}>Planned objectives</Typography>{session.plannedSessionSnapshot.objectives.map(o=><Typography key={o.objectiveId}>• {o.title} — {o.expectedOutcome || o.description}</Typography>)}</Paper>
+    <Button onClick={() => setManagingParticipants(true)}>Manage Participants</Button>
     {!['in_progress','completed'].includes(session.status) && <Alert severity="info">Progress can be recorded only for an in-progress or completed session.</Alert>}
     {children.length === 0 ? <Alert severity="info">No participating children in this session.</Alert> : <TextField select label="Participating child" value={selected} onChange={e => setSelected(e.target.value)}>{children.map(p => { const u = users.find(u => u._id === identity(p.childId)); return <MenuItem key={p._id} value={p._id}>{u ? u.firstName + ' ' + u.lastName : identity(p.childId)} — {label(p.status)}</MenuItem>; })}</TextField>}
     {child && <ChildEntry key={child._id} api={api} session={session} participation={child} parameters={data.parameters} templates={data.templates} parentEmail={user?.parentEmail || ''} />}
