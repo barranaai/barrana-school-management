@@ -11,6 +11,55 @@ const bcrypt = require('bcryptjs');
 const { upload, uploadSchoolLogo, getSchoolLogo, deleteSchoolLogo } = require('../services/logoService');
 const { sendWelcomeEmail } = require('../services/emailService');
 
+const toPlainObject = value => value?.toObject ? value.toObject({ virtuals: true }) : { ...value };
+const pickDefined = (source, fields) => fields.reduce((result, field) => {
+  if (source && source[field] !== undefined) result[field] = source[field];
+  return result;
+}, {});
+const safeCommunication = communication => ({
+  whatsapp: pickDefined(communication?.whatsapp, ['enabled', 'phoneNumber', 'displayName']),
+  email: pickDefined(communication?.email, ['enabled', 'fromName', 'fromEmail', 'replyTo']),
+  sms: pickDefined(communication?.sms, ['enabled', 'phoneNumber'])
+});
+const organizationSchoolView = school => {
+  const value = toPlainObject(school);
+  return pickDefined({
+    ...value,
+    communication: safeCommunication(value.communication)
+  }, [
+    '_id', 'name', 'slug', 'accountType', 'organizationType', 'terminologyProfile',
+    'workspaceProfile', 'contactPerson', 'address', 'schoolType', 'gradeLevels',
+    'estimatedStudents', 'estimatedParticipants', 'settings', 'branding',
+    'communication', 'isActive', 'createdAt', 'updatedAt'
+  ]);
+};
+const teacherSchoolView = school => {
+  const value = toPlainObject(school);
+  return pickDefined({
+    ...value,
+    settings: pickDefined(value.settings, ['timezone', 'language', 'dateFormat'])
+  }, [
+    '_id', 'name', 'slug', 'accountType', 'organizationType', 'terminologyProfile',
+    'workspaceProfile', 'settings', 'branding', 'isActive', 'updatedAt'
+  ]);
+};
+const schoolViewFor = (user, school) => {
+  if (user?.role === 'super_admin') return school;
+  return user?.role === 'teacher' ? teacherSchoolView(school) : organizationSchoolView(school);
+};
+const schoolAdminUpdate = body => {
+  const update = pickDefined(body, [
+    'name', 'schoolType', 'gradeLevels', 'estimatedStudents', 'estimatedParticipants'
+  ]);
+  if (body.contactPerson !== undefined) {
+    update.contactPerson = pickDefined(body.contactPerson, ['name', 'email', 'phone', 'role']);
+  }
+  if (body.address !== undefined) {
+    update.address = pickDefined(body.address, ['street', 'city', 'state', 'zipCode', 'country']);
+  }
+  return update;
+};
+
 // Helper function to generate school admin login credentials
 const generateSchoolAdminCredentials = async (contactPerson, schoolId) => {
   try {
@@ -101,7 +150,7 @@ router.get('/:id', protect, authorize('super_admin', 'school_admin', 'teacher'),
 
     res.json({
       success: true,
-      data: school
+      data: schoolViewFor(req.user, school)
     });
   } catch (error) {
     logger.error('Error fetching school:', error);
@@ -183,7 +232,7 @@ router.put('/:id/settings', protect, authorize('super_admin', 'school_admin'), a
     res.json({
       success: true,
       message: 'School settings updated successfully',
-      data: updatedSchool
+      data: schoolViewFor(req.user, updatedSchool)
     });
   } catch (error) {
     logger.error('Error updating school settings:', error);
@@ -361,17 +410,19 @@ router.put('/:id', [
       });
     }
 
-    // Update school
+    const updateData = req.user.role === 'super_admin' ? req.body : schoolAdminUpdate(req.body);
+
+    // Update only fields authorized for the caller's role.
     const updatedSchool = await School.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      { $set: updateData },
       { new: true, runValidators: true }
     );
 
     res.json({
       success: true,
       message: 'School updated successfully',
-      data: updatedSchool
+      data: schoolViewFor(req.user, updatedSchool)
     });
   } catch (error) {
     logger.error('Error updating school:', error);
@@ -575,8 +626,8 @@ router.put('/:id/communication', protect, authorize('school_admin', 'super_admin
     if (whatsapp) {
       if (whatsapp.enabled !== undefined) updateData['communication.whatsapp.enabled'] = whatsapp.enabled;
       if (whatsapp.phoneNumber !== undefined) updateData['communication.whatsapp.phoneNumber'] = whatsapp.phoneNumber;
-      if (whatsapp.twilioAccountSid !== undefined) updateData['communication.whatsapp.twilioAccountSid'] = whatsapp.twilioAccountSid;
-      if (whatsapp.twilioAuthToken !== undefined) updateData['communication.whatsapp.twilioAuthToken'] = whatsapp.twilioAuthToken;
+      if (req.user.role === 'super_admin' && whatsapp.twilioAccountSid !== undefined) updateData['communication.whatsapp.twilioAccountSid'] = whatsapp.twilioAccountSid;
+      if (req.user.role === 'super_admin' && whatsapp.twilioAuthToken !== undefined) updateData['communication.whatsapp.twilioAuthToken'] = whatsapp.twilioAuthToken;
       if (whatsapp.displayName !== undefined) updateData['communication.whatsapp.displayName'] = whatsapp.displayName;
     }
     
@@ -590,8 +641,8 @@ router.put('/:id/communication', protect, authorize('school_admin', 'super_admin
     if (sms) {
       if (sms.enabled !== undefined) updateData['communication.sms.enabled'] = sms.enabled;
       if (sms.phoneNumber !== undefined) updateData['communication.sms.phoneNumber'] = sms.phoneNumber;
-      if (sms.twilioAccountSid !== undefined) updateData['communication.sms.twilioAccountSid'] = sms.twilioAccountSid;
-      if (sms.twilioAuthToken !== undefined) updateData['communication.sms.twilioAuthToken'] = sms.twilioAuthToken;
+      if (req.user.role === 'super_admin' && sms.twilioAccountSid !== undefined) updateData['communication.sms.twilioAccountSid'] = sms.twilioAccountSid;
+      if (req.user.role === 'super_admin' && sms.twilioAuthToken !== undefined) updateData['communication.sms.twilioAuthToken'] = sms.twilioAuthToken;
     }
 
     const updatedSchool = await School.findByIdAndUpdate(
@@ -606,7 +657,9 @@ router.put('/:id/communication', protect, authorize('school_admin', 'super_admin
       success: true,
       message: 'Communication settings updated successfully',
       data: {
-        communication: updatedSchool.communication
+        communication: req.user.role === 'super_admin'
+          ? updatedSchool.communication
+          : safeCommunication(updatedSchool.communication)
       }
     });
   } catch (error) {
@@ -619,4 +672,4 @@ router.put('/:id/communication', protect, authorize('school_admin', 'super_admin
   }
 });
 
-module.exports = router; 
+module.exports = router;

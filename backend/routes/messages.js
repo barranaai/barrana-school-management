@@ -195,8 +195,19 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
       });
     }
 
-    // Get recipient details
-    const recipient = await User.findById(recipientId).select('firstName lastName email role');
+    if (!req.user.schoolId) {
+      return res.status(400).json({
+        success: false,
+        message: 'A school context is required to create a conversation'
+      });
+    }
+
+    // Resolve references inside the sender's tenant before any conversation/message write.
+    const recipient = await User.findOne({
+      _id: recipientId,
+      schoolId: req.user.schoolId,
+      isActive: true
+    }).select('firstName lastName email role schoolId');
     
     if (!recipient) {
       return res.status(404).json({
@@ -218,6 +229,26 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
       });
     }
 
+    let studentData = null;
+    if (studentId) {
+      const student = await User.findOne({
+        _id: studentId,
+        schoolId: req.user.schoolId,
+        role: 'student',
+        isActive: true
+      }).select('firstName lastName schoolId role');
+      if (!student) {
+        return res.status(404).json({
+          success: false,
+          message: 'Student not found'
+        });
+      }
+      studentData = {
+        studentId: student._id,
+        studentName: `${student.firstName} ${student.lastName}`
+      };
+    }
+
     let conversation = null;
 
     // Check if conversation already exists (only if not forcing new thread)
@@ -231,17 +262,6 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
 
     // Create new conversation if doesn't exist or if forcing new thread
     if (!conversation) {
-      let studentData = null;
-      if (studentId) {
-        const student = await User.findById(studentId).select('firstName lastName');
-        if (student) {
-          studentData = {
-            studentId: student._id,
-            studentName: `${student.firstName} ${student.lastName}`
-          };
-        }
-      }
-
       conversation = await Conversation.create({
         participants: [
           {

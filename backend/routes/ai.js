@@ -9,7 +9,7 @@ const OpenAI = require('openai');
 const User = require('../models/User');
 const Report = require('../models/Report');
 const ReportTemplate = require('../models/ReportTemplate');
-const { canAccessStudent, canAccessReport, belongsToSchool } = require('../middleware/resourceAuthorization');
+const { canAccessStudent, canAccessReport } = require('../middleware/resourceAuthorization');
 
 router.use(protect, authorize('teacher', 'school_admin', 'super_admin'));
 
@@ -81,13 +81,17 @@ router.post('/generate-report', async (req, res) => {
     // Try to fetch the template from database if templateId is provided
     let templateData = null;
     if (templateId) {
+      const templateSchoolId = req.user.role === 'super_admin' ? req.body.schoolId : req.user.schoolId;
+      if (!templateSchoolId) {
+        return res.status(400).json({ success: false, message: 'School context is required' });
+      }
       try {
-        templateData = await ReportTemplate.findById(templateId);
-        if (!templateData || !belongsToSchool(req.user, templateData))
+        templateData = await ReportTemplate.findOne({ _id: templateId, schoolId: templateSchoolId });
+        if (!templateData)
           return res.status(404).json({ success: false, message: 'Report template not found' });
       } catch (error) {
-        console.error('Error fetching template:', error);
-        // Continue with static template if database fetch fails
+        logger.error('Error fetching report template', error);
+        return res.status(404).json({ success: false, message: 'Report template not found' });
       }
     }
     
