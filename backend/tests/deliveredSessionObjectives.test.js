@@ -20,7 +20,7 @@ function setup() {
     Program: { findOne: async () => ({ _id: program }) }, Level: { findOne: async () => ({ _id: level }) },
     Class: { findOne: async () => ({ _id: cls, assignedTeachers: [{ teacherId: teacher }] }) },
     Requirement: { find: async () => [{ _id: requirement, name: 'Floating' }] },
-    Parameter: { find: async () => [{ _id: parameter, requirementId: requirement, name: 'Seconds', type: 'number' }] },
+    Parameter: { find: async query => (query?._id?.$in || [parameter]).map(_id => ({ _id, requirementId: requirement, name: 'Seconds', type: 'number' })) },
     DeliveredSession: { findOne: async () => state.delivered, create: async payload => {
       const row = new DeliveredSession(payload); await row.validate();
       // BSON round-trip + hydration approximates persistence without any connection or save.
@@ -93,4 +93,12 @@ test('Progress accepts the preserved ID, but rejects title/sequence or unrelated
     assert.equal(r.statusCode, 400); assert.match(r.body.message, /does not match/);
   }
   assert.equal(h.state.progressCreates.length, 1);
+});
+
+test('Progress accepts only parameter IDs referenced by the Delivered Session snapshot', async () => {
+  const h = setup(); await h.create(); h.state.delivered.status = 'in_progress';
+  const valid = await h.request('progress', { childParticipationId: id(10), parameterResults: [{ parameterId: parameter, value: 10 }] });
+  assert.equal(valid.statusCode, 201); assert.equal(String(h.state.progressCreates[0].parameterResults[0].parameterId), String(parameter));
+  const unrelated = await h.request('progress', { childParticipationId: id(10), parameterResults: [{ parameterId: id(99), value: 10 }] });
+  assert.equal(unrelated.statusCode, 400); assert.match(unrelated.body.message, /Delivered Session snapshot/); assert.equal(h.state.progressCreates.length, 1);
 });

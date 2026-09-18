@@ -12,51 +12,56 @@ function ValueInput({ type, name, value, options = [], onChange, disabled = fals
   if (type === 'checkbox') return <FormControlLabel label={name} control={<Checkbox checked={value === true} disabled={disabled} onChange={e => onChange(e.target.checked)} />} />;
   return <TextField fullWidth label={name} value={inputValue(value)} disabled={disabled} select={type === 'select'} type={['number','rating','percentage'].includes(type) ? 'number' : 'text'} inputProps={type === 'percentage' ? { min: 0, max: 100 } : {}} onChange={e => onChange(e.target.value)}>{type === 'select' && options.map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}</TextField>;
 }
-export default function ProgressWorkflow() {
+interface ProgressWorkflowProps { initialSchoolId?: string; initialSessionId?: string; initialParticipationId?: string; onClose?: () => void; }
+export default function ProgressWorkflow({ initialSchoolId = '', initialSessionId = '', initialParticipationId = '', onClose }: ProgressWorkflowProps = {}) {
   const { user, token } = useAuth();
   if (!user || !['teacher','school_admin','super_admin'].includes(user.role)) return <Alert severity="error">Staff access only. Parents cannot access this workflow.</Alert>;
   if (!token) return <Alert severity="error">Please sign in again.</Alert>;
-  return <StaffWorkflow key={user._id} token={token} role={user.role} userSchool={identity(user.schoolId)} />;
+  const userSchool = identity(user.schoolId);
+  if (initialSchoolId && user.role !== 'super_admin' && userSchool !== initialSchoolId) return <Alert severity="error">You are not authorized for this organization.</Alert>;
+  return <StaffWorkflow key={[user._id, initialSchoolId, initialSessionId, initialParticipationId].join(':')} token={token} role={user.role} userSchool={userSchool} initialSchoolId={initialSchoolId} initialSessionId={initialSessionId} initialParticipationId={initialParticipationId} onClose={onClose} />;
 }
-function StaffWorkflow({ token, role, userSchool }: { token: string; role: string; userSchool: string }) {
-  const [school, setSchool] = useState(userSchool);
+function StaffWorkflow({ token, role, userSchool, initialSchoolId, initialSessionId, initialParticipationId, onClose }: { token: string; role: string; userSchool: string; initialSchoolId: string; initialSessionId: string; initialParticipationId: string; onClose?: () => void }) {
+  const [school, setSchool] = useState(initialSchoolId || userSchool);
   const [schools, setSchools] = useState<any[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(initialSessionId);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const api = useMemo(() => workflowService(token, school), [token, school]);
   useEffect(() => { let active = true; if (role === 'super_admin') workflowService(token, '').request<any[]>('/schools').then(rows => { if(active) setSchools(rows); }).catch(e => { if(active) setError(workflowError(e)); }); return () => { active = false; }; }, [token, role]);
   useEffect(() => {
     let active = true; setSessions([]); setSelected(''); if (!school) return;
-    setLoading(true); setError(''); api.sessions().then(rows => { if(active) setSessions(rows); }).catch(e => { if(active) setError(workflowError(e)); }).finally(() => { if(active) setLoading(false); });
+    setLoading(true); setError(''); api.sessions().then(rows => { if(active) { setSessions(rows); if (initialSessionId) { if (rows.some(row => row._id === initialSessionId)) setSelected(initialSessionId); else setError('The selected Delivered Session is unavailable.'); } } }).catch(e => { if(active) setError(workflowError(e)); }).finally(() => { if(active) setLoading(false); });
     return () => { active = false; };
-  }, [api, school]);
+  }, [api, school, initialSessionId]);
   return <Stack spacing={3} sx={{ p: 3 }}><Typography variant="h4">Session Progress</Typography><Typography>Record child progress, review a report draft, then explicitly finalize it.</Typography>
+    {onClose && <Button onClick={onClose}>Back to Participants</Button>}
     {role === 'super_admin' && <TextField select label="School" value={school} onChange={e => setSchool(e.target.value)}>{schools.map(s => <MenuItem key={s._id} value={s._id}>{s.name}</MenuItem>)}</TextField>}
     {error && <Alert severity="error">{error}</Alert>}{loading && <CircularProgress aria-label="Loading sessions" />}
     {!school && <Alert severity="info">Choose a school to view its sessions.</Alert>}
     {school && !loading && !error && sessions.length === 0 && <Alert severity="info">No delivered sessions are available. Sessions must be configured before recording progress.</Alert>}
     {sessions.length > 0 && <TextField select label="Delivered session" value={selected} onChange={e => setSelected(e.target.value)}>{sessions.map(s => <MenuItem key={s._id} value={s._id}>{s.title} — {date(s.scheduledAt)} ({label(s.status)})</MenuItem>)}</TextField>}
-    {selected && <SessionEntry key={school + selected} api={api} sessionId={selected} token={token} schoolId={school} />}
+    {selected && <SessionEntry key={school + selected + initialParticipationId} api={api} sessionId={selected} token={token} schoolId={school} initialParticipationId={initialParticipationId} />}
   </Stack>;
 }
-function SessionEntry({ api, sessionId, token, schoolId }: { api: WorkflowService; sessionId: string; token: string; schoolId: string }) {
+function SessionEntry({ api, sessionId, token, schoolId, initialParticipationId = '' }: { api: WorkflowService; sessionId: string; token: string; schoolId: string; initialParticipationId?: string }) {
   const [data, setData] = useState<Awaited<ReturnType<WorkflowService['session']>>>();
-  const [error, setError] = useState(''); const [selected, setSelected] = useState('');
+  const [error, setError] = useState(''); const [selected, setSelected] = useState(initialParticipationId);
   const [managingParticipants, setManagingParticipants] = useState(false);
   useEffect(() => { let active = true; api.session(sessionId).then(r => { if(active) setData(r); }).catch(e => { if(active) setError(workflowError(e)); }); return () => { active = false; }; }, [api, sessionId]);
   if(error) return <Alert severity="error">{error}</Alert>;
   if(!data) return <CircularProgress aria-label="Loading session" />;
   const { session, children, users } = data;
-  if(managingParticipants) return <SessionParticipationManagement token={token} schoolId={schoolId} session={session as any} onClose={() => setManagingParticipants(false)} />;
+  if(managingParticipants) return <SessionParticipationManagement token={token} schoolId={schoolId} session={session as any} onClose={() => setManagingParticipants(false)} onRecordProgress={participationId => { setSelected(participationId); setManagingParticipants(false); }} />;
   const classChild = users.find(u => identity(u.classId) === session.classId && u.studentClass);
   const child = children.find(p => p._id === selected);
   const user = users.find(u => u._id === identity(child?.childId));
-  return <Stack spacing={2}><Paper sx={{ p: 2 }}><Typography variant="h5">{session.plannedSessionSnapshot.title}</Typography><Typography>Class: {classChild?.studentClass || session.classId}</Typography><Typography>Program: {data.program.name} · Level: {data.level.name}</Typography><Typography>Scheduled: {date(session.scheduledAt)} · Delivered: {date(session.deliveredAt)}</Typography><Chip label={label(session.status)} /><Typography variant="h6" sx={{mt:2}}>Planned objectives</Typography>{session.plannedSessionSnapshot.objectives.map(o=><Typography key={o.objectiveId}>• {o.title} — {o.expectedOutcome || o.description}</Typography>)}</Paper>
+  return <Stack spacing={2}><Paper sx={{ p: 2 }}><Typography variant="h5">{session.plannedSessionSnapshot.title}</Typography><Typography>Class: {classChild?.studentClass || 'Class unavailable'}</Typography><Typography>Program: {data.program.name} · Level: {data.level.name}</Typography><Typography>Scheduled: {date(session.scheduledAt)} · Delivered: {date(session.deliveredAt)}</Typography><Chip label={label(session.status)} /><Typography variant="h6" sx={{mt:2}}>Planned objectives</Typography>{session.plannedSessionSnapshot.objectives.map(o=><Typography key={o.objectiveId}>• {o.title} — {o.expectedOutcome || o.description}</Typography>)}</Paper>
     <Button onClick={() => setManagingParticipants(true)}>Manage Participants</Button>
     {!['in_progress','completed'].includes(session.status) && <Alert severity="info">Progress can be recorded only for an in-progress or completed session.</Alert>}
-    {children.length === 0 ? <Alert severity="info">No participating children in this session.</Alert> : <TextField select label="Participating child" value={selected} onChange={e => setSelected(e.target.value)}>{children.map(p => { const u = users.find(u => u._id === identity(p.childId)); return <MenuItem key={p._id} value={p._id}>{u ? u.firstName + ' ' + u.lastName : identity(p.childId)} — {label(p.status)}</MenuItem>; })}</TextField>}
+    {initialParticipationId && !child && <Alert severity="error">The selected participation is unavailable for this session.</Alert>}
+    {children.length === 0 ? <Alert severity="info">No participating children in this session.</Alert> : <TextField select label="Participating child" value={selected} onChange={e => setSelected(e.target.value)}>{children.map(p => { const u = users.find(u => u._id === identity(p.childId)); return <MenuItem key={p._id} value={p._id}>{u ? u.firstName + ' ' + u.lastName : 'Participant'} — {label(p.status)}</MenuItem>; })}</TextField>}
     {child && <ChildEntry key={child._id} api={api} session={session} participation={child} parameters={data.parameters} templates={data.templates} parentEmail={user?.parentEmail || ''} />}
   </Stack>;
 }

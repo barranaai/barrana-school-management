@@ -3,7 +3,7 @@ const User = require('../models/User');
 const { logger } = require('../utils/logger');
 
 // Protect routes - require authentication
-const protect = async (req, res, next) => {
+const authenticate = (trackActivity) => async (req, res, next) => {
   let token;
 
   // Check for token in headers
@@ -33,8 +33,10 @@ const protect = async (req, res, next) => {
       }
 
       // Update last activity
-      req.user.lastActivity = new Date();
-      await req.user.save();
+      if (trackActivity) {
+        req.user.lastActivity = new Date();
+        await req.user.save();
+      }
 
       next();
     } catch (error) {
@@ -53,6 +55,10 @@ const protect = async (req, res, next) => {
     });
   }
 };
+
+const protect = authenticate(true);
+// Explicitly read-only selectors share authentication without an activity write.
+const protectReadOnly = authenticate(false);
 
 // Authorize roles
 const authorize = (...roles) => {
@@ -91,7 +97,7 @@ const authorizeSchool = (req, res, next) => {
 
   // Check if user belongs to the requested school
   const requestedSchoolId = req.params.schoolId || req.body.schoolId || req.query.schoolId;
-  
+
   if (requestedSchoolId && req.user.schoolId.toString() !== requestedSchoolId) {
     return res.status(403).json({
       success: false,
@@ -136,7 +142,7 @@ const authRateLimit = {
 const auditLog = (action) => {
   return (req, res, next) => {
     const originalSend = res.send;
-    
+
     res.send = function(data) {
       // Log the action after response is sent
       const logData = {
@@ -151,19 +157,20 @@ const auditLog = (action) => {
       };
 
       logger.info('Audit Log:', logData);
-      
+
       originalSend.call(this, data);
     };
-    
+
     next();
   };
 };
 
 module.exports = {
   protect,
+  protectReadOnly,
   authorize,
   authorizeSchool,
   optionalAuth,
   authRateLimit,
   auditLog
-}; 
+};

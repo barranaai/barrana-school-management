@@ -1,7 +1,7 @@
 import { requestReportPublication } from './reportPublicationService';
 const base = process.env.REACT_APP_API_URL || '/api';
 export const identity = (value: any): string => typeof value === 'string' ? value : value?._id || '';
-export interface Objective { objectiveId: string; title: string; description?: string; expectedOutcome?: string; }
+export interface Objective { objectiveId: string; title: string; description?: string; expectedOutcome?: string; requirementId?: string; parameterId?: string; }
 export interface Session { _id: string; title: string; schoolId: string; classId: string; programId: string; levelId: string; plannedSessionId: string; roadmapId: string; roadmapVersion: number; status: string; scheduledAt?: string; deliveredAt?: string; plannedSessionSnapshot: { title: string; objectives: Objective[] }; }
 export interface Participation { _id: string; childId: string; schoolId: string; deliveredSessionId: string; status: string; }
 export interface Parameter { _id: string; name: string; type: string; programId?: string; requirementId?: string; options?: string[]; }
@@ -39,7 +39,9 @@ export function workflowService(token: string, schoolId: string) {
       const children = participations.filter(p => identity(p.deliveredSessionId) === id && identity(p.schoolId) === schoolId);
       const users = await Promise.all(children.map(p => request('/users/' + identity(p.childId))));
       if (users.some(u => identity(u.schoolId) !== schoolId)) throw new WorkflowError('Child/session school mismatch. Contact your administrator.', 409);
-      const parameters = (await Promise.all(requirements.filter(r => identity(r.programId) === s.programId).map(r => request<Parameter[]>('/config/parameters?requirementId=' + r._id)))).flat().filter(p => identity(p.programId) === s.programId);
+      const plannedParameterIds = new Set((s.plannedSessionSnapshot?.objectives || []).map(o => identity(o.parameterId)).filter(Boolean));
+      const parameters = (await Promise.all(requirements.filter(r => identity(r.programId) === s.programId).map(r => request<Parameter[]>('/config/parameters?requirementId=' + r._id)))).flat()
+        .filter(p => identity(p.programId) === s.programId && plannedParameterIds.has(p._id));
       return { session: s, children, users, program, level, parameters, templates: templates.filter(t => t.isActive && identity(t.schoolId) === schoolId) };
     },
     progress: (participation: string) => request<Progress[]>('/progress?childParticipationId=' + participation),

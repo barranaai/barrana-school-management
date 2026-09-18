@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); });
 const step = async (fn: () => void) => { await act(async () => { fn(); }); };
-const render = () => step(() => root.render(<SessionParticipationManagement token="token" schoolId="school" session={session} onClose={jest.fn()} />));
+const render = (onRecordProgress?: (id: string) => void) => step(() => root.render(<SessionParticipationManagement token="token" schoolId="school" session={session} onClose={jest.fn()} onRecordProgress={onRecordProgress} />));
 const button = (text: string) => Array.from(document.querySelectorAll('button')).find(item => item.textContent === text)!;
 const field = (text: string) => { const label = Array.from(document.querySelectorAll('label')).find(item => item.textContent?.startsWith(text))!; return document.getElementById(label.htmlFor)!; };
 async function chooseCandidate() { await step(() => Simulate.mouseDown(field('Eligible child'), { button: 0 })); await step(() => Simulate.click(Array.from(document.querySelectorAll('[role="option"]')).find(item => item.textContent === 'Leo River')!)); }
@@ -25,6 +25,11 @@ async function chooseCandidate() { await step(() => Simulate.mouseDown(field('El
 test('renders eligible children, current participants and status', async () => {
   await render(); expect(document.body).toHaveTextContent('Safe entry → Participants'); await step(() => Simulate.mouseDown(field('Eligible child'), { button: 0 })); expect(document.body).toHaveTextContent('Leo River');
   expect(document.body).toHaveTextContent('Maya River'); expect(document.body).toHaveTextContent('Active');
+});
+
+test('opens Progress only for an active authoritative participation', async () => {
+  const open = jest.fn(); await render(open); await step(() => Simulate.click(button('Record / View Progress'))); expect(open).toHaveBeenCalledWith('participation');
+  roster = { eligible: [], participations: [{ ...active, status: 'absent' }] }; await step(() => Simulate.click(button('Reload Participants'))); expect(button('Record / View Progress')).toBeUndefined();
 });
 
 test('adds an eligible enrolled child and refreshes the roster', async () => {

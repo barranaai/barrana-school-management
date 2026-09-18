@@ -899,12 +899,19 @@ class ApiService {
   }
 
   // Student endpoints
-  async getStudents(): Promise<ApiResponse<Student[]>> {
-    return this._request<Student[]>('/students');
+  async getStudents(schoolId?: string): Promise<ApiResponse<Student[]>> {
+    const query = schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : '';
+    return this._request<Student[]>(`/students${query}`);
   }
 
-  async getStudent(id: string): Promise<ApiResponse<Student>> {
-    return this._request<Student>(`/students/${id}`);
+  async getStudent(id: string, schoolId?: string): Promise<ApiResponse<Student>> {
+    const query = schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : '';
+    return this._request<Student>(`/students/${id}${query}`);
+  }
+
+  async getParticipantEnrollments(id: string, schoolId?: string): Promise<ApiResponse<any[]>> {
+    const query = schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : '';
+    return this._request<any[]>(`/students/${id}/enrollments${query}`);
   }
 
   async createStudent(studentData: Partial<Student>): Promise<ApiResponse<Student>> {
@@ -921,8 +928,9 @@ class ApiService {
     });
   }
 
-  async deleteStudent(id: string): Promise<ApiResponse<void>> {
-    return this._request<void>(`/students/${id}`, {
+  async deleteStudent(id: string, schoolId?: string): Promise<ApiResponse<void>> {
+    const query = schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : '';
+    return this._request<void>(`/students/${id}${query}`, {
       method: 'DELETE',
     });
   }

@@ -6,7 +6,7 @@ import { EligibleParticipant, ParticipationStatus, SessionParticipation, nextPar
 const statusLabel = (status: ParticipationStatus) => status[0].toUpperCase() + status.slice(1);
 const actionLabel: Record<ParticipationStatus, string> = { active: 'Mark Active', excused: 'Mark Excused', absent: 'Mark Absent', cancelled: 'Cancel Participation' };
 
-export default function SessionParticipationManagement({ token, schoolId, session, onClose }: { token: string; schoolId: string; session: DeliveredSession; onClose: () => void }) {
+export default function SessionParticipationManagement({ token, schoolId, session, onClose, onRecordProgress }: { token: string; schoolId: string; session: DeliveredSession; onClose: () => void; onRecordProgress?: (participationId: string) => void }) {
   const api = useMemo(() => participationService(token, schoolId, session), [token, schoolId, session]);
   const [rows, setRows] = useState<SessionParticipation[]>([]);
   const [eligible, setEligible] = useState<EligibleParticipant[]>([]);
@@ -56,6 +56,7 @@ export default function SessionParticipationManagement({ token, schoolId, sessio
       <Typography variant="h6">Current participants</Typography>
       {!rows.length ? <Typography>No children are participating in this Delivered Session yet.</Typography> : rows.map(row => <Paper key={row._id} sx={{ p: 2 }}><Stack spacing={1}>
         <Stack direction="row" spacing={1} alignItems="center"><Typography>{row.firstName || 'Participant'} {row.lastName || ''}</Typography><Chip size="small" label={statusLabel(row.status)} color={row.status === 'active' ? 'success' : row.status === 'cancelled' ? 'default' : 'warning'} /></Stack>
+        {row.status === 'active' && onRecordProgress && <Button variant="contained" disabled={busy || blocked} onClick={() => onRecordProgress(row._id)}>Record / View Progress</Button>}
         {!!nextParticipationStatuses[row.status].length && <Stack direction="row" spacing={1} flexWrap="wrap">{nextParticipationStatuses[row.status].map(status => <Button key={status} color={status === 'cancelled' ? 'warning' : 'primary'} disabled={busy || blocked} onClick={() => setAction({ row, status })}>{actionLabel[status]}</Button>)}</Stack>}
         {row.status === 'cancelled' && <Typography variant="body2" color="text.secondary">Cancelled participation is final.</Typography>}
       </Stack></Paper>)}

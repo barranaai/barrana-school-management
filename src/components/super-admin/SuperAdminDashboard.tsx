@@ -62,12 +62,14 @@ import {
   ContactPhone,
   AccountBalance,
   Public,
+  AssignmentInd,
 
 } from '@mui/icons-material';
 import { Country, State, City } from 'country-state-city';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import SchoolConfiguration from '../admin/sections/SchoolConfiguration';
+import EnrollmentManagement from '../admin/sections/EnrollmentManagement';
 import apiService from '../../services/apiService';
 import { getTimezoneOptions } from '../../utils/timezoneUtils';
 import TimezoneSelector from '../common/TimezoneSelector';
@@ -194,6 +196,7 @@ const SuperAdminDashboard: React.FC = () => {
   { text: 'Session Progress', icon: <Description />, section: 'session-progress', color: '#4facfe' },
     { text: 'Global Overview', section: 'overview', icon: <Dashboard /> },
     { text: 'School Management', section: 'schools', icon: <School /> },
+    { text: 'Enrollment Management', section: 'enrollments', icon: <AssignmentInd /> },
     { text: 'School Configuration', section: 'reportTemplates', icon: <Description /> },
     { text: 'User Management', section: 'users', icon: <People /> },
     { text: 'Billing Management', section: 'billing', icon: <Payment /> },
@@ -305,7 +308,7 @@ const SuperAdminDashboard: React.FC = () => {
       // Fetch school statistics and data
       const [classesData, studentsData, teachersData] = await Promise.all([
         apiService.getClasses(),
-        apiService.getStudents(),
+        apiService.getStudents(schoolId),
         apiService.getTeachers()
       ]);
 
@@ -379,18 +382,13 @@ const SuperAdminDashboard: React.FC = () => {
     try {
       setLoadingBillingData(true);
       
-      // Fetch all students to get counts per school
-      const studentsResponse = await apiService.getStudents();
-      const allStudents = studentsResponse.data || [];
-      
-      // Count students per school
+      // Fetch each organization's participant count through an explicit tenant context.
       const studentCounts: { [key: string]: number } = {};
-      allStudents.forEach((student: any) => {
-        const schoolId = student.schoolId;
-        if (schoolId) {
-          studentCounts[schoolId] = (studentCounts[schoolId] || 0) + 1;
-        }
-      });
+      await Promise.all(schools.map(async (school: any) => {
+        const schoolId = school._id || school.id;
+        const response = await apiService.getStudents(schoolId);
+        studentCounts[schoolId] = response.data?.length || 0;
+      }));
       
       setSchoolStudentCounts(studentCounts);
     } catch (error) {
@@ -699,6 +697,8 @@ const SuperAdminDashboard: React.FC = () => {
         return <GlobalOverview />;
       case 'schools':
         return <SchoolManagement />;
+      case 'enrollments':
+        return <EnrollmentManagement />;
       case 'reportTemplates':
         return <SchoolConfiguration />;
       case 'users':

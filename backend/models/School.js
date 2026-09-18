@@ -1,4 +1,17 @@
 const mongoose = require('mongoose');
+const {
+  ACCOUNT_TYPES,
+  ORGANIZATION_TYPES,
+  TERMINOLOGY_PROFILES,
+  defaultOrganizationType,
+  defaultTerminologyProfile,
+  resolveWorkspaceProfile
+} = require('../domain/workspaceProfile');
+
+const requiresSchoolDetails = function() {
+  const organizationType = this.organizationType || defaultOrganizationType(this.accountType);
+  return organizationType === 'school' || organizationType === 'early_childhood_center';
+};
 
 const schoolSchema = new mongoose.Schema({
   // Basic Information
@@ -13,6 +26,36 @@ const schoolSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true
+  },
+
+  // Workspace profile. Existing records remain organization/school workspaces
+  // when these additive fields are absent.
+  accountType: {
+    type: String,
+    enum: ACCOUNT_TYPES,
+    required: true,
+    default: 'organization'
+  },
+  organizationType: {
+    type: String,
+    enum: ORGANIZATION_TYPES,
+    required: true,
+    default: function() {
+      return defaultOrganizationType(this.accountType);
+    }
+  },
+  terminologyProfile: {
+    type: String,
+    enum: TERMINOLOGY_PROFILES,
+    required: true,
+    default: function() {
+      return defaultTerminologyProfile(this.accountType);
+    }
+  },
+  ownerUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   },
   
   // Contact Information
@@ -42,24 +85,26 @@ const schoolSchema = new mongoose.Schema({
   address: {
     street: {
       type: String,
-      required: [true, 'Street address is required']
+      required: [requiresSchoolDetails, 'Street address is required']
     },
     city: {
       type: String,
-      required: [true, 'City is required']
+      required: [requiresSchoolDetails, 'City is required']
     },
     state: {
       type: String,
-      required: [true, 'State is required']
+      required: [requiresSchoolDetails, 'State is required']
     },
     zipCode: {
       type: String,
-      required: [true, 'ZIP code is required']
+      required: [requiresSchoolDetails, 'ZIP code is required']
     },
     country: {
       type: String,
-      required: [true, 'Country is required'],
-      default: 'Canada'
+      required: [requiresSchoolDetails, 'Country is required'],
+      default: function() {
+        return requiresSchoolDetails.call(this) ? 'Canada' : undefined;
+      }
     }
   },
   
@@ -67,7 +112,7 @@ const schoolSchema = new mongoose.Schema({
   schoolType: {
     type: String,
     enum: ['licensed_daycare', 'montessori_school', 'public_private_school'],
-    required: [true, 'School type is required']
+    required: [requiresSchoolDetails, 'School type is required']
   },
   gradeLevels: {
     type: [String],
@@ -75,8 +120,12 @@ const schoolSchema = new mongoose.Schema({
   },
   estimatedStudents: {
     type: Number,
-    required: [true, 'Estimated number of students is required'],
+    required: [requiresSchoolDetails, 'Estimated number of students is required'],
     min: [1, 'Must have at least 1 student']
+  },
+  estimatedParticipants: {
+    type: Number,
+    min: [0, 'Estimated participants cannot be negative']
   },
   
   // Subscription & Billing
@@ -403,8 +452,15 @@ const schoolSchema = new mongoose.Schema({
 
 // Virtual for full address
 schoolSchema.virtual('fullAddress').get(function() {
-  const addr = this.address;
-  return `${addr.street}, ${addr.city}, ${addr.state} ${addr.zipCode}, ${addr.country}`;
+  const addr = this.address || {};
+  const locality = [addr.city, addr.state].filter(Boolean).join(', ');
+  const localityWithPostalCode = [locality, addr.zipCode].filter(Boolean).join(' ');
+  return [addr.street, localityWithPostalCode, addr.country].filter(Boolean).join(', ') || null;
+});
+
+// Neutral application-facing profile while the persisted model remains School.
+schoolSchema.virtual('workspaceProfile').get(function() {
+  return resolveWorkspaceProfile(this);
 });
 
 // Virtual for subscription status
@@ -474,4 +530,4 @@ schoolSchema.methods.updateUsageStats = function() {
   });
 };
 
-module.exports = mongoose.model('School', schoolSchema); 
+module.exports = mongoose.model('School', schoolSchema);

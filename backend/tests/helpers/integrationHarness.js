@@ -21,7 +21,9 @@ async function openIntegrationHarness() {
     const app = require('../../app').createApp({ routes: [
       ['/api/config', 'configuration'], ['/api/roadmaps', 'roadmaps'],
       ['/api/roadmaps', 'plannedSessions'], ['/api/planned-sessions', 'plannedSessions'],
-      ['/api/delivered-sessions', 'deliveredSessions'], ['/api/child-participations', 'childParticipations'], ['/api/progress', 'progress']
+      ['/api/delivered-sessions', 'deliveredSessions'], ['/api/enrollments', 'enrollments'],
+      ['/api/child-participations', 'childParticipations'], ['/api/progress', 'progress'],
+      ['/api/standard-packages', 'standardPackages']
     ] });
     app.initializeRoutes();
     require('../../models/School'); // Referenced by User/fixtures but not imported by scoped routes.

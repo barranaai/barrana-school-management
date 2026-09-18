@@ -41,13 +41,13 @@ test('report lookup reads subsequent pages rather than creating a replacement',a
 });
 
 test.each(['valid', 'missing', 'wrong'])('session context checks objective identity (%s) before retrieving children',async mode=>{
- const session={_id:'s',schoolId:'school',classId:'c',programId:'program',levelId:'level',plannedSessionId:'plan',roadmapId:'roadmap',roadmapVersion:1,plannedSessionSnapshot:{objectives:[{objectiveId:'o',title:'Float'}]}};
+ const session={_id:'s',schoolId:'school',classId:'c',programId:'program',levelId:'level',plannedSessionId:'plan',roadmapId:'roadmap',roadmapVersion:1,plannedSessionSnapshot:{objectives:[{objectiveId:'o',title:'Float',requirementId:'r',parameterId:'parameter'}]}};
  const payloads:Record<string,any>={
  '/api/delivered-sessions/s':session,
  '/api/child-participations':[{_id:'p',schoolId:'school',deliveredSessionId:'s',childId:'child'},{_id:'other',schoolId:'school',deliveredSessionId:'other-session',childId:'other-child'}],
  '/api/config/programs/program':{name:'Swimming'},'/api/config/levels/level':{name:'Beginner'},
  '/api/planned-sessions/plan':{roadmapId:'roadmap',roadmapVersion:1,objectives:[{_id:'o'}]},
- '/api/config/requirements':[{_id:'r',programId:'program'}],'/api/config/parameters':[{_id:'parameter',programId:'program'}],
+ '/api/config/requirements':[{_id:'r',programId:'program'}],'/api/config/parameters':[{_id:'parameter',programId:'program'},{_id:'unplanned',programId:'program'}],
  '/api/report-templates':[{_id:'template',schoolId:'school',isActive:true}],'/api/users/child':{_id:'child',schoolId:'school'}
  };
  (fetch as jest.Mock).mockImplementation(async(url:string)=>{const parsed=new URL(url,'http://test');expect(parsed.searchParams.get('schoolId')).toBe('school');if(!payloads[parsed.pathname])throw Error('Unexpected API '+parsed.pathname);return reply(payloads[parsed.pathname]);});
@@ -58,6 +58,7 @@ test.each(['valid', 'missing', 'wrong'])('session context checks objective ident
  expect(outcome.context?.children.map(p=>p._id)).toEqual(mode === 'valid' ? ['p'] : undefined);
  expect(outcome.context?.users.length).toBe(mode === 'valid' ? 1 : undefined);
  expect(outcome.context?.parameters.length).toBe(mode === 'valid' ? 1 : undefined);
+ expect(outcome.context?.parameters.map(p=>p._id)).toEqual(mode === 'valid' ? ['parameter'] : undefined);
  expect((fetch as jest.Mock).mock.calls.some(([url])=>url.includes('/users/'))).toBe(mode === 'valid');
  expect((fetch as jest.Mock).mock.calls.some(([url])=>url.includes('other-child'))).toBe(false);
 });

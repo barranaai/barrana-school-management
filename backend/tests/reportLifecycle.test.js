@@ -30,7 +30,8 @@ function report(status = 'approved') {
 function harness(reportRow = report(), reportOverrides = {}) {
   const calls = { email: [], queries: [], progressCreates: [], progressSaves: 0, pdfCreates: [], pdfReads: 0, reportSaves: 0 };
   const actor = { _id: teacher, schoolId: school, role: 'teacher', isActive: true, async save() {} };
-  const state = { report: reportRow, actor, roadmap: { _id: roadmapId, programId, levelId }, session: { _id: sessionId, schoolId: school, deliveredBy: teacher, plannedSessionId: plannedId, roadmapId, roadmapVersion: 1, status: 'completed' }, participation: { _id: participationId, schoolId: school, deliveredSessionId: sessionId, status: 'active' } };
+  const objectiveId = id(13);
+  const state = { report: reportRow, actor, roadmap: { _id: roadmapId, programId, levelId }, session: { _id: sessionId, schoolId: school, deliveredBy: teacher, plannedSessionId: plannedId, roadmapId, roadmapVersion: 1, status: 'completed', plannedSessionSnapshot: { objectives: [{ objectiveId, requirementId, parameterId, sequence: 1, title: 'Float' }] } }, participation: { _id: participationId, schoolId: school, deliveredSessionId: sessionId, status: 'active' } };
   reportRow.save = async () => { if (state.saveFailure) throw Error('database unavailable'); calls.reportSaves++; };
   const row = { _id: progressId, childParticipationId: participationId, async save() { calls.progressSaves++; } };
   const models = {
@@ -39,7 +40,7 @@ function harness(reportRow = report(), reportOverrides = {}) {
     Progress: { find: q => { calls.queries.push(['Progress', q]); return chain([row, { _id: id(30), childParticipationId: id(31) }]); }, findOne: q => { calls.queries.push(['Progress', q]); return chain(String(q.schoolId) === String(school) ? row : null); } },
     ChildParticipation: { find: q => { calls.queries.push(['ChildParticipation', q]); return chain([{ _id: participationId }]); }, findOne: q => { calls.queries.push(['ChildParticipation', q]); return chain(state.participation); } },
     DeliveredSession: { find: q => { calls.queries.push(['DeliveredSession', q]); return chain([{ _id: sessionId }]); }, findOne: () => chain(state.session) },
-    PlannedSession: { findOne: () => chain({ _id: plannedId, roadmapId, roadmapVersion: 1, objectives: [] }) },
+    PlannedSession: { findOne: () => chain({ _id: plannedId, roadmapId, roadmapVersion: 1, objectives: [{ _id: objectiveId, requirementId, parameterId, sequence: 1, title: 'Float' }] }) },
     Roadmap: { findOne: q => { calls.queries.push(['Roadmap', q]); return chain(state.roadmap); } },
     Parameter: { find: q => { calls.queries.push(['Parameter', q]); return chain([{ _id: parameterId, requirementId, name: 'Percent', type: 'percentage' }]); } },
     Requirement: { find: q => { calls.queries.push(['Requirement', q]); return chain([{ _id: requirementId, name: 'Float' }]); } },
@@ -136,6 +137,10 @@ test('Progress edit supplies roadmap context and preserves parameter validation'
   h.state.roadmap=null;assert.equal((await h.request('progress','put','/:id',{body})).statusCode,409);assert.equal(h.calls.progressSaves,1);
 });
 test('Progress edit rejects other tenant and teacher',async()=>{for(const field of ['schoolId','_id']){const h=harness();h.state.actor[field]=id(90);const r=await h.request('progress','put','/:id');assert.ok([403,404].includes(r.statusCode));assert.equal(h.calls.progressSaves,0);}});
+test('Progress rejects unavailable participation states and parent management',async()=>{
+  for(const status of ['absent','excused','cancelled']){const h=harness();h.state.participation.status=status;const r=await h.request('progress','post','/',{body:{childParticipationId:String(participationId)}});assert.equal(r.statusCode,400);assert.equal(h.calls.progressCreates.length,0);}
+  const h=harness();const denied=await h.request('progress','post','/',{role:'parent',body:{childParticipationId:String(participationId)}});assert.equal(denied.statusCode,403);assert.equal(h.calls.progressCreates.length,0);
+});
 test('approval and sending require authentication and a permitted human role',async()=>{
  for(const url of ['/:id/approve','/:id/send','/:id/send-email','/:id/regenerate-pdf']){const method=(url.endsWith('send-email') || url.endsWith('regenerate-pdf'))?'post':'patch';const h=harness();assert.equal((await h.request('reports',method,url,{anonymous:true})).statusCode,401);assert.equal((await h.request('reports',method,url,{role:'ai'})).statusCode,403);assert.equal((await h.request('reports',method,url,{role:'parent'})).statusCode,403);assert.equal(h.calls.email.length,0);}
 });

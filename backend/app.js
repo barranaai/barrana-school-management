@@ -9,6 +9,10 @@ const routeDefinitions = [
     "configuration"
   ],
   [
+    "/api/standard-packages",
+    "standardPackages"
+  ],
+  [
     "/api/enrollments",
     "enrollments"
   ],

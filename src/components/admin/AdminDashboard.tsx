@@ -30,6 +30,7 @@ import {
   ReportProblem,
   EventAvailable,
   AttachMoney,
+  AssignmentInd,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/apiService';
@@ -47,13 +48,15 @@ import ParentGroupManagement from './sections/ParentGroupManagement';
 import NotificationLogs from './sections/NotificationLogs';
 import AdminCommunicationCenter from './sections/AdminCommunicationCenter';
 import ExpensesList from './sections/Expenses/ExpensesList';
+import EnrollmentManagement from './sections/EnrollmentManagement';
 
 const drawerWidth = 250;
 
 const menuItems = [
   { text: 'Session Progress', icon: <Assessment />, section: 'session-progress', color: '#4facfe' },
   { text: 'Executive Summary', icon: <Dashboard />, section: 'dashboard', color: '#667eea' },
-  { text: 'Student Management', icon: <People />, section: 'students', color: '#764ba2' },
+  { text: 'Participant Management', icon: <People />, section: 'students', color: '#764ba2' },
+  { text: 'Enrollment Management', icon: <AssignmentInd />, section: 'enrollments', color: '#26aea6' },
   { text: 'Teacher Management', icon: <School />, section: 'teachers', color: '#f093fb' },
   { text: 'Class Management', icon: <Group />, section: 'classes', color: '#ff9a9e' },
   { text: 'School Configuration', icon: <Settings />, section: 'reports', color: '#4facfe' },
@@ -151,6 +154,8 @@ const AdminDashboard: React.FC = () => {
         return <ExecutiveSummary schoolBranding={schoolBranding} />;
       case 'students':
         return <StudentManagement schoolBranding={schoolBranding} />;
+      case 'enrollments':
+        return <EnrollmentManagement />;
       case 'teachers':
         return <TeacherManagement schoolBranding={schoolBranding} />;
       case 'classes':

@@ -49,11 +49,11 @@ import MedicalInfoEditor from '../../common/MedicalInfoEditor';
 import MedicalInfoDisplay from '../../common/MedicalInfoDisplay';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import apiService from '../../../services/apiService';
 import {
   formatGradeForDisplay as formatGradeDisplay,
   convertDisplayToRawGrade as convertDisplayToRaw,
-  normalizeGradeFormat,
-  areGradesEqual
+  normalizeGradeFormat
 } from '../../../utils/gradeDisplayUtils';
 
 interface StudentManagementProps {
@@ -143,12 +143,14 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   };
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterGrade, setFilterGrade] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogType, setDialogType] = useState<'add' | 'edit' | 'view'>('add');
   const [selectedStudentData, setSelectedStudentData] = useState<any>(null);
+  const [participantEnrollments, setParticipantEnrollments] = useState<any[]>([]);
+  const [participantEnrollmentsLoading, setParticipantEnrollmentsLoading] = useState(false);
+  const [participantEnrollmentsError, setParticipantEnrollmentsError] = useState('');
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [formData, setFormData] = useState<{
     firstName: string;
@@ -313,7 +315,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     if (!importFile) return;
     
     setIsImporting(true);
-    toast.loading('Importing students...');
+    toast.loading('Importing participants...');
     
     // Simulate import process
     setTimeout(() => {
@@ -322,12 +324,12 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         id: `ST${String(students.length + index + 1).padStart(3, '0')}`,
         firstName: row['First Name'] || row['firstName'] || 'Unknown',
         lastName: row['Last Name'] || row['lastName'] || 'Unknown',
-        grade: row['Grade'] || row['grade'] || 'Grade 1',
-        class: row['Class'] || row['class'] || '1A',
+        grade: row['Legacy Grade'] || row['Grade'] || row['grade'] || 'Grade 1',
+        class: row['Legacy Class'] || row['Class'] || row['class'] || '1A',
         status: 'active' as const,
         lastReport: new Date().toISOString().split('T')[0],
-        parentEmail: row['Parent Email'] || row['parentEmail'] || 'parent@email.com',
-        parentPhone: row['Parent Phone'] || row['parentPhone'] || '+1-555-0000',
+        parentEmail: row['Guardian Email'] || row['Parent Email'] || row['parentEmail'] || 'guardian@email.com',
+        parentPhone: row['Guardian Phone'] || row['Parent Phone'] || row['parentPhone'] || '+1-555-0000',
         avatar: `${row['First Name']?.[0] || 'U'}${row['Last Name']?.[0] || 'N'}`,
         teacherId: 'T001',
         parentId: `P${String(students.length + index + 1).padStart(3, '0')}`,
@@ -337,7 +339,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         emergencyContact: '+1-555-9999',
         medicalInfo: { allergies: [], conditions: [], medications: [], dietaryRestrictions: [] },
         academicLevel: 'Standard',
-        notes: 'Imported student',
+        notes: 'Imported participant',
       }));
       
       // Add students to context
@@ -354,7 +356,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       setImportPreview([]);
       setOpenImportDialog(false);
       setIsImporting(false);
-      toast.success(`Successfully imported ${newStudents.length} students!`);
+      toast.success(`Successfully imported ${newStudents.length} participants!`);
     }, 2000);
   };
 
@@ -366,10 +368,9 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       ((student as any).studentId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (student.id || student._id || '').toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesGrade = filterGrade === '' || areGradesEqual(student.grade, filterGrade);
     const matchesStatus = filterStatus === '' || student.status === filterStatus;
     
-    return matchesSearch && matchesGrade && matchesStatus;
+    return matchesSearch && matchesStatus;
   });
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -388,7 +389,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     );
   };
 
-  const handleOpenDialog = (type: 'add' | 'edit' | 'view', studentId?: string) => {
+  const handleOpenDialog = async (type: 'add' | 'edit' | 'view', studentId?: string) => {
     setDialogType(type);
     setOpenDialog(true);
     
@@ -424,6 +425,24 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       if (student) {
         console.log('✅ Found student for editing:', student);
         setSelectedStudentData(student);
+
+        if (type === 'view') {
+          setParticipantEnrollments([]);
+          setParticipantEnrollmentsError('');
+          setParticipantEnrollmentsLoading(true);
+          try {
+            const response = await apiService.getParticipantEnrollments(studentId, school.id || undefined);
+            if (response.success) {
+              setParticipantEnrollments(response.data || []);
+            } else {
+              setParticipantEnrollmentsError('Enrollment information is unavailable right now.');
+            }
+          } catch {
+            setParticipantEnrollmentsError('Enrollment information is unavailable right now.');
+          } finally {
+            setParticipantEnrollmentsLoading(false);
+          }
+        }
         
         // Handle different field name variations from backend
         const studentGrade = student.grade || (student as any).studentGrade || '';
@@ -451,7 +470,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         });
       } else {
         console.error('❌ Student not found with ID:', studentId);
-        toast.error('Student not found. Please refresh the page.');
+        toast.error('Participant not found. Please refresh the page.');
         return;
       }
     }
@@ -601,11 +620,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       const result = await addStudent(studentData);
       
       if (result.success) {
-        let successMessage = 'Student added successfully!';
+        let successMessage = 'Participant added successfully!';
         
         // Show additional info about parent account creation
         if (result.parentAccount?.hasAccount) {
-          successMessage += ` Parent account created for ${result.parentAccount.email}`;
+          successMessage += ` Guardian account available for ${result.parentAccount.email}`;
         }
         
         toast.success(successMessage, { duration: 5000 });
@@ -650,7 +669,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           toast.error(result.message || 'Validation error occurred');
         } else {
           // Generic error
-          toast.error(result.message || 'Failed to add student');
+          toast.error(result.message || 'Failed to add participant');
         }
         return; // Don't close dialog or reset form on error
       }
@@ -737,14 +756,14 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         const studentId = selectedStudentData._id || selectedStudentData.id;
         await updateStudent(studentId, updateData);
         
-        toast.success('Student updated successfully!');
+        toast.success('Participant updated successfully!');
         
         // Refresh the students list to ensure the updated data appears
         await refreshData();
         
       } catch (error) {
         console.error('❌ Error updating student:', error);
-        toast.error('Failed to update student. Please try again.');
+        toast.error('Failed to update participant. Please try again.');
         return; // Don't close dialog on error
       }
     }
@@ -754,7 +773,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
   const handleDeleteStudents = () => {
     if (selectedStudents.length === 0) {
-      toast.error('Please select students to delete');
+      toast.error('Please select participants to deactivate');
       return;
     }
     
@@ -763,20 +782,20 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
   const confirmDeleteStudents = async () => {
     try {
-      // Delete all selected students
+      // Deactivate all selected participants while preserving history
       const deletePromises = selectedStudents.map(studentId => deleteStudent(studentId));
       await Promise.all(deletePromises);
       
       const count = selectedStudents.length;
-      toast.success(`${count} student${count > 1 ? 's' : ''} deleted successfully!`);
+      toast.success(`${count} participant${count > 1 ? 's' : ''} deactivated successfully!`);
       setSelectedStudents([]);
       setOpenDeleteDialog(false);
       
       // Refresh the students list
       await refreshData();
     } catch (error) {
-      console.error('Error deleting students:', error);
-      toast.error('Failed to delete some students. Please try again.');
+      console.error('Error deactivating participants:', error);
+      toast.error('Failed to deactivate some participants. Please try again.');
     }
   };
 
@@ -786,7 +805,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       : students;
 
     // Convert to CSV format
-    const headers = ['ID', 'First Name', 'Last Name', 'Grade', 'Class', 'Status', 'Parent Email', 'Parent Phone', 'Last Report'];
+    const headers = ['ID', 'First Name', 'Last Name', 'Legacy Grade', 'Legacy Class', 'Status', 'Guardian Email', 'Guardian Phone', 'Last Report'];
     const csvData = dataToExport.map(student => [
       student.id || student._id,
       student.firstName,
@@ -809,13 +828,13 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `students_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `participants_export_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    toast.success(`Exported ${dataToExport.length} students successfully!`);
+    toast.success(`Exported ${dataToExport.length} participants successfully!`);
   };
 
   const getStatusColor = (status: string) => {
@@ -942,7 +961,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
               textShadow: '0 2px 4px rgba(0,0,0,0.1)',
             }}
           >
-            Student Management
+            Participant Management
           </Typography>
         </Fade>
         <NotificationIcon />
@@ -968,10 +987,10 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         >
           <CardContent sx={{ p: 3 }}>
             <Grid container spacing={3} alignItems="center">
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  placeholder="Search students..."
+                  placeholder="Search participants..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   InputProps={{
@@ -989,37 +1008,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     },
                   }}
                 />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Grade</InputLabel>
-                  <Select
-                    value={filterGrade}
-                    onChange={(e) => setFilterGrade(e.target.value)}
-                    label="Grade"
-                    sx={{
-                      borderRadius: 3,
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: `${primaryColor}4D`,
-                      },
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: `${primaryColor}80`,
-                      },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: primaryColor,
-                      },
-                    }}
-                  >
-                    <MenuItem value="">All Grades</MenuItem>
-                    {isLoading || grades.length === 0 ? (
-                      <MenuItem disabled>{isLoading ? 'Loading grades...' : 'No grades available'}</MenuItem>
-                    ) : (
-                      grades.map(grade => (
-                        <MenuItem key={grade} value={grade}>{grade}</MenuItem>
-                      ))
-                    )}
-                  </Select>
-                </FormControl>
               </Grid>
               <Grid item xs={12} md={2}>
                 <FormControl fullWidth>
@@ -1071,7 +1059,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     }}
                   >
-                    Add Student
+                    Add Participant
                   </Button>
                   <Button
                     variant="outlined"
@@ -1151,7 +1139,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     color: primaryColor,
                   }}
                 >
-                  {selectedStudents.length} student(s) selected
+                  {selectedStudents.length} participant(s) selected
                 </Typography>
                 <Button
                   variant="outlined"
@@ -1173,7 +1161,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}
                 >
-                  Delete Selected
+                  Deactivate Selected
                 </Button>
                 <Button
                   variant="outlined"
@@ -1222,13 +1210,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                       }}
                     />
                   </TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Student</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Student ID</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Grade</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Class</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Participant</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Participant ID</TableCell>
                   <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Last Report</TableCell>
-                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Parent Contact</TableCell>
+                  <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Guardian Contact</TableCell>
                   <TableCell sx={{ fontWeight: 600, color: primaryColor }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -1299,16 +1285,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography sx={{ fontWeight: 500 }}>
-                        {formatGradeDisplay(student.grade)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography sx={{ fontWeight: 500 }}>
-                        {student.class}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
                       <Chip
                         label={student.status}
                         color={getStatusColor(student.status || 'active') as any}
@@ -1347,6 +1323,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                       <Box sx={{ display: 'flex', gap: 1 }}>
                         <Tooltip title="View Details">
                           <IconButton
+                            aria-label="View participant"
                             size="small"
                             onClick={() => handleOpenDialog('view', student.id || student._id)}
                             sx={{
@@ -1361,8 +1338,9 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                             <Visibility />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Edit Student">
+                        <Tooltip title="Edit Participant">
                           <IconButton
+                            aria-label="Edit participant"
                             size="small"
                             onClick={() => handleOpenDialog('edit', student.id || student._id)}
                             sx={{
@@ -1377,13 +1355,14 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                             <Edit />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Delete Student">
+                        <Tooltip title="Deactivate Participant">
                           <IconButton
+                            aria-label="Deactivate participant"
                             size="small"
                             color="error"
                             onClick={() => {
                               setSelectedStudents([student.id || student._id]);
-                              handleDeleteStudents();
+                              setOpenDeleteDialog(true);
                             }}
                             sx={{
                               color: '#f44336',
@@ -1415,7 +1394,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                   fontWeight: 500,
                 }}
               >
-                No students found matching your criteria
+                No participants found matching your criteria
               </Typography>
             </Box>
           )}
@@ -1459,9 +1438,9 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
             }
           }}
         >
-          {dialogType === 'add' && 'Add New Student'}
-          {dialogType === 'edit' && 'Edit Student'}
-          {dialogType === 'view' && 'Student Details'}
+          {dialogType === 'add' && 'Add New Participant'}
+          {dialogType === 'edit' && 'Edit Participant'}
+          {dialogType === 'view' && 'Participant Details'}
         </DialogTitle>
         <DialogContent sx={{ p: 3, pt: '24px !important', background: 'rgba(255,255,255,0.8)' }}>
           {dialogType === 'view' ? (
@@ -1513,11 +1492,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                           mb: 1,
                         }}
                       >
-                        Student ID: {selectedStudentData.id || selectedStudentData._id}
+                        Participant ID: {selectedStudentData.id || selectedStudentData._id}
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                         <Chip
-                          label={formatGradeDisplay(selectedStudentData.grade)}
+                          label={`Legacy grade: ${formatGradeDisplay(selectedStudentData.grade)}`}
                           sx={{
                             background: brandingGradient,
                             color: 'white',
@@ -1526,7 +1505,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                           }}
                         />
                         <Chip
-                          label={selectedStudentData.class}
+                          label={`Legacy class: ${selectedStudentData.class || 'Not assigned'}`}
                           variant="outlined"
                           sx={{
                             borderColor: primaryColor,
@@ -1568,13 +1547,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                           textAlign: 'center',
                         }}>
                           <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                            Student Information
+                            Participant Information
                           </Typography>
                         </Box>
                         <Box sx={{ p: 3 }}>
-                          <InfoRow label="Enrollment Date" value={selectedStudentData.enrollmentDate || 'Not specified'} />
                           <InfoRow label="Date of Birth" value={selectedStudentData.dateOfBirth || 'Not specified'} />
-                          <InfoRow label="Academic Level" value={selectedStudentData.academicLevel || 'Not specified'} />
                           <InfoRow label="Last Report" value={selectedStudentData.lastReport || 'Never'} />
                         </Box>
                       </Card>
@@ -1603,10 +1580,42 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                           </Typography>
                         </Box>
                         <Box sx={{ p: 3 }}>
-                          <InfoRow label="Parent Email" value={selectedStudentData.parentEmail} icon={<Email sx={{ fontSize: 16, color: primaryColor }} />} />
-                          <InfoRow label="Parent Phone" value={selectedStudentData.parentPhone} icon={<Phone sx={{ fontSize: 16, color: primaryColor }} />} />
+                          <InfoRow label="Guardian Email" value={selectedStudentData.parentEmail} icon={<Email sx={{ fontSize: 16, color: primaryColor }} />} />
+                          <InfoRow label="Guardian Phone" value={selectedStudentData.parentPhone} icon={<Phone sx={{ fontSize: 16, color: primaryColor }} />} />
                           <InfoRow label="Address" value={selectedStudentData.address || 'No address provided'} />
                           <InfoRow label="Emergency Contact" value={selectedStudentData.emergencyContact || 'No emergency contact provided'} />
+                        </Box>
+                      </Card>
+                    </Grid>
+
+                    {/* Modern enrollment context */}
+                    <Grid item xs={12}>
+                      <Card elevation={0} sx={{ borderRadius: 3, border: '1px solid rgba(102, 126, 234, 0.1)' }}>
+                        <Box sx={{ background: brandingGradient, color: 'white', p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography variant="h6" sx={{ fontWeight: 700 }}>Programs and Enrollments</Typography>
+                          <Button size="small" variant="contained" onClick={() => { window.location.hash = 'enrollments'; }} sx={{ backgroundColor: 'white', color: primaryColor }}>
+                            Manage Enrollments
+                          </Button>
+                        </Box>
+                        <Box sx={{ p: 3 }}>
+                          {participantEnrollmentsLoading && <Typography color="text.secondary">Loading enrollment history…</Typography>}
+                          {participantEnrollmentsError && <Typography color="error">{participantEnrollmentsError}</Typography>}
+                          {!participantEnrollmentsLoading && !participantEnrollmentsError && participantEnrollments.length === 0 && (
+                            <Typography color="text.secondary">No enrollments yet. The participant can be enrolled without recreating their profile.</Typography>
+                          )}
+                          {participantEnrollments.map((enrollment) => (
+                            <Box key={enrollment._id} sx={{ mb: 2, p: 2, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 2 }}>
+                              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', mb: 1 }}>
+                                <Typography sx={{ fontWeight: 700 }}>{enrollment.programId?.name || 'Program unavailable'}</Typography>
+                                <Chip size="small" label={enrollment.status} />
+                              </Box>
+                              <Typography variant="body2">Current level: {enrollment.currentLevelId?.name || 'Not assigned'}</Typography>
+                              <Typography variant="body2">Current class/group: {enrollment.currentClassId?.name || 'Not assigned'}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Started {enrollment.startDate ? new Date(enrollment.startDate).toLocaleDateString() : 'date unavailable'} · {enrollment.levelHistory?.length || 0} level change(s) · {enrollment.classAssignments?.length || 0} class assignment(s)
+                              </Typography>
+                            </Box>
+                          ))}
                         </Box>
                       </Card>
                     </Grid>
@@ -1739,12 +1748,12 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  label="Student ID"
+                  label="Participant ID"
                   value={formData.studentId}
                   onChange={(e) => handleFormChange('studentId', e.target.value.toUpperCase())}
                   required
                   error={!!fieldErrors.studentId}
-                  helperText={fieldErrors.studentId || 'Unique identifier for the student'}
+                  helperText={fieldErrors.studentId || 'Unique identifier for the participant'}
                   placeholder="e.g., STU001"
                   sx={{
                     '& .MuiOutlinedInput-root': {
@@ -1777,7 +1786,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  label="Parent Name"
+                  label="Guardian Name"
                   value={formData.parentName}
                   onChange={(e) => handleFormChange('parentName', e.target.value)}
                   required
@@ -1787,14 +1796,14 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
               </Grid>
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth required error={!!fieldErrors.grade}>
-                  <InputLabel>Grade</InputLabel>
+                  <InputLabel>Legacy grade (required for compatibility)</InputLabel>
                   <Select
                     value={formData.grade}
                     onChange={(e) => handleFormChange('grade', e.target.value)}
-                    label="Grade"
+                    label="Legacy grade (required for compatibility)"
                   >
                     {isLoading || grades.length === 0 ? (
-                      <MenuItem disabled>{isLoading ? 'Loading grades...' : 'No grades available'}</MenuItem>
+                      <MenuItem disabled>{isLoading ? 'Loading legacy grades...' : 'No legacy grades configured'}</MenuItem>
                     ) : (
                       grades.map(grade => (
                         <MenuItem key={grade} value={grade}>{grade}</MenuItem>
@@ -1809,17 +1818,17 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth required error={!!fieldErrors.class}>
-                  <InputLabel>Class</InputLabel>
+                <FormControl fullWidth error={!!fieldErrors.class}>
+                  <InputLabel>Legacy class (optional)</InputLabel>
                   <Select
                     value={formData.class}
                     onChange={(e) => handleFormChange('class', e.target.value)}
-                    label="Class"
+                    label="Legacy class (optional)"
                   >
-                    <MenuItem value="">Select a Class</MenuItem>
+                    <MenuItem value="">No legacy class</MenuItem>
                     {filteredClasses.length === 0 ? (
                       <MenuItem disabled>
-                        {formData.grade ? `No classes available for ${formData.grade}` : 'Select a grade first'}
+                        {formData.grade ? `No legacy classes available for ${formData.grade}` : 'Select a legacy grade first'}
                       </MenuItem>
                     ) : (
                       filteredClasses.map(cls => (
@@ -1855,7 +1864,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  label="Parent Email"
+                  label="Guardian Email"
                   type="email"
                   value={formData.parentEmail}
                   onChange={(e) => handleFormChange('parentEmail', e.target.value)}
@@ -1871,18 +1880,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                   required
                   error={!!fieldErrors.parentPhone}
                   helperText={fieldErrors.parentPhone}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Enrollment Date"
-                  type="date"
-                  value={formData.enrollmentDate}
-                  onChange={(e) => handleFormChange('enrollmentDate', e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  error={!!fieldErrors.enrollmentDate}
-                  helperText={fieldErrors.enrollmentDate}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1928,7 +1925,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     Medical Information
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                    Type an entry and press <strong>Enter</strong> to add. Click ✕ on a chip to remove. This information will be visible to teachers and parents for safety.
+                    Type an entry and press <strong>Enter</strong> to add. Click ✕ on a chip to remove. This information will be visible to authorized trainers and guardians for safety.
                   </Typography>
                 </Box>
                 <MedicalInfoEditor
@@ -1991,7 +1988,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               }}
             >
-              {dialogType === 'add' ? 'Add Student' : 'Save Changes'}
+              {dialogType === 'add' ? 'Add Participant' : 'Save Changes'}
             </Button>
           )}
         </DialogActions>
@@ -1999,10 +1996,10 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogTitle>Confirm Deactivation</DialogTitle>
         <DialogContent>
           <Typography variant="body1">
-            Are you sure you want to delete {selectedStudents.length} student(s)? This action cannot be undone.
+            Deactivate {selectedStudents.length} participant(s)? Their identity and enrollment history will be preserved.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -2012,17 +2009,17 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
             color="error" 
             onClick={confirmDeleteStudents}
           >
-            Delete
+            Deactivate
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Import Dialog */}
       <Dialog open={openImportDialog} onClose={() => setOpenImportDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Import Students from CSV</DialogTitle>
+        <DialogTitle>Import Participants from CSV</DialogTitle>
         <DialogContent>
           <Typography variant="body1" sx={{ mb: 2 }}>
-            Select a CSV file to import student records. The file should have columns like "First Name", "Last Name", "Grade", "Class", "Status", "Parent Email", "Parent Phone", etc.
+            Select a CSV file to import participant records. Legacy files using Grade, Class, Parent Email, and Parent Phone remain supported.
           </Typography>
           <input
             type="file"
@@ -2070,7 +2067,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
             onClick={handleImportStudents}
             disabled={!importFile || isImporting}
           >
-            {isImporting ? 'Importing...' : 'Import Students'}
+            {isImporting ? 'Importing...' : 'Import Participants'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2078,4 +2075,4 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   );
 };
 
-export default StudentManagement; 
+export default StudentManagement;

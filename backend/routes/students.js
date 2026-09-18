@@ -1,21 +1,35 @@
 const express = require('express');
+const { randomUUID } = require('node:crypto');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const Class = require('../models/Class');
+const Enrollment = require('../models/Enrollment');
 const { protect, authorize } = require('../middleware/auth');
+const { scopeSchoolId } = require('../middleware/resourceAuthorization');
 const { logger } = require('../utils/logger');
 
 const router = express.Router();
 
+const participantSchoolId = req => scopeSchoolId(
+  req.user,
+  req.query.schoolId || req.body?.schoolId
+);
+
+const requireParticipantSchool = (req, res) => {
+  const schoolId = participantSchoolId(req);
+  if (!schoolId) {
+    res.status(400).json({ success: false, error: 'An organization must be selected' });
+    return null;
+  }
+  return schoolId;
+};
+
 // Get all students for a school
 router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), async (req, res) => {
   try {
-    const query = { role: 'student' }; // Students are stored as 'student' role
-    
-    // Filter by school for school admins and teachers
-    if (req.user.role === 'school_admin' || req.user.role === 'teacher') {
-      query.schoolId = req.user.schoolId;
-    }
+    const schoolId = requireParticipantSchool(req, res);
+    if (!schoolId) return;
+    const query = { role: 'student', schoolId }; // Participants are stored as the legacy student role.
     
     // Add search functionality
     if (req.query.search) {
@@ -56,15 +70,35 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), as
   }
 });
 
+// Get a participant's modern enrollment context without changing legacy fields.
+router.get('/:id/enrollments', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = requireParticipantSchool(req, res);
+    if (!schoolId) return;
+    const participant = await User.findOne({ _id: req.params.id, role: 'student', schoolId }).select('_id');
+    if (!participant) return res.status(404).json({ success: false, error: 'Participant not found' });
+
+    const enrollments = await Enrollment.find({ childId: participant._id, schoolId })
+      .populate('programId', 'name isActive')
+      .populate('currentLevelId', 'name isActive')
+      .populate('currentClassId', 'name isActive')
+      .populate('levelHistory.levelId', 'name')
+      .populate('classAssignments.classId', 'name')
+      .sort({ startDate: -1, createdAt: -1 });
+
+    res.json({ success: true, data: enrollments, count: enrollments.length });
+  } catch (error) {
+    logger.error('Error fetching participant enrollments:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch participant enrollments' });
+  }
+});
+
 // Get a single student
 router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
   try {
-    const query = { _id: req.params.id, role: 'student' };
-    
-    // Filter by school for school admins
-    if (req.user.role === 'school_admin') {
-      query.schoolId = req.user.schoolId;
-    }
+    const schoolId = requireParticipantSchool(req, res);
+    if (!schoolId) return;
+    const query = { _id: req.params.id, role: 'student', schoolId };
 
     const student = await User.findOne(query)
       .populate('assignedTeacher', 'firstName lastName email')
@@ -127,6 +161,9 @@ router.post('/', [
       });
     }
 
+    const schoolId = requireParticipantSchool(req, res);
+    if (!schoolId) return;
+
     const { 
       firstName, 
       lastName, 
@@ -145,7 +182,6 @@ router.post('/', [
       academicLevel,
       notes,
       isActive,
-      ...otherFields 
     } = req.body;
     
     // Debug logging
@@ -158,7 +194,7 @@ router.post('/', [
       parentEmail,
       parentPhone,
       studentClass,
-      schoolId: req.user.schoolId,
+      schoolId,
       schoolIdType: typeof req.user.schoolId
     });
 
@@ -183,7 +219,7 @@ router.post('/', [
     if (studentClass && studentClass.trim()) {
       try {
         const foundClass = await Class.findOne({ 
-          schoolId: typeof req.user.schoolId === 'string' ? req.user.schoolId : req.user.schoolId._id,
+          schoolId,
           name: studentClass.trim()
         });
         
@@ -203,8 +239,8 @@ router.post('/', [
       firstName,
       lastName,
       role: 'student', // Student role for login with studentId
-      password: 'Student123!', // Default password for student login
-      schoolId: typeof req.user.schoolId === 'string' ? req.user.schoolId : req.user.schoolId._id,
+      password: randomUUID(), // Login access must be established through the password-reset flow
+      schoolId,
       studentId: studentId.toUpperCase().trim(), // Convert to uppercase and trim
       studentGrade,
       parentName,
@@ -220,8 +256,7 @@ router.post('/', [
       academicLevel: academicLevel || 'beginner',
       notes,
       isActive: isActive !== undefined ? isActive : true,
-      avatar,
-      ...otherFields
+      avatar
     };
     
     // Only include email if it's provided
@@ -239,14 +274,13 @@ router.post('/', [
       await Class.findByIdAndUpdate(classId, { currentEnrollment: enrollCount });
     }
 
-    // Create or update parent account for login access
+    // Reuse one guardian account for any number of children in this organization.
     let parentAccount = null;
-    try {
-      // Check if a parent account already exists with this email
+    if (parentEmail && parentName) try {
       parentAccount = await User.findOne({ 
         email: parentEmail.toLowerCase(),
         role: 'parent',
-        schoolId: typeof req.user.schoolId === 'string' ? req.user.schoolId : req.user.schoolId._id
+        schoolId
       });
 
       if (!parentAccount) {
@@ -259,9 +293,9 @@ router.post('/', [
           firstName: parentFirstName,
           lastName: parentLastName,
           email: parentEmail.toLowerCase(),
-          password: 'Parent123!', // Default password - should be changed on first login
+          password: randomUUID(), // Login access must be established through the password-reset flow
           role: 'parent',
-          schoolId: typeof req.user.schoolId === 'string' ? req.user.schoolId : req.user.schoolId._id,
+          schoolId,
           phone: parentPhone,
           isActive: true,
           isEmailVerified: false,
@@ -273,15 +307,7 @@ router.post('/', [
         });
 
         logger.info(`Parent account created: ${parentEmail} for student ${student.firstName} ${student.lastName}`);
-        
-        // TODO: Send welcome email to parent with login credentials
-        // await emailService.sendParentWelcomeEmail({
-        //   parentEmail: parentEmail,
-        //   parentName: parentName,
-        //   studentName: `${student.firstName} ${student.lastName}`,
-        //   schoolName: school.name,
-        //   defaultPassword: 'Parent123!'
-        // });
+        // Guardian login access is established through the existing password-reset flow.
       } else {
         logger.info(`Parent account already exists: ${parentEmail} - student added to existing parent`);
       }
@@ -373,12 +399,9 @@ router.put('/:id', [
       });
     }
 
-    const query = { _id: req.params.id, role: 'student' };
-    
-    // Filter by school for school admins
-    if (req.user.role === 'school_admin') {
-      query.schoolId = req.user.schoolId;
-    }
+    const schoolId = requireParticipantSchool(req, res);
+    if (!schoolId) return;
+    const query = { _id: req.params.id, role: 'student', schoolId };
 
     const student = await User.findOne(query);
     if (!student) {
@@ -404,7 +427,7 @@ router.put('/:id', [
       const newTeacher = await User.findOne({ 
         _id: req.body.assignedTeacher, 
         role: 'teacher',
-        schoolId: req.user.schoolId 
+        schoolId
       });
       
       if (!newTeacher) {
@@ -431,7 +454,7 @@ router.put('/:id', [
     if (req.body.studentClass && req.body.studentClass.trim()) {
       try {
         const foundClass = await Class.findOne({ 
-          schoolId: typeof req.user.schoolId === 'string' ? req.user.schoolId : req.user.schoolId._id,
+          schoolId,
           name: req.body.studentClass.trim()
         });
         
@@ -452,7 +475,14 @@ router.put('/:id', [
     }
 
     // Prepare update data with proper field handling
-    const updateData = { ...req.body };
+    const {
+      schoolId: _ignoredSchoolId,
+      role: _ignoredRole,
+      password: _ignoredPassword,
+      parentId: _ignoredParentId,
+      _id: _ignoredId,
+      ...updateData
+    } = req.body;
     
     // Handle date fields
     if (req.body.dateOfBirth) {
@@ -475,8 +505,8 @@ router.put('/:id', [
       updateData.isActive = req.body.isActive;
     }
 
-    const updatedStudent = await User.findByIdAndUpdate(
-      req.params.id,
+    const updatedStudent = await User.findOneAndUpdate(
+      query,
       updateData,
       { new: true, runValidators: true }
     ).populate('assignedTeacher', 'firstName lastName email')
@@ -524,7 +554,7 @@ router.put('/:id', [
         const parentEmail = req.body.parentEmail || student.parentEmail;
         if (parentEmail) {
           const updatedParent = await User.findOneAndUpdate(
-            { email: parentEmail.toLowerCase(), role: 'parent' },
+            { email: parentEmail.toLowerCase(), role: 'parent', schoolId },
             parentUpdateData,
             { new: true }
           );
@@ -555,15 +585,12 @@ router.put('/:id', [
   }
 });
 
-// Delete a student
+// Deactivate a participant while preserving enrollment and longitudinal history.
 router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
   try {
-    const query = { _id: req.params.id, role: 'student' };
-    
-    // Filter by school for school admins
-    if (req.user.role === 'school_admin') {
-      query.schoolId = req.user.schoolId;
-    }
+    const schoolId = requireParticipantSchool(req, res);
+    if (!schoolId) return;
+    const query = { _id: req.params.id, role: 'student', schoolId };
 
     const student = await User.findOne(query);
     if (!student) {
@@ -573,14 +600,15 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (
       });
     }
 
-    // Decrease teacher's student count
-    if (student.assignedTeacher) {
+    // Avoid repeating side effects when an already inactive participant is retried.
+    if (student.isActive && student.assignedTeacher) {
       await User.findByIdAndUpdate(student.assignedTeacher, {
         $inc: { students: -1 }
       });
     }
 
-    await User.findByIdAndDelete(req.params.id);
+    student.isActive = false;
+    await student.save();
 
     // Sync class enrollment after deletion
     if (student.classId) {
@@ -590,13 +618,14 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (
 
     res.json({
       success: true,
-      message: 'Student deleted successfully'
+      data: student,
+      message: 'Participant deactivated successfully'
     });
   } catch (error) {
-    logger.error('Error deleting student:', error);
+    logger.error('Error deactivating participant:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete student'
+      error: 'Failed to deactivate participant'
     });
   }
 });
@@ -681,4 +710,4 @@ router.post('/assign-teacher', [
   }
 });
 
-module.exports = router; 
+module.exports = router;

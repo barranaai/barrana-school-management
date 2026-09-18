@@ -7,6 +7,7 @@ import { Roadmap } from '../../../services/roadmapService';
 import { PlannedSession } from '../../../services/plannedSessionService';
 import { DeliveredSession, DeliveryStatus, deliveredSessionService, deliveredSessionFailure, nextDeliveryStatuses } from '../../../services/deliveredSessionService';
 import SessionParticipationManagement from './SessionParticipationManagement';
+import ProgressWorkflow from '../../staff/ProgressWorkflow';
 
 interface Context { schoolId: string; program: Program; level: Level; roadmap: Roadmap; plannedSession: PlannedSession; onBack: () => void; }
 const displayDate = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString().replace('T', ' ').replace('.000Z', ' UTC') : 'Not recorded';
@@ -45,6 +46,7 @@ function Occurrences({ program, level, roadmap, plannedSession, onBack, token, u
   const [action, setAction] = useState<{ row: DeliveredSession; status: DeliveryStatus }>();
   const [detail, setDetail] = useState<DeliveredSession>();
   const [participationSession, setParticipationSession] = useState<DeliveredSession>();
+  const [progressParticipationId, setProgressParticipationId] = useState('');
   useEffect(() => {
     let active = true; setLoading(true); setData(undefined);
     api.load().then(value => { if (active) { setData(value); setBlocked(false); } })
@@ -76,7 +78,8 @@ function Occurrences({ program, level, roadmap, plannedSession, onBack, token, u
     catch (_) { setError(true); setBlocked(true); } finally { setBusy(false); }
   }
   const feedback = error && <Alert severity="error">{deliveredSessionFailure}</Alert>;
-  if (participationSession) return <SessionParticipationManagement token={token} schoolId={roadmap.schoolId} session={participationSession} onClose={() => setParticipationSession(undefined)} />;
+  if (participationSession && progressParticipationId) return <ProgressWorkflow initialSchoolId={roadmap.schoolId} initialSessionId={participationSession._id} initialParticipationId={progressParticipationId} onClose={() => setProgressParticipationId('')} />;
+  if (participationSession) return <SessionParticipationManagement token={token} schoolId={roadmap.schoolId} session={participationSession} onClose={() => setParticipationSession(undefined)} onRecordProgress={setProgressParticipationId} />;
   return <Stack spacing={2}>
     <Button disabled={busy} onClick={onBack}>Back to Planned Sessions</Button>
     <Typography variant="h5">{program.name} → {level.name} → {roadmap.name} — Version {roadmap.version} → {data?.planned.title || plannedSession.title} → Delivered Sessions</Typography>

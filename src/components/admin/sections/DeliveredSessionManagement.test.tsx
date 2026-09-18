@@ -4,6 +4,7 @@ import { createRoot, Root } from 'react-dom/client';
 import DeliveredSessionManagement from './DeliveredSessionManagement';
 import { useAuth } from '../../../contexts/AuthContext';
 jest.mock('../../../contexts/AuthContext',()=>({useAuth:jest.fn()}));
+jest.mock('../../staff/ProgressWorkflow',()=>({__esModule:true,default:(props:any)=><div>Progress for {props.initialParticipationId}<button onClick={props.onClose}>Back to Participants</button></div>}));
 const roadmap={_id:'r',schoolId:'s',programId:'p',levelId:'l',version:2,name:'Roadmap',status:'active' as const};
 const planned={_id:'ps',schoolId:'s',roadmapId:'r',roadmapVersion:2,sequence:1,title:'Practice',status:'active' as const,objectives:[],expectedOutcomes:[]};
 const props={schoolId:'s',program:{_id:'p',schoolId:'s',name:'Program',displayOrder:0,isActive:true},level:{_id:'l',schoolId:'s',programId:'p',name:'Level',sequence:1,isActive:true},roadmap,plannedSession:planned,onBack:jest.fn()};
@@ -29,6 +30,10 @@ const change=(name:string,value:string)=>step(()=>Simulate.change(field(name),{t
 const writes=()=> (fetch as jest.Mock).mock.calls.filter(([,o])=>o.method!=='GET');
 test('context, list, dates, class, creator and back navigation',async()=>{
   await render();expect(document.body).toHaveTextContent('Program → Level → Roadmap — Version 2 → Practice → Delivered Sessions');expect(document.body).toHaveTextContent('Assigned class');expect(document.body).toHaveTextContent('Delivered By: You');expect(document.body).toHaveTextContent('scheduled');expect(document.body).toHaveTextContent('09:00:00 UTC');await click('Manage Participants');expect(document.body).toHaveTextContent('Historical title → Participants');await click('Back to Delivered Sessions');await click('Back to Planned Sessions');expect(props.onBack).toHaveBeenCalled();
+});
+test('opens Progress from an existing participant and returns to the roster',async()=>{
+  (fetch as jest.Mock).mockImplementation((url:string,o:any)=>Promise.resolve(reply(url.includes('/child-participations/eligible')?{eligible:[],participations:[{_id:'part',schoolId:'s',deliveredSessionId:'d',childId:'child',enrollmentId:'enrol',status:'active',firstName:'Maya'}]}:url.includes('/planned-sessions/')?planned:url.includes('/classes/options')?[{_id:'c',schoolId:'s',name:'Assigned class'}]:rows)));
+  await render();await click('Manage Participants');await click('Record / View Progress');expect(document.body).toHaveTextContent('Progress for part');await click('Back to Participants');expect(document.body).toHaveTextContent('Maya');
 });
 test('creation validates required fields, uses class options and refreshes',async()=>{
   await render();await click('Add Delivered Session');expect(button('Save Delivered Session')).toBeDisabled();

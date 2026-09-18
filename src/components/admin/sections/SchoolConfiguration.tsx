@@ -8,6 +8,7 @@ import { schoolService } from '../../../services/schoolService';
 import { useNavigate } from 'react-router-dom';
 import FrequencyConfiguration from './FrequencyConfiguration';
 import ProgramManagement from './ProgramManagement';
+import StandardPackageManagement from './StandardPackageManagement';
 import { Tabs, Tab } from '@mui/material';
 import {
   Box,
@@ -119,7 +120,7 @@ const SchoolConfiguration: React.FC<SchoolConfigurationProps> = (props) => {
   const { user } = useAuth();
   const [section, setSection] = useState('existing');
   if (!user || !['school_admin', 'super_admin'].includes(user.role)) return <Alert severity="error">Administrator access required.</Alert>;
-  return <Box><Tabs value={section} onChange={(_, value) => setSection(value)} aria-label="School configuration sections"><Tab value="existing" label="School settings" /><Tab value="programs" label="Programs" /></Tabs>{section === 'programs' ? <ProgramManagement /> : <ExistingSchoolConfiguration {...props} />}</Box>;
+  return <Box><Tabs value={section} onChange={(_, value) => setSection(value)} aria-label="School configuration sections"><Tab value="existing" label="School settings" /><Tab value="programs" label="Programs" />{user.role === 'school_admin' && <Tab value="standard-packages" label="Standard Packages" />}</Tabs>{section === 'programs' ? <ProgramManagement /> : section === 'standard-packages' ? <StandardPackageManagement /> : <ExistingSchoolConfiguration {...props} />}</Box>;
 };
 
 const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoolBranding }) => {
