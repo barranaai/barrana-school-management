@@ -65,6 +65,22 @@ export interface LoginCredentials {
   role?: string;
 }
 
+const mapApiUser = (apiUser: any): User => ({
+  _id: apiUser.id || apiUser._id,
+  id: apiUser.id || apiUser._id,
+  firstName: apiUser.firstName,
+  lastName: apiUser.lastName,
+  email: apiUser.email,
+  role: apiUser.role,
+  schoolId: apiUser.schoolId,
+  isEmailVerified: apiUser.isEmailVerified,
+  preferences: apiUser.preferences,
+  lastLogin: apiUser.lastLogin,
+  lastActivity: apiUser.lastActivity,
+  createdAt: apiUser.createdAt,
+  updatedAt: apiUser.updatedAt
+});
+
 // Action types
 type AuthAction =
   | { type: 'AUTH_START' }
@@ -138,12 +154,14 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 // Context
 const AuthContext = createContext<AuthState & {
   login: (credentials: LoginCredentials) => Promise<void>;
+  authenticateWithToken: (token: string) => Promise<User>;
   logout: () => void;
   clearError: () => void;
   updateUser: (userData: Partial<User>) => void;
 }>({
   ...initialState,
   login: async () => {},
+  authenticateWithToken: async () => { throw new Error('Authentication is unavailable'); },
   logout: () => {},
   clearError: () => {},
   updateUser: () => {},
@@ -173,21 +191,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const apiUser = response.data.user || response.data; // Handle both response structures
             
             // Convert API user to our User interface
-            const user: User = {
-              _id: apiUser.id || (apiUser as any)._id,
-              id: apiUser.id || (apiUser as any)._id, // For backward compatibility
-              firstName: apiUser.firstName,
-              lastName: apiUser.lastName,
-              email: apiUser.email,
-              role: apiUser.role,
-              schoolId: apiUser.schoolId,
-              isEmailVerified: apiUser.isEmailVerified,
-              preferences: apiUser.preferences,
-              lastLogin: apiUser.lastLogin,
-              lastActivity: apiUser.lastActivity,
-              createdAt: apiUser.createdAt,
-              updatedAt: apiUser.updatedAt
-            };
+            const user = mapApiUser(apiUser);
             try {
               dispatch({
                 type: 'AUTH_SUCCESS',
@@ -234,22 +238,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const { user: apiUser, token } = response.data;
       
-      // Convert API user to our User interface
-      const user: User = {
-        _id: apiUser.id || (apiUser as any)._id,
-        id: apiUser.id || (apiUser as any)._id, // For backward compatibility
-        firstName: apiUser.firstName,
-        lastName: apiUser.lastName,
-        email: apiUser.email,
-        role: apiUser.role,
-        schoolId: apiUser.schoolId,
-        isEmailVerified: apiUser.isEmailVerified,
-        preferences: apiUser.preferences,
-        lastLogin: apiUser.lastLogin,
-        lastActivity: apiUser.lastActivity,
-        createdAt: apiUser.createdAt,
-        updatedAt: apiUser.updatedAt
-      };
+      const user = mapApiUser(apiUser);
       // Store token
       storage.setItem('token', token);
       storage.setItem('user', JSON.stringify(user));
@@ -264,6 +253,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
       dispatch({ type: 'AUTH_FAILURE', payload: errorMessage });
+      throw error;
+    }
+  };
+
+  const authenticateWithToken = async (token: string): Promise<User> => {
+    dispatch({ type: 'AUTH_START' });
+    apiService.setToken(token);
+
+    try {
+      const response = await apiService.getCurrentUser();
+      if (!response.success || !response.data) {
+        throw new Error('Unable to confirm the new account');
+      }
+
+      const apiUser = (response.data as any).user || response.data;
+      const user = mapApiUser(apiUser);
+      storage.setItem('token', token);
+      storage.setItem('user', JSON.stringify(user));
+      dispatch({ type: 'AUTH_SUCCESS', payload: { user, token } });
+      return user;
+    } catch (error) {
+      apiService.clearToken();
+      storage.removeItem('token');
+      storage.removeItem('user');
+      dispatch({ type: 'AUTH_FAILURE', payload: 'Unable to confirm the new account' });
       throw error;
     }
   };
@@ -299,6 +313,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       value={{
         ...state,
         login,
+        authenticateWithToken,
         logout,
         clearError,
         updateUser,

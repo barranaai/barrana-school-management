@@ -5,11 +5,15 @@ const School = require('../models/School');
 const User = require('../models/User');
 const StandardPackage = require('../models/StandardPackage');
 const { adoptPackageInSession } = require('./standardPackageService');
-const { ACCOUNT_TYPES, ORGANIZATION_TYPES } = require('../domain/workspaceProfile');
+const {
+  ACCOUNT_TYPES,
+  ORGANIZATION_TYPES,
+  SCHOOL_TYPES,
+  organizationTypeRequiresSchoolDetails
+} = require('../domain/workspaceProfile');
 
 const PUBLIC_START_MESSAGE = 'If this email can be used, Kidsible has sent the next step.';
 const TOKEN_TTL_MS = (Number.parseInt(process.env.ONBOARDING_TOKEN_TTL_HOURS, 10) || 24) * 60 * 60 * 1000;
-const SCHOOL_STYLE_TYPES = new Set(['school', 'early_childhood_center']);
 
 class OnboardingError extends Error {
   constructor(code, message, statusCode = 400) {
@@ -44,7 +48,7 @@ function deriveWorkspaceProfile(accountType, requestedOrganizationType) {
   return {
     accountType,
     organizationType: requestedOrganizationType,
-    terminologyProfile: SCHOOL_STYLE_TYPES.has(requestedOrganizationType) ? 'education' : 'training'
+    terminologyProfile: organizationTypeRequiresSchoolDetails(requestedOrganizationType) ? 'education' : 'training'
   };
 }
 
@@ -65,8 +69,8 @@ function validateWorkspaceInput(input, profile) {
   }
 
   const schoolDetails = {};
-  if (SCHOOL_STYLE_TYPES.has(profile.organizationType)) {
-    if (!['licensed_daycare', 'montessori_school', 'public_private_school'].includes(input.schoolType)) {
+  if (organizationTypeRequiresSchoolDetails(profile.organizationType)) {
+    if (!SCHOOL_TYPES.includes(input.schoolType)) {
       throw new OnboardingError('SCHOOL_DETAILS_REQUIRED', 'Choose a valid school type.');
     }
     if (!Number.isInteger(input.estimatedStudents) || input.estimatedStudents < 1) {

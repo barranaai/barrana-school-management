@@ -1,6 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { body, validationResult } = require('express-validator');
+const { body, query, validationResult } = require('express-validator');
 const {
   PUBLIC_START_MESSAGE,
   OnboardingError,
@@ -10,6 +10,8 @@ const {
 } = require('../services/onboardingService');
 const { sendEmail } = require('../utils/email');
 const { logger } = require('../utils/logger');
+const StandardPackage = require('../models/StandardPackage');
+const { ORGANIZATION_TYPES, getPublicOnboardingMetadata } = require('../domain/workspaceProfile');
 
 const router = express.Router();
 const publicLimiter = rateLimit({
@@ -98,6 +100,41 @@ router.post('/resend', [
   return startHandler(req, res);
 });
 
+router.get('/metadata', publicLimiter, (_req, res) => {
+  return res.json({ success: true, data: getPublicOnboardingMetadata() });
+});
+router.get('/packages', [
+  publicLimiter,
+  query('organizationType')
+    .isIn(ORGANIZATION_TYPES)
+    .withMessage('Choose a valid organization type.'),
+  validationFailure
+], async (req, res) => {
+  try {
+    const organizationType = String(req.query.organizationType);
+    const packages = await StandardPackage.find({
+      status: 'published',
+      $or: [
+        { organizationTypes: { $size: 0 } },
+        { organizationTypes: organizationType }
+      ]
+    })
+      .select('_id slug name description version organizationTypes')
+      .sort({ name: 1, version: -1 })
+      .lean();
+
+    return res.json({ success: true, data: packages });
+  } catch (error) {
+    logger.error('Onboarding package catalog failed', {
+      errorName: error?.name || 'Error',
+      errorCode: error?.code || 'ONBOARDING_PACKAGE_CATALOG_FAILED'
+    });
+    return res.status(503).json({
+      success: false,
+      message: 'Standard Packages are temporarily unavailable.'
+    });
+  }
+});
 router.post('/verify', [
   publicLimiter,
   allowedFields(['token']),

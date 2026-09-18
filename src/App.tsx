@@ -7,6 +7,7 @@ import TeacherDashboard from './components/teachers/TeacherDashboard';
 import ParentsUI from './components/parents/ParentsUI';
 import SuperAdminDashboard from './components/super-admin/SuperAdminDashboard';
 import Unauthorized from './components/common/Unauthorized';
+import { OnboardingStart, OnboardingVerify } from './components/auth/Onboarding';
 
 function App() {
   console.log('🚀 Full App component loaded successfully!');
@@ -17,6 +18,8 @@ function App() {
     <div className="App">
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/onboarding" element={<OnboardingStart />} />
+        <Route path="/onboarding/verify" element={<OnboardingVerify />} />
         <Route path="/admin" element={
           <ProtectedRoute allowedRoles={['school_admin', 'super_admin']}>
             <AdminDashboard />

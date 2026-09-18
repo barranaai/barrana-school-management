@@ -23,6 +23,61 @@ export interface LoginCredentials {
   email: string;
   password: string;
 }
+export type OnboardingAccountType = 'organization' | 'solo_practitioner';
+
+export interface OnboardingMetadata {
+  accountTypes: Array<{
+    value: OnboardingAccountType;
+    label: string;
+    description: string;
+  }>;
+  organizationTypes: Array<{
+    value: string;
+    label: string;
+    accountTypes: OnboardingAccountType[];
+    requiresSchoolDetails: boolean;
+  }>;
+  schoolTypes: Array<{
+    value: string;
+    label: string;
+  }>;
+}
+
+export interface OnboardingPackage {
+  _id: string;
+  slug: string;
+  name: string;
+  description?: string;
+  version: number;
+  organizationTypes: string[];
+}
+
+export interface CompleteOnboardingInput {
+  token: string;
+  password: string;
+  accountType: OnboardingAccountType;
+  organizationType?: string;
+  customOrganizationTypeLabel?: string;
+  workspaceName: string;
+  phone?: string;
+  estimatedParticipants?: number;
+  schoolType?: string;
+  estimatedStudents?: number;
+  address?: {
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  standardPackageId?: string;
+}
+
+export interface OnboardingCompletion {
+  user: User;
+  token: string;
+  standardPackageAdopted: boolean;
+}
 
 export interface User {
   id: string;
@@ -809,6 +864,43 @@ class ApiService {
   }
 
   // Authentication endpoints
+  async startOnboarding(input: { firstName: string; lastName: string; email: string }): Promise<ApiResponse<void>> {
+    return this._request<void>('/onboarding/start', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async resendOnboarding(email: string): Promise<ApiResponse<void>> {
+    return this._request<void>('/onboarding/resend', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async verifyOnboarding(token: string): Promise<ApiResponse<{ valid: boolean; expiresAt: string }>> {
+    return this._request<{ valid: boolean; expiresAt: string }>('/onboarding/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async getOnboardingMetadata(): Promise<ApiResponse<OnboardingMetadata>> {
+    return this._request<OnboardingMetadata>('/onboarding/metadata');
+  }
+
+  async listOnboardingPackages(organizationType: string): Promise<ApiResponse<OnboardingPackage[]>> {
+    return this._request<OnboardingPackage[]>(
+      `/onboarding/packages?organizationType=${encodeURIComponent(organizationType)}`
+    );
+  }
+
+  async completeOnboarding(input: CompleteOnboardingInput): Promise<ApiResponse<OnboardingCompletion>> {
+    return this._request<OnboardingCompletion>('/onboarding/complete', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
   async login(credentials: LoginCredentials): Promise<ApiResponse<{ user: User; token: string }>> {
     return this._request<{ user: User; token: string }>('/auth/login', {
       method: 'POST',

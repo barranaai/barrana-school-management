@@ -148,6 +148,14 @@ const Login: React.FC = () => {
             >
               Sign In
             </Button>
+            <Button
+              fullWidth
+              variant="text"
+              onClick={() => navigate('/onboarding')}
+              sx={{ mt: 1.5, fontWeight: 700 }}
+            >
+              Create your workspace
+            </Button>
           </Box>
 
           {/* Footer */}

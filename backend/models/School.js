@@ -2,15 +2,17 @@ const mongoose = require('mongoose');
 const {
   ACCOUNT_TYPES,
   ORGANIZATION_TYPES,
+  SCHOOL_TYPES,
   TERMINOLOGY_PROFILES,
   defaultOrganizationType,
   defaultTerminologyProfile,
+  organizationTypeRequiresSchoolDetails,
   resolveWorkspaceProfile
 } = require('../domain/workspaceProfile');
 
 const requiresSchoolDetails = function() {
   const organizationType = this.organizationType || defaultOrganizationType(this.accountType);
-  return organizationType === 'school' || organizationType === 'early_childhood_center';
+  return organizationTypeRequiresSchoolDetails(organizationType);
 };
 
 const schoolSchema = new mongoose.Schema({
@@ -116,7 +118,7 @@ const schoolSchema = new mongoose.Schema({
   // School Details
   schoolType: {
     type: String,
-    enum: ['licensed_daycare', 'montessori_school', 'public_private_school'],
+    enum: SCHOOL_TYPES,
     required: [requiresSchoolDetails, 'School type is required']
   },
   gradeLevels: {

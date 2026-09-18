@@ -65,3 +65,14 @@ test('shows one safe message when authentication fails', async () => {
   expect(document.body).not.toHaveTextContent('PRIVATE_BACKEND_DETAIL');
   expect(navigate).not.toHaveBeenCalled();
 });
+
+test('offers a public Create your workspace entry without changing sign in', async () => {
+  await step(() => root.render(<Login />));
+  const createButton = Array.from(document.querySelectorAll('button')).find(
+    element => element.textContent === 'Create your workspace'
+  ) as HTMLButtonElement;
+  expect(createButton).toBeEnabled();
+  await step(() => Simulate.click(createButton));
+  expect(navigate).toHaveBeenCalledWith('/onboarding');
+  expect(document.body).toHaveTextContent('Sign In');
+});
