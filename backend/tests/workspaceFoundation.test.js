@@ -74,6 +74,7 @@ test('training organizations use neutral terminology without changing tenant ide
   assert.equal(academy.schoolType, undefined);
   assert.equal(academy.workspaceProfile.terminology.trainer, 'Trainer');
   assert.equal(academy.workspaceProfile.terminology.participant, 'Participant');
+  assert.equal(academy.workspaceProfile.capabilities.requiresAcademicGroupFields, false);
 });
 
 test('invalid workspace classifications fail closed', async () => {
@@ -90,6 +91,9 @@ test('plain legacy data resolves safely without a database migration', () => {
     accountType: 'organization',
     organizationType: 'school',
     terminologyProfile: 'education',
-    terminology: TERMINOLOGY.education
+    terminology: TERMINOLOGY.education,
+    capabilities: {
+      requiresAcademicGroupFields: true
+    }
   });
 });

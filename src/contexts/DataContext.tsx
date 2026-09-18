@@ -258,6 +258,22 @@ interface DataContextType {
     status: string;
     gradeLevels: string[];
     settings?: any;
+    accountType?: 'organization' | 'solo_practitioner';
+    organizationType?: string;
+    terminologyProfile?: 'education' | 'training' | 'coaching';
+    workspaceProfile?: {
+      terminology: {
+        workspace: string;
+        administrator: string;
+        trainer: string;
+        participant: string;
+        guardian: string;
+        group: string;
+      };
+      capabilities: {
+        requiresAcademicGroupFields: boolean;
+      };
+    };
   };
 }
 
@@ -742,7 +758,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     type: schoolData?.schoolType || 'Unknown',
     status: schoolData?.isActive !== undefined ? (schoolData.isActive ? 'Active' : 'Inactive') : 'Unknown',
     gradeLevels: schoolData?.gradeLevels || [],
-    settings: schoolData?.settings || {}
+    settings: schoolData?.settings || {},
+    accountType: schoolData?.accountType,
+    organizationType: schoolData?.organizationType,
+    terminologyProfile: schoolData?.terminologyProfile,
+    workspaceProfile: schoolData?.workspaceProfile
   };
   
   console.log('DataContext - schoolData state:', schoolData);

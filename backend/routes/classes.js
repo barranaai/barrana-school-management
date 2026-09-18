@@ -2,11 +2,33 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Class = require('../models/Class');
 const User = require('../models/User');
+const School = require('../models/School');
+const Program = require('../models/Program');
+const { resolveWorkspaceProfile } = require('../domain/workspaceProfile');
 const { protect, authorize } = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 
 const router = express.Router();
 router.use('/options', require('./classOptions'));
+
+const loadWorkspaceProfile = async schoolId => {
+  const workspace = await School.findOne({ _id: schoolId, isActive: true })
+    .select('accountType organizationType terminologyProfile');
+  return workspace ? resolveWorkspaceProfile(workspace) : null;
+};
+
+const validateProgramAssociation = async (programId, schoolId) => {
+  if (!programId) return null;
+  return Program.findOne({ _id: programId, schoolId, isActive: true }).select('_id name schoolId');
+};
+
+const academicFieldErrors = (profile, { grade, academicYear }) => {
+  if (!profile?.capabilities?.requiresAcademicGroupFields) return [];
+  const errors = [];
+  if (!String(grade || '').trim()) errors.push({ type: 'field', value: grade, msg: 'Grade is required', path: 'grade', location: 'body' });
+  if (!String(academicYear || '').trim()) errors.push({ type: 'field', value: academicYear, msg: 'Academic year is required', path: 'academicYear', location: 'body' });
+  return errors;
+};
 
 // @desc    Get all classes for a school
 // @route   GET /api/classes
@@ -14,14 +36,15 @@ router.use('/options', require('./classOptions'));
 router.get('/', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
   try {
     let query = { isActive: true };
-    
+
     // If school admin, only show classes from their school
     if (req.user.role === 'school_admin') {
       query.schoolId = req.user.schoolId;
     }
-    
+
     const classes = await Class.find(query)
       .populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
+      .populate('programId', 'name')
       .populate('createdBy', 'firstName lastName')
       .sort({ createdAt: -1 });
 
@@ -72,20 +95,51 @@ router.get('/', protect, authorize('school_admin', 'super_admin'), async (req, r
   }
 });
 
+// @desc    Get teacher's assigned classes
+// @route   GET /api/classes/teacher/assigned
+// @access  Private (Teacher)
+router.get('/teacher/assigned', protect, authorize('teacher'), async (req, res) => {
+  try {
+    const classes = await Class.find({
+      schoolId: req.user.schoolId,
+      isActive: true,
+      'assignedTeachers.teacherId': req.user._id
+    })
+    .populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
+    .populate('programId', 'name')
+    .populate('createdBy', 'firstName lastName')
+    .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: classes.length,
+      data: classes
+    });
+  } catch (error) {
+    logger.error('Error fetching teacher assigned classes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching assigned classes'
+    });
+  }
+});
+
+
 // @desc    Get single class
 // @route   GET /api/classes/:id
 // @access  Private (School Admin, Super Admin)
 router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
   try {
     let query = { _id: req.params.id, isActive: true };
-    
+
     // If school admin, only show classes from their school
     if (req.user.role === 'school_admin') {
       query.schoolId = req.user.schoolId;
     }
-    
+
     const classData = await Class.findOne(query)
       .populate('assignedTeachers.teacherId', 'firstName lastName email avatar grade specialization')
+      .populate('programId', 'name')
       .populate('createdBy', 'firstName lastName');
 
     if (!classData) {
@@ -117,10 +171,11 @@ router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req
 // @access  Private (School Admin, Super Admin)
 router.post('/', protect, authorize('school_admin', 'super_admin'), [
   body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Class name must be between 2 and 100 characters'),
-  body('grade').trim().notEmpty().withMessage('Grade is required'),
+  body('programId').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Valid Program ID is required'),
+  body('grade').optional({ checkFalsy: true }).trim(),
   body('description').optional({ checkFalsy: true }).trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
   body('capacity').optional({ checkFalsy: true }).isInt({ min: 1, max: 1000 }).withMessage('Capacity must be between 1 and 1000'),
-  body('academicYear').trim().notEmpty().withMessage('Academic year is required'),
+  body('academicYear').optional({ checkFalsy: true }).trim(),
   body('semester').optional({ checkFalsy: true }).isIn(['fall', 'spring', 'summer']).withMessage('Invalid semester'),
   body('subjects').optional({ checkFalsy: true }).isArray().withMessage('Subjects must be an array'),
   body('assignedTeachers').optional({ checkFalsy: true }).isArray().withMessage('Assigned teachers must be an array'),
@@ -138,6 +193,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), [
 
     const {
       name,
+      programId,
       grade,
       description,
       capacity,
@@ -162,15 +218,30 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), [
       }
     }
 
+    const workspaceProfile = await loadWorkspaceProfile(schoolId);
+    if (!workspaceProfile) {
+      return res.status(404).json({ success: false, message: 'Organization not found' });
+    }
+
+    const conditionalErrors = academicFieldErrors(workspaceProfile, { grade, academicYear });
+    if (conditionalErrors.length > 0) {
+      return res.status(400).json({ success: false, message: 'Validation errors', errors: conditionalErrors });
+    }
+
+    if (programId && !(await validateProgramAssociation(programId, schoolId))) {
+      return res.status(400).json({ success: false, message: 'Program not found or not available for this organization' });
+    }
+
+
     // Validate assigned teachers if provided
     if (assignedTeachers && assignedTeachers.length > 0) {
       for (const assignment of assignedTeachers) {
-        const teacher = await User.findOne({ 
-          _id: assignment.teacherId, 
+        const teacher = await User.findOne({
+          _id: assignment.teacherId,
           role: 'teacher',
           schoolId: schoolId
         });
-        
+
         if (!teacher) {
           return res.status(400).json({
             success: false,
@@ -180,17 +251,19 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), [
       }
     }
 
+    const schedule = { startDate: new Date() };
+    if (academicYear) schedule.academicYear = academicYear;
+    if (semester) schedule.semester = semester;
+    else if (workspaceProfile.capabilities.requiresAcademicGroupFields) schedule.semester = 'fall';
+
     const classData = new Class({
       name,
       schoolId,
-      grade,
+      programId: programId || null,
+      grade: grade || undefined,
       description,
       capacity,
-      schedule: {
-        academicYear,
-        semester: semester || 'fall',
-        startDate: new Date()
-      },
+      schedule,
       subjects: subjects || [],
       assignedTeachers: assignedTeachers || [],
       createdBy: req.user.id
@@ -201,6 +274,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), [
     // Populate the created class with teacher details
     const populatedClass = await Class.findById(classData._id)
       .populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
+      .populate('programId', 'name')
       .populate('createdBy', 'firstName lastName');
 
     logger.info(`Class created: ${name} at school ${schoolId}`);
@@ -223,12 +297,15 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), [
 // @route   PUT /api/classes/:id
 // @access  Private (School Admin, Super Admin)
 router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
+  body('programId').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Valid Program ID is required'),
   body('name').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 100 }).withMessage('Class name must be between 2 and 100 characters'),
   body('grade').optional({ checkFalsy: true }).trim().notEmpty().withMessage('Grade cannot be empty'),
   body('description').optional({ checkFalsy: true }).trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
   body('status').optional({ checkFalsy: true }).isIn(['active', 'inactive', 'archived']).withMessage('Invalid status'),
   body('capacity').optional({ checkFalsy: true }).isInt({ min: 1, max: 1000 }).withMessage('Capacity must be between 1 and 1000'),
   body('subjects').optional({ checkFalsy: true }).isArray().withMessage('Subjects must be an array'),
+  body('academicYear').optional({ checkFalsy: true }).trim(),
+  body('semester').optional({ checkFalsy: true }).isIn(['fall', 'spring', 'summer']).withMessage('Invalid semester'),
   body('assignedTeachers').optional({ checkFalsy: true }).isArray().withMessage('Assigned teachers must be an array')
 ], async (req, res) => {
   try {
@@ -242,7 +319,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
     }
 
     let query = { _id: req.params.id, isActive: true };
-    
+
     // If school admin, only update classes from their school
     if (req.user.role === 'school_admin') {
       query.schoolId = req.user.schoolId;
@@ -258,22 +335,42 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
 
     const {
       name,
+      programId,
       grade,
       description,
       status,
       capacity,
+      academicYear,
+      semester,
+      subjects,
       assignedTeachers
     } = req.body;
+
+    const workspaceProfile = await loadWorkspaceProfile(classData.schoolId);
+    if (!workspaceProfile) {
+      return res.status(404).json({ success: false, message: 'Organization not found' });
+    }
+
+    const nextGrade = grade !== undefined ? grade : classData.grade;
+    const nextAcademicYear = academicYear !== undefined ? academicYear : classData.schedule?.academicYear;
+    const conditionalErrors = academicFieldErrors(workspaceProfile, { grade: nextGrade, academicYear: nextAcademicYear });
+    if (conditionalErrors.length > 0) {
+      return res.status(400).json({ success: false, message: 'Validation errors', errors: conditionalErrors });
+    }
+
+    if (programId && !(await validateProgramAssociation(programId, classData.schoolId))) {
+      return res.status(400).json({ success: false, message: 'Program not found or not available for this organization' });
+    }
 
     // Validate assigned teachers if provided
     if (assignedTeachers && assignedTeachers.length > 0) {
       for (const assignment of assignedTeachers) {
-        const teacher = await User.findOne({ 
-          _id: assignment.teacherId, 
+        const teacher = await User.findOne({
+          _id: assignment.teacherId,
           role: 'teacher',
           schoolId: classData.schoolId
         });
-        
+
         if (!teacher) {
           return res.status(400).json({
             success: false,
@@ -286,10 +383,14 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
     // Update fields
     const updateFields = {};
     if (name) updateFields.name = name;
-    if (grade) updateFields.grade = grade;
+    if (programId !== undefined) updateFields.programId = programId || null;
+    if (grade !== undefined) updateFields.grade = grade || undefined;
     if (description !== undefined) updateFields.description = description;
     if (status) updateFields.status = status;
     if (capacity) updateFields.capacity = capacity;
+    if (academicYear !== undefined) updateFields['schedule.academicYear'] = academicYear || undefined;
+    if (semester !== undefined) updateFields['schedule.semester'] = semester || undefined;
+    if (subjects !== undefined) updateFields.subjects = subjects;
     if (assignedTeachers) updateFields.assignedTeachers = assignedTeachers;
 
     const updatedClass = await Class.findByIdAndUpdate(
@@ -297,6 +398,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
       updateFields,
       { new: true, runValidators: true }
     ).populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
+     .populate('programId', 'name')
      .populate('createdBy', 'firstName lastName');
 
     logger.info(`Class updated: ${updatedClass.name}`);
@@ -321,7 +423,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
 router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
   try {
     let query = { _id: req.params.id, isActive: true };
-    
+
     // If school admin, only delete classes from their school
     if (req.user.role === 'school_admin') {
       query.schoolId = req.user.schoolId;
@@ -371,7 +473,7 @@ router.post('/:id/teachers', protect, authorize('school_admin', 'super_admin'), 
     }
 
     let query = { _id: req.params.id, isActive: true };
-    
+
     if (req.user.role === 'school_admin') {
       query.schoolId = req.user.schoolId;
     }
@@ -387,8 +489,8 @@ router.post('/:id/teachers', protect, authorize('school_admin', 'super_admin'), 
     const { teacherId, role = 'primary' } = req.body;
 
     // Check if teacher exists and belongs to the school
-    const teacher = await User.findOne({ 
-      _id: teacherId, 
+    const teacher = await User.findOne({
+      _id: teacherId,
       role: 'teacher',
       schoolId: classData.schoolId
     });
@@ -423,6 +525,7 @@ router.post('/:id/teachers', protect, authorize('school_admin', 'super_admin'), 
 
     const updatedClass = await Class.findById(classData._id)
       .populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
+      .populate('programId', 'name')
       .populate('createdBy', 'firstName lastName');
 
     logger.info(`Teacher ${teacherId} assigned to class ${classData.name}`);
@@ -441,41 +544,13 @@ router.post('/:id/teachers', protect, authorize('school_admin', 'super_admin'), 
   }
 });
 
-// @desc    Get teacher's assigned classes
-// @route   GET /api/classes/teacher/assigned
-// @access  Private (Teacher)
-router.get('/teacher/assigned', protect, authorize('teacher'), async (req, res) => {
-  try {
-    const classes = await Class.find({
-      schoolId: req.user.schoolId,
-      isActive: true,
-      'assignedTeachers.teacherId': req.user._id
-    })
-    .populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
-    .populate('createdBy', 'firstName lastName')
-    .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      count: classes.length,
-      data: classes
-    });
-  } catch (error) {
-    logger.error('Error fetching teacher assigned classes:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching assigned classes'
-    });
-  }
-});
-
 // @desc    Remove teacher from class
 // @route   DELETE /api/classes/:id/teachers/:teacherId
 // @access  Private (School Admin, Super Admin)
 router.delete('/:id/teachers/:teacherId', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
   try {
     let query = { _id: req.params.id, isActive: true };
-    
+
     if (req.user.role === 'school_admin') {
       query.schoolId = req.user.schoolId;
     }
@@ -497,6 +572,7 @@ router.delete('/:id/teachers/:teacherId', protect, authorize('school_admin', 'su
 
     const updatedClass = await Class.findById(classData._id)
       .populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
+      .populate('programId', 'name')
       .populate('createdBy', 'firstName lastName');
 
     logger.info(`Teacher ${req.params.teacherId} removed from class ${classData.name}`);
@@ -515,4 +591,4 @@ router.delete('/:id/teachers/:teacherId', protect, authorize('school_admin', 'su
   }
 });
 
-module.exports = router; 
+module.exports = router;

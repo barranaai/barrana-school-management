@@ -105,7 +105,10 @@ const resolveWorkspaceProfile = workspace => {
     accountType,
     organizationType,
     terminologyProfile,
-    terminology: TERMINOLOGY[terminologyProfile]
+    terminology: TERMINOLOGY[terminologyProfile],
+    capabilities: {
+      requiresAcademicGroupFields: organizationTypeRequiresSchoolDetails(organizationType)
+    }
   };
 };
 

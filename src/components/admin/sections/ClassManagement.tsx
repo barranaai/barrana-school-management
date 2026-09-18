@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Grid,
@@ -45,6 +45,7 @@ import {
 } from '@mui/icons-material';
 import { useData } from '../../../contexts/DataContext';
 import { apiService, CreateClassData } from '../../../services/apiService';
+import { Program, programService } from '../../../services/programService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import {
@@ -63,7 +64,8 @@ interface Class {
   id?: string;
   name: string;
   schoolId: string;
-  grade: string;
+  programId?: string | Program | null;
+  grade?: string;
   description?: string;
   status: 'active' | 'inactive' | 'archived';
   assignedTeachers: Array<{
@@ -79,9 +81,9 @@ interface Class {
     role: 'primary' | 'secondary' | 'assistant';
     assignedDate: string;
   }>;
-  schedule: {
-    academicYear: string;
-    semester: 'fall' | 'spring' | 'summer';
+  schedule?: {
+    academicYear?: string;
+    semester?: 'fall' | 'spring' | 'summer';
     startDate: string;
     endDate?: string;
   };
@@ -122,6 +124,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
   const [filterStatus, setFilterStatus] = useState('');
   const [classes, setClasses] = useState<Class[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [programs, setPrograms] = useState<Program[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<{
@@ -137,6 +140,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
   // State for class form
   const [classForm, setClassForm] = useState({
     name: '',
+    programId: '',
     grade: '',
     description: '',
     capacity: 25,
@@ -151,13 +155,19 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
   });
 
   const { school } = useData();
+  const workspaceProfile = school.workspaceProfile;
+  const requiresAcademicFields = workspaceProfile?.capabilities?.requiresAcademicGroupFields ?? true;
+  const groupLabel = workspaceProfile?.terminology?.group || 'Class';
+  const groupPlural = groupLabel === 'Class' ? 'Classes' : groupLabel + 's';
+  const trainerLabel = workspaceProfile?.terminology?.trainer || 'Teacher';
+  const participantLabel = workspaceProfile?.terminology?.participant || 'Student';
 
   // Get available grades from school data with fallback to default grades
   // If the school doesn't have gradeLevels configured, use standard grade levels
-  const availableGrades = school.gradeLevels && school.gradeLevels.length > 0 
-    ? school.gradeLevels 
+  const availableGrades = school.gradeLevels && school.gradeLevels.length > 0
+    ? school.gradeLevels
     : ['preschool', 'kindergarten', 'grade1', 'grade2', 'grade3', 'grade4', 'grade5', 'grade6', 'grade7', 'grade8', 'grade9', 'grade10', 'grade11', 'grade12'];
-  
+
   console.log('ClassManagement - school object:', school);
   console.log('ClassManagement - availableGrades:', availableGrades);
 
@@ -173,26 +183,26 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  // Load classes and teachers
-  useEffect(() => {
-    loadData();
-  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
-      const [classesResponse, teachersResponse] = await Promise.all([
+      const [classesResponse, teachersResponse, availablePrograms] = await Promise.all([
         apiService.getClasses(),
-        apiService.getTeachers()
+        apiService.getTeachers(),
+        school.id
+          ? programService(apiService.getToken() || '', school.id).list()
+          : Promise.resolve([])
       ]);
+      setPrograms(availablePrograms.filter(program => program.isActive !== false));
 
       if (classesResponse.success && classesResponse.data) {
         // Convert grades to display format for existing classes
         const classesWithFormattedGrades = classesResponse.data.map((cls: any) => ({
           ...cls,
-          grade: normalizeGradeForDisplay(cls.grade)
+          grade: cls.grade ? normalizeGradeForDisplay(cls.grade) : ''
         }));
         setClasses(classesWithFormattedGrades);
       }
@@ -206,17 +216,22 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [school.id]);
+
+  // Load classes, teachers and Programs for the active organization.
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Filter classes based on search and filters
   const filteredClasses = classes.filter(classItem => {
-    const matchesSearch = searchTerm === '' || 
+    const matchesSearch = searchTerm === '' ||
       classItem.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      classItem.grade.toLowerCase().includes(searchTerm.toLowerCase());
-    
+      (classItem.grade || '').toLowerCase().includes(searchTerm.toLowerCase());
+
     const matchesGrade = filterGrade === '' || areGradesEqual(classItem.grade, filterGrade);
     const matchesStatus = filterStatus === '' || classItem.status === filterStatus;
-    
+
     return matchesSearch && matchesGrade && matchesStatus;
   });
 
@@ -232,14 +247,14 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
   // Use centralized grade display utilities for consistency
   const formatGradeForDisplay = formatGradeDisplay;
   const formatGradeForDatabase = convertDisplayToRaw;
-  
+
   console.log('ClassManagement - availableGrades (raw):', availableGrades);
-  const grades = availableGrades.length > 0 
-    ? availableGrades.map(formatGradeForDisplay) 
+  const grades = availableGrades.length > 0
+    ? availableGrades.map(formatGradeForDisplay)
     : [];
-    
+
   console.log('ClassManagement - grades array (converted):', grades);
-  
+
   // Debug: Test formatGradeForDisplay function
   console.log('ClassManagement - formatGradeForDisplay test:', {
     'preschool': formatGradeForDisplay('preschool'),
@@ -248,8 +263,14 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     'Grade 1': formatGradeForDisplay('Grade 1'), // Should return as is
     'Preschool': formatGradeForDisplay('Preschool'), // Should return as is
   });
-  
+
   const semesters = ['fall', 'spring', 'summer'];
+
+  const getProgramName = (classItem: Class) => {
+    if (!classItem.programId) return 'Not assigned';
+    if (typeof classItem.programId !== 'string') return classItem.programId.name;
+    return programs.find(program => program._id === classItem.programId)?.name || 'Program unavailable';
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -307,10 +328,11 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
   const handleOpenClassDialog = (type: 'add' | 'edit' | 'view', classId?: string) => {
     setDialogType(type);
     setOpenClassDialog(true);
-    
+
     if (type === 'add') {
       setClassForm({
         name: '',
+        programId: '',
         grade: '',
         description: '',
         capacity: 25,
@@ -327,11 +349,12 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
         setSelectedClass(classItem);
         setClassForm({
           name: classItem.name,
-          grade: normalizeGradeForDisplay(classItem.grade),
+          programId: typeof classItem.programId === 'string' ? classItem.programId : classItem.programId?._id || '',
+          grade: classItem.grade ? normalizeGradeForDisplay(classItem.grade) : '',
           description: classItem.description || '',
           capacity: classItem.capacity,
-          academicYear: classItem.schedule.academicYear,
-          semester: classItem.schedule.semester,
+          academicYear: classItem.schedule?.academicYear || '',
+          semester: classItem.schedule?.semester || 'fall',
           subjects: classItem.subjects || [],
           assignedTeachers: classItem.assignedTeachers
             .filter(at => at.teacherId) // Filter out null teachers
@@ -349,6 +372,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     setOpenClassDialog(false);
     setClassForm({
       name: '',
+      programId: '',
       grade: '',
       description: '',
       capacity: 25,
@@ -395,12 +419,15 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
       if (dialogType === 'add') {
         const classData: CreateClassData = {
           name: classForm.name,
-          grade: formatGradeForDatabase(classForm.grade),
+          programId: classForm.programId || undefined,
+          ...(requiresAcademicFields ? { grade: formatGradeForDatabase(classForm.grade) } : {}),
           description: classForm.description,
           capacity: classForm.capacity,
-          academicYear: classForm.academicYear,
-          semester: classForm.semester,
-          subjects: classForm.subjects,
+          ...(requiresAcademicFields ? {
+            academicYear: classForm.academicYear,
+            semester: classForm.semester,
+            subjects: classForm.subjects,
+          } : {}),
           assignedTeachers: classForm.assignedTeachers,
           status: classForm.status,
         };
@@ -415,7 +442,13 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
       } else if (dialogType === 'edit' && selectedClass) {
         const classData: Partial<CreateClassData> = {
           name: classForm.name,
-          grade: formatGradeForDatabase(classForm.grade),
+          programId: classForm.programId || null,
+          ...(requiresAcademicFields ? {
+            grade: formatGradeForDatabase(classForm.grade),
+            academicYear: classForm.academicYear,
+            semester: classForm.semester,
+            subjects: classForm.subjects,
+          } : {}),
           description: classForm.description,
           capacity: classForm.capacity,
           status: classForm.status,
@@ -430,7 +463,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
           showSnackbar(`Error updating class: ${response.error}`, 'error');
         }
       }
-      
+
       handleCloseClassDialog();
     } catch (error) {
       console.error('Error saving class:', error);
@@ -496,8 +529,8 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                   )}
                 {schoolBranding.address && (
                   <Typography variant="body2" sx={{ opacity: 0.95 }}>
-                    📍 {typeof schoolBranding.address === 'string' 
-                      ? schoolBranding.address 
+                    📍 {typeof schoolBranding.address === 'string'
+                      ? schoolBranding.address
                       : `${schoolBranding.address.street}, ${schoolBranding.address.city}, ${schoolBranding.address.state}`}
                   </Typography>
                 )}
@@ -516,8 +549,8 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               <Grid item xs={12} md={3}>
                 {(schoolBranding.logo || schoolBranding.branding?.logo) && (() => {
                   const logoPath = schoolBranding.logo || schoolBranding.branding?.logo || '';
-                  const logoUrl = logoPath.startsWith('http://') || logoPath.startsWith('https://') 
-                    ? logoPath 
+                  const logoUrl = logoPath.startsWith('http://') || logoPath.startsWith('https://')
+                    ? logoPath
                     : `${(process.env.REACT_APP_API_URL || 'http://localhost:5050').replace('/api', '')}${logoPath.startsWith('/') ? logoPath : '/' + logoPath}`;
                   return (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -529,10 +562,10 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}>
-                        <img 
-                          src={logoUrl} 
+                        <img
+                          src={logoUrl}
                           alt={schoolBranding.name}
-                          style={{ 
+                          style={{
                             maxWidth: '120px',
                             maxHeight: '120px',
                             objectFit: 'contain'
@@ -550,11 +583,11 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
 
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Fade in timeout={800}>
-          <Typography 
-            variant="h4" 
-            sx={{ 
+          <Typography
+            variant="h4"
+            sx={{
               fontWeight: 700,
-              background: schoolBranding 
+              background: schoolBranding
                 ? `linear-gradient(135deg, ${schoolBranding.branding?.primaryColor || schoolBranding.primaryColor || '#667eea'} 0%, ${schoolBranding.branding?.secondaryColor || schoolBranding.secondaryColor || '#764ba2'} 100%)`
                 : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               backgroundClip: 'text',
@@ -563,7 +596,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               textShadow: '0 2px 4px rgba(0,0,0,0.1)',
             }}
           >
-            Class Management
+            {groupLabel} Management
           </Typography>
         </Fade>
         <NotificationIcon />
@@ -590,9 +623,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               }}
             >
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Typography 
-                  variant="h4" 
-                  sx={{ 
+                <Typography
+                  variant="h4"
+                  sx={{
                     fontWeight: 700,
                     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     backgroundClip: 'text',
@@ -603,7 +636,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                   {classStats.totalClasses}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Total Classes
+                  Total {groupPlural}
                 </Typography>
               </CardContent>
             </Paper>
@@ -629,9 +662,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               }}
             >
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Typography 
-                  variant="h4" 
-                  sx={{ 
+                <Typography
+                  variant="h4"
+                  sx={{
                     fontWeight: 700,
                     color: 'success.main',
                   }}
@@ -639,7 +672,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                   {classStats.activeClasses}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Active Classes
+                  Active {groupPlural}
                 </Typography>
               </CardContent>
             </Paper>
@@ -665,9 +698,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               }}
             >
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Typography 
-                  variant="h4" 
-                  sx={{ 
+                <Typography
+                  variant="h4"
+                  sx={{
                     fontWeight: 700,
                     color: 'primary.main',
                   }}
@@ -675,7 +708,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                   {classStats.totalTeachers}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Assigned Teachers
+                  Assigned {trainerLabel}s
                 </Typography>
               </CardContent>
             </Paper>
@@ -701,9 +734,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               }}
             >
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Typography 
-                  variant="h4" 
-                  sx={{ 
+                <Typography
+                  variant="h4"
+                  sx={{
                     fontWeight: 700,
                     color: 'info.main',
                   }}
@@ -711,7 +744,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                   {classStats.avgTeachersPerClass}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Avg Teachers/Class
+                  Avg {trainerLabel}s/{groupLabel}
                 </Typography>
               </CardContent>
             </Paper>
@@ -737,9 +770,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               }}
             >
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Typography 
-                  variant="h4" 
-                  sx={{ 
+                <Typography
+                  variant="h4"
+                  sx={{
                     fontWeight: 700,
                     color: 'warning.main',
                   }}
@@ -773,9 +806,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               }}
             >
               <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Typography 
-                  variant="h4" 
-                  sx={{ 
+                <Typography
+                  variant="h4"
+                  sx={{
                     fontWeight: 700,
                     color: 'secondary.main',
                   }}
@@ -799,7 +832,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center' }}>
                   <Group sx={{ mr: 1 }} />
-                  Class Directory
+                  {groupLabel} Directory
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button
@@ -815,7 +848,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                     startIcon={<Add />}
                     onClick={() => handleOpenClassDialog('add')}
                   >
-                    Add Class
+                    Add {groupLabel}
                   </Button>
                 </Box>
               </Box>
@@ -825,7 +858,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth
-                    placeholder="Search classes..."
+                    placeholder={`Search ${groupPlural.toLowerCase()}...`}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     InputProps={{
@@ -833,21 +866,23 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                     }}
                   />
                 </Grid>
-                <Grid item xs={12} md={2}>
-                  <FormControl fullWidth>
-                    <InputLabel>Grade</InputLabel>
-                    <Select
-                      value={filterGrade}
-                      onChange={(e) => setFilterGrade(e.target.value)}
-                      label="Grade"
-                    >
-                      <MenuItem value="">All Grades</MenuItem>
-                      {grades.map(grade => (
-                        <MenuItem key={grade} value={grade}>{grade}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
+                {requiresAcademicFields && (
+                  <Grid item xs={12} md={2}>
+                    <FormControl fullWidth>
+                      <InputLabel>Grade</InputLabel>
+                      <Select
+                        value={filterGrade}
+                        onChange={(e) => setFilterGrade(e.target.value)}
+                        label="Grade"
+                      >
+                        <MenuItem value="">All Grades</MenuItem>
+                        {grades.map(grade => (
+                          <MenuItem key={grade} value={grade}>{grade}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                )}
                 <Grid item xs={12} md={2}>
                   <FormControl fullWidth>
                     <InputLabel>Status</InputLabel>
@@ -866,7 +901,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                 <Grid item xs={12} md={4}>
                   <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                     <Typography variant="body2" sx={{ alignSelf: 'center' }}>
-                      {filteredClasses.length} class(es) found
+                      {filteredClasses.length} {groupPlural.toLowerCase()} found
                     </Typography>
                   </Box>
                 </Grid>
@@ -884,12 +919,13 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell>Class</TableCell>
-                      <TableCell>Grade</TableCell>
-                      <TableCell>Teachers</TableCell>
+                      <TableCell>{groupLabel}</TableCell>
+                      <TableCell>Program</TableCell>
+                      {requiresAcademicFields && <TableCell>Grade</TableCell>}
+                      <TableCell>{trainerLabel}s</TableCell>
                       <TableCell>Enrollment</TableCell>
                       <TableCell>Status</TableCell>
-                      <TableCell>Schedule</TableCell>
+                      {requiresAcademicFields && <TableCell>Schedule</TableCell>}
                       <TableCell>Actions</TableCell>
                     </TableRow>
                   </TableHead>
@@ -911,9 +947,12 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                             </Box>
                           </Box>
                         </TableCell>
-                        <TableCell>
-                          <Chip label={formatGradeDisplay(classItem.grade)} color="primary" size="small" />
-                        </TableCell>
+                        <TableCell>{getProgramName(classItem)}</TableCell>
+                        {requiresAcademicFields && (
+                          <TableCell>
+                            <Chip label={formatGradeDisplay(classItem.grade || '')} color="primary" size="small" />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                             {classItem.assignedTeachers.filter(assignment => assignment.teacherId).map((assignment, index) => (
@@ -924,16 +963,16 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                                 <Typography variant="body2">
                                   {formatWordCase(assignment.teacherId.firstName)} {formatWordCase(assignment.teacherId.lastName)}
                                 </Typography>
-                                <Chip 
-                                  label={formatRoleLabel(assignment.role)} 
-                                  size="small" 
+                                <Chip
+                                  label={formatRoleLabel(assignment.role)}
+                                  size="small"
                                   color={assignment.role === 'primary' ? 'primary' : 'default'}
                                 />
                               </Box>
                             ))}
                             {classItem.assignedTeachers.filter(assignment => assignment.teacherId).length === 0 && (
                               <Typography variant="body2" color="text.secondary">
-                                No teachers assigned
+                                No {trainerLabel.toLowerCase()}s assigned
                               </Typography>
                             )}
                           </Box>
@@ -957,20 +996,22 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                             size="small"
                           />
                         </TableCell>
-                        <TableCell>
-                          <Box>
-                            <Typography variant="body2">
-                              {classItem.schedule.academicYear}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatSemesterLabel(classItem.schedule.semester)}
-                            </Typography>
-                          </Box>
-                        </TableCell>
+                        {requiresAcademicFields && (
+                          <TableCell>
+                            <Box>
+                              <Typography variant="body2">
+                                {classItem.schedule?.academicYear || 'Not set'}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {formatSemesterLabel(classItem.schedule?.semester || '')}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                        )}
                         <TableCell>
                           <Box sx={{ display: 'flex', gap: 1 }}>
                             <Tooltip title="View Details">
-                              <IconButton 
+                              <IconButton
                                 size="small"
                                 color="primary"
                                 onClick={() => handleOpenClassDialog('view', classItem.id || classItem._id)}
@@ -978,18 +1019,18 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                                 <Info />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Edit Class">
-                              <IconButton 
-                                size="small" 
+                            <Tooltip title={`Edit ${groupLabel}`}>
+                              <IconButton
+                                size="small"
                                 color="primary"
                                 onClick={() => handleOpenClassDialog('edit', classItem.id || classItem._id)}
                               >
                                 <Edit />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Delete Class">
-                              <IconButton 
-                                size="small" 
+                            <Tooltip title={`Delete ${groupLabel}`}>
+                              <IconButton
+                                size="small"
                                 color="error"
                                 onClick={() => handleDeleteClass(classItem)}
                               >
@@ -1011,9 +1052,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
       {/* Add/Edit Class Dialog */}
       <Dialog open={openClassDialog} onClose={handleCloseClassDialog} maxWidth="md" fullWidth>
         <DialogTitle>
-          {dialogType === 'add' && 'Add New Class'}
-          {dialogType === 'edit' && 'Edit Class'}
-          {dialogType === 'view' && 'Class Details'}
+          {dialogType === 'add' && 'Add New ' + groupLabel}
+          {dialogType === 'edit' && 'Edit ' + groupLabel}
+          {dialogType === 'view' && groupLabel + ' Details'}
         </DialogTitle>
         <DialogContent>
           {dialogType === 'view' ? (
@@ -1021,15 +1062,21 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
               {selectedClass && (
                 <Grid container spacing={3} sx={{ mt: 1 }}>
                   <Grid item xs={12} md={6}>
-                    <Typography variant="h6" gutterBottom>Class Information</Typography>
+                    <Typography variant="h6" gutterBottom>{groupLabel} Information</Typography>
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="body2" color="text.secondary">Name</Typography>
                       <Typography variant="body1">{selectedClass.name}</Typography>
                     </Box>
                     <Box sx={{ mb: 2 }}>
-                      <Typography variant="body2" color="text.secondary">Grade</Typography>
-                      <Typography variant="body1">{selectedClass.grade}</Typography>
+                      <Typography variant="body2" color="text.secondary">Program</Typography>
+                      <Typography variant="body1">{getProgramName(selectedClass)}</Typography>
                     </Box>
+                    {requiresAcademicFields && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary">Grade</Typography>
+                        <Typography variant="body1">{selectedClass.grade}</Typography>
+                      </Box>
+                    )}
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="body2" color="text.secondary">Description</Typography>
                       <Typography variant="body1">{selectedClass.description || 'No description'}</Typography>
@@ -1044,25 +1091,29 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                     </Box>
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="body2" color="text.secondary">Capacity</Typography>
-                      <Typography variant="body1">{selectedClass.capacity} students</Typography>
+                      <Typography variant="body1">{selectedClass.capacity} {participantLabel.toLowerCase()}s</Typography>
                     </Box>
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="body2" color="text.secondary">Current Enrollment</Typography>
-                      <Typography variant="body1">{selectedClass.currentEnrollment} students</Typography>
+                      <Typography variant="body1">{selectedClass.currentEnrollment} {participantLabel.toLowerCase()}s</Typography>
                     </Box>
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Typography variant="h6" gutterBottom>Schedule & Teachers</Typography>
+                    {requiresAcademicFields && (
+                      <>
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="body2" color="text.secondary">Academic Year</Typography>
+                          <Typography variant="body1">{selectedClass.schedule?.academicYear}</Typography>
+                        </Box>
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="body2" color="text.secondary">Semester</Typography>
+                          <Typography variant="body1">{selectedClass.schedule?.semester}</Typography>
+                        </Box>
+                      </>
+                    )}
                     <Box sx={{ mb: 2 }}>
-                      <Typography variant="body2" color="text.secondary">Academic Year</Typography>
-                      <Typography variant="body1">{selectedClass.schedule.academicYear}</Typography>
-                    </Box>
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="body2" color="text.secondary">Semester</Typography>
-                      <Typography variant="body1">{selectedClass.schedule.semester}</Typography>
-                    </Box>
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="body2" color="text.secondary">Assigned Teachers</Typography>
+                      <Typography variant="body2" color="text.secondary">Assigned {trainerLabel}s</Typography>
                       {selectedClass.assignedTeachers.filter((assignment: any) => assignment.teacherId).map((assignment: any, index: number) => (
                         <Box key={index} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Avatar sx={{ width: 24, height: 24, fontSize: '0.75rem' }}>
@@ -1071,16 +1122,16 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                           <Typography variant="body2">
                             {assignment.teacherId.firstName} {assignment.teacherId.lastName}
                           </Typography>
-                          <Chip 
-                            label={assignment.role} 
-                            size="small" 
+                          <Chip
+                            label={assignment.role}
+                            size="small"
                             color={assignment.role === 'primary' ? 'primary' : 'default'}
                           />
                         </Box>
                       ))}
                       {selectedClass.assignedTeachers.filter((assignment: any) => assignment.teacherId).length === 0 && (
                         <Typography variant="body2" color="text.secondary">
-                          No teachers assigned
+                          No {trainerLabel.toLowerCase()}s assigned
                         </Typography>
                       )}
                     </Box>
@@ -1091,32 +1142,49 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
           ) : (
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12} md={6}>
-                <TextField 
-                  fullWidth 
-                  label="Class Name" 
+                <TextField
+                  fullWidth
+                  label={`${groupLabel} Name`}
                   value={classForm.name}
                   onChange={(e) => handleFormChange('name', e.target.value)}
                   required
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>Grade</InputLabel>
-                  <Select 
-                    label="Grade"
-                    value={classForm.grade}
-                    onChange={(e) => handleFormChange('grade', e.target.value)}
+                <FormControl fullWidth>
+                  <InputLabel>Program (optional)</InputLabel>
+                  <Select
+                    label="Program (optional)"
+                    value={classForm.programId}
+                    onChange={(e) => handleFormChange('programId', e.target.value)}
                   >
-                    {grades.map(grade => (
-                      <MenuItem key={grade} value={grade}>{grade}</MenuItem>
+                    <MenuItem value="">No program assigned</MenuItem>
+                    {programs.map(program => (
+                      <MenuItem key={program._id} value={program._id}>{program.name}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
+              {requiresAcademicFields && (
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth required>
+                    <InputLabel>Grade</InputLabel>
+                    <Select
+                      label="Grade"
+                      value={classForm.grade}
+                      onChange={(e) => handleFormChange('grade', e.target.value)}
+                    >
+                      {grades.map(grade => (
+                        <MenuItem key={grade} value={grade}>{grade}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
               <Grid item xs={12}>
-                <TextField 
-                  fullWidth 
-                  label="Description" 
+                <TextField
+                  fullWidth
+                  label="Description"
                   multiline
                   rows={3}
                   value={classForm.description}
@@ -1124,42 +1192,46 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField 
-                  fullWidth 
-                  label="Capacity" 
+                <TextField
+                  fullWidth
+                  label="Capacity"
                   type="number"
                   value={classForm.capacity}
                   onChange={(e) => handleFormChange('capacity', parseInt(e.target.value))}
                   inputProps={{ min: 1 }}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField 
-                  fullWidth 
-                  label="Academic Year" 
-                  value={classForm.academicYear}
-                  onChange={(e) => handleFormChange('academicYear', e.target.value)}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Semester</InputLabel>
-                  <Select 
-                    label="Semester"
-                    value={classForm.semester}
-                    onChange={(e) => handleFormChange('semester', e.target.value)}
-                  >
-                    {semesters.map(semester => (
-                      <MenuItem key={semester} value={semester}>{semester}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
+              {requiresAcademicFields && (
+                <>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Academic Year"
+                      value={classForm.academicYear}
+                      onChange={(e) => handleFormChange('academicYear', e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Semester</InputLabel>
+                      <Select
+                        label="Semester"
+                        value={classForm.semester}
+                        onChange={(e) => handleFormChange('semester', e.target.value)}
+                      >
+                        {semesters.map(semester => (
+                          <MenuItem key={semester} value={semester}>{semester}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </>
+              )}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth>
                   <InputLabel>Status</InputLabel>
-                  <Select 
+                  <Select
                     label="Status"
                     value={classForm.status}
                     onChange={(e) => handleFormChange('status', e.target.value)}
@@ -1180,8 +1252,8 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                   renderInput={(params) => (
                     <TextField
                       {...params}
-                      label="Primary Teachers"
-                      placeholder="Select primary teachers"
+                      label={`Primary ${trainerLabel}s`}
+                      placeholder={`Select primary ${trainerLabel.toLowerCase()}s`}
                     />
                   )}
                   renderOption={(props, option) => (
@@ -1211,8 +1283,8 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                   renderInput={(params) => (
                     <TextField
                       {...params}
-                      label="Secondary Teachers"
-                      placeholder="Select secondary teachers"
+                      label={`Secondary ${trainerLabel}s`}
+                      placeholder={`Select secondary ${trainerLabel.toLowerCase()}s`}
                     />
                   )}
                   renderOption={(props, option) => (
@@ -1238,12 +1310,12 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
         <DialogActions>
           <Button onClick={handleCloseClassDialog}>Cancel</Button>
           {dialogType !== 'view' && (
-            <Button 
-              variant="contained" 
+            <Button
+              variant="contained"
               onClick={handleSaveClass}
-              disabled={!classForm.name || !classForm.grade || !classForm.academicYear}
+              disabled={!classForm.name || (requiresAcademicFields && (!classForm.grade || !classForm.academicYear))}
             >
-              {dialogType === 'add' ? 'Add Class' : 'Save Changes'}
+              {dialogType === 'add' ? 'Add ' + groupLabel : 'Save Changes'}
             </Button>
           )}
         </DialogActions>
@@ -1259,9 +1331,9 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDeleteDialog(false)}>Cancel</Button>
-          <Button 
-            variant="contained" 
-            color="error" 
+          <Button
+            variant="contained"
+            color="error"
             onClick={confirmDeleteClass}
           >
             Delete
@@ -1276,8 +1348,8 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={handleCloseSnackbar} 
+        <Alert
+          onClose={handleCloseSnackbar}
           severity={snackbar.severity}
           sx={{ width: '100%' }}
         >

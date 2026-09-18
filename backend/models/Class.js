@@ -8,34 +8,40 @@ const classSchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, 'Class name cannot exceed 100 characters']
   },
-  
+
   // School Association
   schoolId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'School',
     required: [true, 'School ID is required']
   },
-  
+
+  // Optional delivery context. Existing Class records remain valid without it.
+  programId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Program',
+    default: null
+  },
+
   // Class Details
   grade: {
     type: String,
-    required: [true, 'Grade is required'],
     trim: true
   },
-  
+
   description: {
     type: String,
     trim: true,
     maxlength: [500, 'Description cannot exceed 500 characters']
   },
-  
+
   // Status Management
   status: {
     type: String,
     enum: ['active', 'inactive', 'archived'],
     default: 'active'
   },
-  
+
   // Teacher Assignments
   assignedTeachers: [{
     teacherId: {
@@ -53,17 +59,16 @@ const classSchema = new mongoose.Schema({
       default: Date.now
     }
   }],
-  
+
   // Class Schedule
   schedule: {
     academicYear: {
       type: String,
-      required: [true, 'Academic year is required']
+      trim: true
     },
     semester: {
       type: String,
-      enum: ['fall', 'spring', 'summer'],
-      default: 'fall'
+      enum: ['fall', 'spring', 'summer']
     },
     startDate: {
       type: Date,
@@ -73,33 +78,33 @@ const classSchema = new mongoose.Schema({
       type: Date
     }
   },
-  
+
   // Capacity and Enrollment
   capacity: {
     type: Number,
     default: 25,
     min: [1, 'Capacity must be at least 1']
   },
-  
+
   currentEnrollment: {
     type: Number,
     default: 0,
     min: [0, 'Current enrollment cannot be negative']
   },
-  
+
   // Academic Information
   subjects: [{
     type: String,
     trim: true
   }],
-  
+
   // Metadata
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  
+
   isActive: {
     type: Boolean,
     default: true
@@ -143,7 +148,7 @@ classSchema.methods.addTeacher = function(teacherId, role = 'primary') {
   const existingAssignment = this.assignedTeachers.find(
     assignment => assignment.teacherId.toString() === teacherId.toString()
   );
-  
+
   if (!existingAssignment) {
     this.assignedTeachers.push({
       teacherId,
@@ -151,7 +156,7 @@ classSchema.methods.addTeacher = function(teacherId, role = 'primary') {
       assignedDate: new Date()
     });
   }
-  
+
   return this.save();
 };
 

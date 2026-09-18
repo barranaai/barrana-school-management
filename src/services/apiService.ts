@@ -109,6 +109,25 @@ export interface School {
   schoolType: string;
   estimatedStudents: number;
   gradeLevels: string[];
+  accountType?: 'organization' | 'solo_practitioner';
+  organizationType?: string;
+  terminologyProfile?: 'education' | 'training' | 'coaching';
+  workspaceProfile?: {
+    accountType: 'organization' | 'solo_practitioner';
+    organizationType: string;
+    terminologyProfile: 'education' | 'training' | 'coaching';
+    terminology: {
+      workspace: string;
+      administrator: string;
+      trainer: string;
+      participant: string;
+      guardian: string;
+      group: string;
+    };
+    capabilities: {
+      requiresAcademicGroupFields: boolean;
+    };
+  };
   address: {
     street: string;
     city: string;
@@ -725,7 +744,8 @@ export interface Class {
   id?: string; // For backward compatibility
   name: string;
   schoolId: string;
-  grade: string;
+  programId?: string | { _id: string; name: string } | null;
+  grade?: string;
   description?: string;
   status: 'active' | 'inactive' | 'archived';
   assignedTeachers: Array<{
@@ -741,9 +761,9 @@ export interface Class {
     role: 'primary' | 'secondary' | 'assistant';
     assignedDate: string;
   }>;
-  schedule: {
-    academicYear: string;
-    semester: 'fall' | 'spring' | 'summer';
+  schedule?: {
+    academicYear?: string;
+    semester?: 'fall' | 'spring' | 'summer';
     startDate: string;
     endDate?: string;
   };
@@ -765,7 +785,8 @@ export interface Class {
 // Interface for creating/updating classes (without assignedDate)
 export interface CreateClassData {
   name: string;
-  grade: string;
+  programId?: string | null;
+  grade?: string;
   description?: string;
   capacity?: number;
   academicYear?: string;
