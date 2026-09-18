@@ -23,7 +23,7 @@ async function openIntegrationHarness() {
       ['/api/roadmaps', 'plannedSessions'], ['/api/planned-sessions', 'plannedSessions'],
       ['/api/delivered-sessions', 'deliveredSessions'], ['/api/enrollments', 'enrollments'],
       ['/api/child-participations', 'childParticipations'], ['/api/progress', 'progress'],
-      ['/api/standard-packages', 'standardPackages']
+      ['/api/standard-packages', 'standardPackages'], ['/api/onboarding', 'onboarding']
     ] });
     app.initializeRoutes();
     require('../../models/School'); // Referenced by User/fixtures but not imported by scoped routes.

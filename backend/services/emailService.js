@@ -55,8 +55,8 @@ const createWelcomeEmailTemplate = (data) => {
     schoolName,
     contactPersonName,
     contactPersonEmail,
-    loginCredentials,
-    dashboardUrl
+    administratorEmail,
+    activationUrl
   } = data;
 
   return {
@@ -283,25 +283,21 @@ const createWelcomeEmailTemplate = (data) => {
             </div>
             
             <div class="credentials-box">
-              <h3 style="margin-top: 0; color: #2d3748;">Your Login Credentials</h3>
+              <h3 style="margin-top: 0; color: #2d3748;">Activate Your Administrator Account</h3>
               <div class="credential-item">
                 <span class="credential-label">Email Address:</span>
-                <span class="credential-value">${loginCredentials.email}</span>
-              </div>
-              <div class="credential-item">
-                <span class="credential-label">Password:</span>
-                <span class="credential-value">${loginCredentials.password}</span>
+                <span class="credential-value">${administratorEmail}</span>
               </div>
             </div>
             
             <div style="text-align: center;">
-              <a href="${dashboardUrl}" class="cta-button">
-                🚀 Access Your School Dashboard
+              <a href="${activationUrl}" class="cta-button">
+                Set Password and Activate Account
               </a>
             </div>
             
             <div class="security-note">
-              <strong>🔒 Security Note:</strong> Please change your password after your first login for enhanced security.
+              <strong>Security Note:</strong> This private activation link lets you choose your password. Kidsible will never email a password to you.
             </div>
             
             <div class="features-grid">
@@ -330,7 +326,7 @@ const createWelcomeEmailTemplate = (data) => {
             <div class="next-steps">
               <h3>🎯 Next Steps to Get Started:</h3>
               <ul>
-                <li><strong>Login to your dashboard</strong> using the credentials above</li>
+                <li><strong>Activate your administrator account</strong> using the private link above</li>
                 <li><strong>Complete your school profile</strong> with additional details</li>
                 <li><strong>Invite teachers</strong> to join your school platform</li>
                 <li><strong>Add students</strong> to your school database</li>
@@ -360,16 +356,15 @@ Dear ${contactPersonName},
 
 Congratulations! Your school ${schoolName} has been successfully registered with Barrana.ai. We're excited to help you transform your educational experience with our AI-powered school management platform.
 
-Your Login Credentials:
-- Email Address: ${loginCredentials.email}
-- Password: ${loginCredentials.password}
+Administrator Email:
+- ${administratorEmail}
 
-Access Your School Dashboard: ${dashboardUrl}
+Set your password and activate your account: ${activationUrl}
 
-🔒 Security Note: Please change your password after your first login for enhanced security.
+Security Note: Kidsible will never email a password to you.
 
 🎯 Next Steps to Get Started:
-1. Login to your dashboard using the credentials above
+1. Activate your administrator account using the private link above
 2. Complete your school profile with additional details
 3. Invite teachers to join your school platform
 4. Add students to your school database
@@ -558,7 +553,7 @@ const sendWelcomeEmail = async (emailData) => {
       };
     }
 
-    const { contactPersonEmail, schoolName, contactPersonName, loginCredentials, dashboardUrl } = emailData;
+    const { contactPersonEmail, schoolName, contactPersonName, administratorEmail, activationUrl } = emailData;
 
     if (!contactPersonEmail) {
       throw new Error('Contact person email address is required');
@@ -568,8 +563,8 @@ const sendWelcomeEmail = async (emailData) => {
       schoolName,
       contactPersonName,
       contactPersonEmail,
-      loginCredentials,
-      dashboardUrl
+      administratorEmail,
+      activationUrl
     });
 
     const mailOptions = {
@@ -591,8 +586,11 @@ const sendWelcomeEmail = async (emailData) => {
     };
 
   } catch (error) {
-    logger.error('Error sending welcome email:', error);
-    throw new Error(`Failed to send welcome email: ${error.message}`);
+    logger.error('Error sending welcome email', {
+      errorName: error?.name || 'Error',
+      errorCode: error?.code || 'WELCOME_EMAIL_FAILED'
+    });
+    throw Object.assign(new Error('Failed to send welcome email'), { code: 'WELCOME_EMAIL_FAILED' });
   }
 };
 

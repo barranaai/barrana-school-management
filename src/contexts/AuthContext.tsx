@@ -85,19 +85,14 @@ const initialState: AuthState = {
 
 // Reducer
 const authReducer = (state: AuthState, action: AuthAction): AuthState => {
-  console.log('AuthContext - Reducer called with action:', action);
-  console.log('AuthContext - Reducer current state:', state);
-  
   switch (action.type) {
     case 'AUTH_START':
-      console.log('AuthContext - Processing AUTH_START');
       return {
         ...state,
         isLoading: true,
         error: null,
       };
     case 'AUTH_SUCCESS':
-      console.log('AuthContext - Processing AUTH_SUCCESS with payload:', action.payload);
       const newState = {
         ...state,
         user: action.payload.user,
@@ -106,7 +101,6 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
         isLoading: false,
         error: null,
       };
-      console.log('AuthContext - AUTH_SUCCESS new state:', newState);
       return newState;
     case 'AUTH_FAILURE':
       return {
@@ -159,22 +153,14 @@ const AuthContext = createContext<AuthState & {
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
   
-  // Debug: Log state changes
-  useEffect(() => {
-    console.log('AuthContext - State updated:', state);
-  }, [state]);
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
         const token = storage.getItem('token');
-        console.log('AuthContext - Checking auth, token exists:', !!token);
-        
         if (token) {
           // Set token in apiService
           apiService.setToken(token);
-          console.log('AuthContext - Token set in apiService');
-          
           // Verify token with API with timeout
           const response = await Promise.race([
             apiService.getCurrentUser(),
@@ -184,12 +170,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           ]) as any;
           
           if (response.success && response.data) {
-            console.log('AuthContext - API response successful:', response.data);
-            console.log('AuthContext - API response data structure:', {
-              hasUser: !!response.data.user,
-              hasDirectProps: !!response.data.id,
-              keys: Object.keys(response.data)
-            });
             const apiUser = response.data.user || response.data; // Handle both response structures
             
             // Convert API user to our User interface
@@ -208,37 +188,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               createdAt: apiUser.createdAt,
               updatedAt: apiUser.updatedAt
             };
-            
-            console.log('AuthContext - API user schoolId:', apiUser.schoolId);
-            console.log('AuthContext - Created user schoolId:', user.schoolId);
-            
-            console.log('AuthContext - Final user object:', user);
-            console.log('AuthContext - Dispatching AUTH_SUCCESS with user:', user);
-            console.log('AuthContext - About to dispatch with payload:', { user, token });
-            
             try {
               dispatch({
                 type: 'AUTH_SUCCESS',
                 payload: { user, token },
               });
-              console.log('AuthContext - Dispatch completed successfully');
-            } catch (error) {
-              console.error('AuthContext - Dispatch error:', error);
+            } catch {
+              console.error('Authentication state update failed');
             }
                             } else {
             // Token is invalid, clear storage
-            console.log('AuthContext - Token is invalid, clearing storage');
             storage.removeItem('token');
             storage.removeItem('user');
             dispatch({ type: 'LOGOUT' });
           }
         } else {
           // No token found, set loading to false
-          console.log('AuthContext - No token found, dispatching LOGOUT');
           dispatch({ type: 'LOGOUT' });
         }
-    } catch (error) {
-      console.error('Auth check failed:', error);
+    } catch {
+      console.error('Authentication check failed');
       // Clear storage on error
       storage.removeItem('token');
       storage.removeItem('user');
@@ -281,12 +250,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         createdAt: apiUser.createdAt,
         updatedAt: apiUser.updatedAt
       };
-      
-      console.log('AuthContext - API user schoolId:', apiUser.schoolId);
-      console.log('AuthContext - Created user schoolId:', user.schoolId);
-      console.log('AuthContext - Full API user object:', apiUser);
-      console.log('AuthContext - Full created user object:', user);
-
       // Store token
       storage.setItem('token', token);
       storage.setItem('user', JSON.stringify(user));
@@ -309,8 +272,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       // Call API logout endpoint
       await apiService.logout();
-    } catch (error) {
-      console.error('Error during logout:', error);
+    } catch {
+      console.error('Logout request failed');
     } finally {
       // Clear local storage regardless of API call success
       storage.removeItem('token');

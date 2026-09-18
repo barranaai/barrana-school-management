@@ -44,6 +44,11 @@ const schoolSchema = new mongoose.Schema({
       return defaultOrganizationType(this.accountType);
     }
   },
+  customOrganizationTypeLabel: {
+    type: String,
+    trim: true,
+    maxlength: [100, 'Custom organization type cannot exceed 100 characters']
+  },
   terminologyProfile: {
     type: String,
     enum: TERMINOLOGY_PROFILES,
@@ -487,7 +492,7 @@ schoolSchema.index({ 'subscription.plan': 1 });
 
 // Pre-save middleware to generate slug
 schoolSchema.pre('save', function(next) {
-  if (!this.isModified('name')) return next();
+  if (this.slug || !this.isModified('name')) return next();
   
   this.slug = this.name
     .toLowerCase()

@@ -3,15 +3,17 @@ const { logger } = require('./logger');
 
 // Create transporter
 const createTransporter = () => {
-  return nodemailer.createTransporter({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: process.env.SMTP_PORT === '465', // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+  const user = process.env.SMTP_USER || process.env.EMAIL_USER;
+  const pass = process.env.SMTP_PASS || process.env.EMAIL_PASSWORD;
+  if (process.env.SMTP_HOST) {
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: process.env.SMTP_PORT === '465',
+      auth: { user, pass }
+    });
+  }
+  return nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
 };
 
 // Email templates
@@ -204,7 +206,7 @@ const sendEmail = async ({ email, subject, html, text, template, data }) => {
     }
 
     const mailOptions = {
-      from: `"Barrana.ai" <${process.env.SMTP_USER}>`,
+      from: `"Barrana.ai" <${process.env.SMTP_USER || process.env.EMAIL_USER}>`,
       to: email,
       subject: emailContent.subject,
       html: emailContent.html,
@@ -221,8 +223,11 @@ const sendEmail = async ({ email, subject, html, text, template, data }) => {
     };
 
   } catch (error) {
-    logger.error('Email sending failed:', error);
-    throw new Error(`Failed to send email: ${error.message}`);
+    logger.error('Email sending failed', {
+      errorName: error?.name || 'Error',
+      errorCode: error?.code || 'EMAIL_DELIVERY_FAILED'
+    });
+    throw Object.assign(new Error('Failed to send email'), { code: 'EMAIL_DELIVERY_FAILED' });
   }
 };
 

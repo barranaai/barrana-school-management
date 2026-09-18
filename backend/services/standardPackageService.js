@@ -39,37 +39,180 @@ function validateDefinition(definition) {
   return true;
 }
 
-const meta = (pkg, sourceKey, adoptedAt, adoptedBy, extra) => ({ ...(clean(extra) || {}), standardPackage: { packageId: pkg._id, slug: pkg.slug, version: pkg.version, sourceKey, adoptedAt, adoptedBy } });
+const meta = (pkg, sourceKey, adoptedAt, adoptedBy, extra) => ({
+  ...(clean(extra) || {}),
+  standardPackage: { packageId: pkg._id, slug: pkg.slug, version: pkg.version, sourceKey, adoptedAt, adoptedBy }
+});
 const createOne = async (Model, value, session) => (await Model.create([value], { session }))[0];
 
-async function adoptPackage({ packageDocument: pkg, schoolId, userId }) {
+async function adoptPackageInSession({ packageDocument: pkg, schoolId, userId, session }) {
+  if (!session) {
+    throw Object.assign(new Error('An existing MongoDB session is required'), {
+      statusCode: 500,
+      code: 'SESSION_REQUIRED'
+    });
+  }
+
   validateDefinition(pkg.definition);
+  if (await StandardPackageAdoption.findOne({ schoolId, packageId: pkg._id }).session(session)) {
+    throw duplicate('This organization has already adopted this package');
+  }
+
+  const adoptedAt = new Date();
+  const ids = {
+    programIds: [],
+    levelIds: [],
+    requirementIds: [],
+    parameterIds: [],
+    roadmapIds: [],
+    plannedSessionIds: []
+  };
+  const map = {
+    programs: new Map(),
+    levels: new Map(),
+    requirements: new Map(),
+    parameters: new Map(),
+    roadmaps: new Map()
+  };
+
+  for (const programDefinition of pkg.definition.programs) {
+    const program = await createOne(Program, {
+      schoolId,
+      name: programDefinition.name,
+      description: programDefinition.description,
+      displayOrder: programDefinition.displayOrder || 0,
+      isActive: true,
+      metadata: meta(pkg, programDefinition.key, adoptedAt, userId, programDefinition.metadata)
+    }, session);
+    map.programs.set(programDefinition.key, program._id);
+    ids.programIds.push(program._id);
+
+    for (const levelDefinition of programDefinition.levels || []) {
+      const level = await createOne(Level, {
+        schoolId,
+        programId: program._id,
+        name: levelDefinition.name,
+        description: levelDefinition.description,
+        sequence: levelDefinition.sequence || 0,
+        isActive: true,
+        metadata: meta(pkg, levelDefinition.key, adoptedAt, userId, levelDefinition.metadata)
+      }, session);
+      map.levels.set(levelDefinition.key, level._id);
+      ids.levelIds.push(level._id);
+
+      for (const requirementDefinition of levelDefinition.requirements || []) {
+        const requirement = await createOne(Requirement, {
+          schoolId,
+          programId: program._id,
+          levelId: level._id,
+          name: requirementDefinition.name,
+          description: requirementDefinition.description,
+          sequence: requirementDefinition.sequence || 0,
+          isRequired: requirementDefinition.isRequired !== false,
+          isActive: true,
+          metadata: meta(pkg, requirementDefinition.key, adoptedAt, userId, requirementDefinition.metadata)
+        }, session);
+        map.requirements.set(requirementDefinition.key, requirement._id);
+        ids.requirementIds.push(requirement._id);
+
+        for (const parameterDefinition of requirementDefinition.parameters || []) {
+          const parameter = await createOne(Parameter, {
+            schoolId,
+            programId: program._id,
+            requirementId: requirement._id,
+            name: parameterDefinition.name,
+            type: parameterDefinition.type,
+            options: parameterDefinition.options || [],
+            isRequired: Boolean(parameterDefinition.isRequired),
+            sequence: parameterDefinition.sequence || 0,
+            isActive: true,
+            metadata: meta(pkg, parameterDefinition.key, adoptedAt, userId, parameterDefinition.metadata)
+          }, session);
+          map.parameters.set(parameterDefinition.key, parameter._id);
+          ids.parameterIds.push(parameter._id);
+        }
+      }
+    }
+
+    for (const roadmapDefinition of programDefinition.roadmaps || []) {
+      const roadmap = await createOne(Roadmap, {
+        schoolId,
+        programId: program._id,
+        levelId: map.levels.get(roadmapDefinition.levelKey),
+        name: roadmapDefinition.name,
+        description: roadmapDefinition.description,
+        version: roadmapDefinition.version || 1,
+        status: 'draft',
+        methodology: roadmapDefinition.methodology,
+        eligibilityContext: clean(roadmapDefinition.eligibilityContext),
+        metadata: meta(pkg, roadmapDefinition.key, adoptedAt, userId, roadmapDefinition.metadata),
+        createdBy: userId,
+        updatedBy: userId
+      }, session);
+      map.roadmaps.set(roadmapDefinition.key, roadmap._id);
+      ids.roadmapIds.push(roadmap._id);
+
+      for (const sessionDefinition of roadmapDefinition.plannedSessions || []) {
+        const objectives = (sessionDefinition.objectives || []).map((objective, objectiveIndex) => ({
+          sequence: objective.sequence ?? objectiveIndex + 1,
+          title: objective.title,
+          description: objective.description,
+          expectedOutcome: objective.expectedOutcome,
+          instructionalGuidance: objective.instructionalGuidance,
+          requirementId: objective.requirementKey ? map.requirements.get(objective.requirementKey) : undefined,
+          parameterId: objective.parameterKey ? map.parameters.get(objective.parameterKey) : undefined,
+          metadata: clean(objective.metadata) || {}
+        }));
+        const plannedSession = await createOne(PlannedSession, {
+          schoolId,
+          roadmapId: roadmap._id,
+          roadmapVersion: roadmap.version,
+          sequence: sessionDefinition.sequence,
+          title: sessionDefinition.title,
+          description: sessionDefinition.description,
+          objectives,
+          expectedOutcomes: sessionDefinition.expectedOutcomes || [],
+          methodology: sessionDefinition.methodology,
+          status: 'draft',
+          metadata: meta(pkg, `${roadmapDefinition.key}:session:${sessionDefinition.sequence}`, adoptedAt, userId, sessionDefinition.metadata),
+          createdBy: userId,
+          updatedBy: userId
+        }, session);
+        ids.plannedSessionIds.push(plannedSession._id);
+      }
+    }
+  }
+
+  return createOne(StandardPackageAdoption, {
+    schoolId,
+    packageId: pkg._id,
+    packageSlug: pkg.slug,
+    packageVersion: pkg.version,
+    adoptedBy: userId,
+    adoptedAt,
+    copiedRecords: ids
+  }, session);
+}
+
+async function adoptPackage({ packageDocument, schoolId, userId }) {
   const session = await StandardPackageAdoption.db.startSession();
   try {
     let adoption;
     await session.withTransaction(async () => {
-      if (await StandardPackageAdoption.findOne({ schoolId, packageId: pkg._id }).session(session)) throw duplicate('This organization has already adopted this package');
-      const adoptedAt = new Date();
-      const ids = { programIds: [], levelIds: [], requirementIds: [], parameterIds: [], roadmapIds: [], plannedSessionIds: [] };
-      const map = { programs: new Map(), levels: new Map(), requirements: new Map(), parameters: new Map(), roadmaps: new Map() };
-      for (const p of pkg.definition.programs) {
-        const row = await createOne(Program, { schoolId, name:p.name, description:p.description, displayOrder:p.displayOrder || 0, isActive:true, metadata:meta(pkg,p.key,adoptedAt,userId,p.metadata) }, session);
-        map.programs.set(p.key,row._id); ids.programIds.push(row._id);
-        for (const l of p.levels || []) {
-          const level = await createOne(Level,{ schoolId,programId:row._id,name:l.name,description:l.description,sequence:l.sequence||0,isActive:true,metadata:meta(pkg,l.key,adoptedAt,userId,l.metadata)},session);
-          map.levels.set(l.key,level._id); ids.levelIds.push(level._id);
-          for (const r of l.requirements || []) {
-            const requirement=await createOne(Requirement,{schoolId,programId:row._id,levelId:level._id,name:r.name,description:r.description,sequence:r.sequence||0,isRequired:r.isRequired!==false,isActive:true,metadata:meta(pkg,r.key,adoptedAt,userId,r.metadata)},session);
-            map.requirements.set(r.key,requirement._id); ids.requirementIds.push(requirement._id);
-            for(const x of r.parameters||[]){const parameter=await createOne(Parameter,{schoolId,programId:row._id,requirementId:requirement._id,name:x.name,type:x.type,options:x.options||[],isRequired:Boolean(x.isRequired),sequence:x.sequence||0,isActive:true,metadata:meta(pkg,x.key,adoptedAt,userId,x.metadata)},session);map.parameters.set(x.key,parameter._id);ids.parameterIds.push(parameter._id);}
-          }
-        }
-        for(const r of p.roadmaps||[]){const roadmap=await createOne(Roadmap,{schoolId,programId:row._id,levelId:map.levels.get(r.levelKey),name:r.name,description:r.description,version:r.version||1,status:'draft',methodology:r.methodology,eligibilityContext:clean(r.eligibilityContext),metadata:meta(pkg,r.key,adoptedAt,userId,r.metadata),createdBy:userId,updatedBy:userId},session);map.roadmaps.set(r.key,roadmap._id);ids.roadmapIds.push(roadmap._id);for(const x of r.plannedSessions||[]){const objectives=(x.objectives||[]).map(o=>({sequence:o.sequence,title:o.title,description:o.description,expectedOutcome:o.expectedOutcome,instructionalGuidance:o.instructionalGuidance,requirementId:o.requirementKey?map.requirements.get(o.requirementKey):undefined,parameterId:o.parameterKey?map.parameters.get(o.parameterKey):undefined,metadata:clean(o.metadata)||{}}));const planned=await createOne(PlannedSession,{schoolId,roadmapId:roadmap._id,roadmapVersion:roadmap.version,sequence:x.sequence,title:x.title,description:x.description,objectives,expectedOutcomes:x.expectedOutcomes||[],methodology:x.methodology,status:'draft',metadata:meta(pkg,`${r.key}:session:${x.sequence}`,adoptedAt,userId,x.metadata),createdBy:userId,updatedBy:userId},session);ids.plannedSessionIds.push(planned._id);}}
-      }
-      adoption=await createOne(StandardPackageAdoption,{schoolId,packageId:pkg._id,packageSlug:pkg.slug,packageVersion:pkg.version,adoptedBy:userId,adoptedAt,copiedRecords:ids},session);
+      adoption = await adoptPackageInSession({
+        packageDocument,
+        schoolId,
+        userId,
+        session
+      });
     });
     return adoption;
-  } catch(error){ if(error?.code===11000) throw duplicate('This organization has already adopted this package'); throw error; }
-  finally { await session.endSession(); }
+  } catch (error) {
+    if (error?.code === 11000) throw duplicate('This organization has already adopted this package');
+    throw error;
+  } finally {
+    await session.endSession();
+  }
 }
-module.exports={validateDefinition,adoptPackage};
+
+module.exports = { validateDefinition, adoptPackageInSession, adoptPackage };

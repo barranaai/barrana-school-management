@@ -5,6 +5,10 @@ const routeDefinitions = [
     "auth"
   ],
   [
+    "/api/onboarding",
+    "onboarding"
+  ],
+  [
     "/api/config",
     "configuration"
   ],

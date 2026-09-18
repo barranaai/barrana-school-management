@@ -7,7 +7,7 @@ const User = require('../models/User');
 const Report = require('../models/Report');
 const { protect, authorize } = require('../middleware/auth');
 const { logger } = require('../utils/logger');
-const bcrypt = require('bcryptjs');
+const crypto = require('node:crypto');
 const { upload, uploadSchoolLogo, getSchoolLogo, deleteSchoolLogo } = require('../services/logoService');
 const { sendWelcomeEmail } = require('../services/emailService');
 
@@ -27,7 +27,7 @@ const organizationSchoolView = school => {
     ...value,
     communication: safeCommunication(value.communication)
   }, [
-    '_id', 'name', 'slug', 'accountType', 'organizationType', 'terminologyProfile',
+    '_id', 'name', 'slug', 'accountType', 'organizationType', 'customOrganizationTypeLabel', 'terminologyProfile',
     'workspaceProfile', 'contactPerson', 'address', 'schoolType', 'gradeLevels',
     'estimatedStudents', 'estimatedParticipants', 'settings', 'branding',
     'communication', 'isActive', 'createdAt', 'updatedAt'
@@ -39,7 +39,7 @@ const teacherSchoolView = school => {
     ...value,
     settings: pickDefined(value.settings, ['timezone', 'language', 'dateFormat'])
   }, [
-    '_id', 'name', 'slug', 'accountType', 'organizationType', 'terminologyProfile',
+    '_id', 'name', 'slug', 'accountType', 'organizationType', 'customOrganizationTypeLabel', 'terminologyProfile',
     'workspaceProfile', 'settings', 'branding', 'isActive', 'updatedAt'
   ]);
 };
@@ -60,48 +60,31 @@ const schoolAdminUpdate = body => {
   return update;
 };
 
-// Helper function to generate school admin login credentials
-const generateSchoolAdminCredentials = async (contactPerson, schoolId) => {
+// Create an invited administrator without generating a reusable known password.
+const generateSchoolAdminInvitation = async (contactPerson, schoolId) => {
   try {
-    // Generate a simple, memorable password
-    const password = 'TestSchool123';
-    
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(password, 12);
-    
-    // Split contact person name into first and last name
     const nameParts = contactPerson.name.trim().split(' ');
     const firstName = nameParts[0] || 'School';
     const lastName = nameParts.slice(1).join(' ') || 'Admin';
-    
-    // Create the school admin user using updateOne with upsert to bypass pre-save middleware
-    const result = await User.updateOne(
-      { email: contactPerson.email },
-      {
-        $setOnInsert: {
-          firstName,
-          lastName,
-          email: contactPerson.email,
-          password: hashedPassword, // Already hashed, won't be re-hashed
-          role: 'school_admin',
-          schoolId: schoolId,
-          phone: contactPerson.phone,
-          isActive: true,
-          isEmailVerified: false
-        }
-      },
-      { upsert: true, new: true }
-    );
-    
-    // Fetch the created/updated user
-    const schoolAdmin = await User.findOne({ email: contactPerson.email });
-    
-    return {
-      user: schoolAdmin,
-      plainPassword: password
-    };
+    const schoolAdmin = new User({
+      firstName,
+      lastName,
+      email: contactPerson.email,
+      password: crypto.randomBytes(48).toString('base64url'),
+      role: 'school_admin',
+      schoolId,
+      phone: contactPerson.phone,
+      isActive: true,
+      isEmailVerified: false
+    });
+    const activationToken = schoolAdmin.generatePasswordResetToken();
+    await schoolAdmin.save();
+    return { user: schoolAdmin, activationToken };
   } catch (error) {
-    logger.error('Error generating school admin credentials:', error);
+    logger.error('Error creating school administrator invitation', {
+      errorName: error?.name || 'Error',
+      errorCode: error?.code || 'SCHOOL_ADMIN_INVITATION_FAILED'
+    });
     throw error;
   }
 };
@@ -298,6 +281,14 @@ router.post('/', [
       });
     }
 
+    const existingAdmin = await User.findByEmail(contactPerson.email);
+    if (existingAdmin) {
+      return res.status(409).json({
+        success: false,
+        message: 'An account with the administrator email already exists'
+      });
+    }
+
     // Create school
     const school = new School({
       name,
@@ -314,50 +305,41 @@ router.post('/', [
 
     await school.save();
 
-    // Auto-generate school admin login credentials
-    let schoolAdminCredentials = null;
+    let schoolAdminInvitation = null;
     try {
-      schoolAdminCredentials = await generateSchoolAdminCredentials(contactPerson, school._id);
+      schoolAdminInvitation = await generateSchoolAdminInvitation(contactPerson, school._id);
       logger.info(`School admin account created for ${contactPerson.email} at school ${school.name}`);
     } catch (error) {
-      logger.error('Failed to create school admin account:', error);
-      // Don't fail the school creation if admin creation fails
-      // The super admin can manually create the admin account later
+      logger.error('Failed to create school admin account', { errorName: error?.name || 'Error' });
     }
 
-    // Send welcome email to the contact person
+    let invitationSent = false;
     try {
-      if (schoolAdminCredentials) {
-        const dashboardUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
-        
+      if (schoolAdminInvitation) {
+        const activationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${encodeURIComponent(schoolAdminInvitation.activationToken)}`;
         await sendWelcomeEmail({
           schoolName: school.name,
           contactPersonName: contactPerson.name,
           contactPersonEmail: contactPerson.email,
-          loginCredentials: {
-            email: schoolAdminCredentials.user.email,
-            password: schoolAdminCredentials.plainPassword
-          },
-          dashboardUrl: dashboardUrl
+          administratorEmail: schoolAdminInvitation.user.email,
+          activationUrl
         });
-        
+        invitationSent = true;
         logger.info(`Welcome email sent successfully to ${contactPerson.email} for school ${school.name}`);
       }
     } catch (error) {
-      logger.error('Failed to send welcome email:', error);
-      // Don't fail the school creation if email sending fails
-      // The welcome email can be sent manually later
+      logger.error('Failed to send school administrator invitation', { errorName: error?.name || 'Error' });
     }
 
     res.status(201).json({
       success: true,
       message: 'School created successfully',
       data: school,
-      schoolAdmin: schoolAdminCredentials ? {
-        email: schoolAdminCredentials.user.email,
-        password: schoolAdminCredentials.plainPassword,
-        firstName: schoolAdminCredentials.user.firstName,
-        lastName: schoolAdminCredentials.user.lastName
+      schoolAdmin: schoolAdminInvitation ? {
+        email: schoolAdminInvitation.user.email,
+        firstName: schoolAdminInvitation.user.firstName,
+        lastName: schoolAdminInvitation.user.lastName,
+        invitationSent
       } : null
     });
   } catch (error) {

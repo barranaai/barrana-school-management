@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateDefinition } = require('../services/standardPackageService');
+const { validateDefinition, adoptPackageInSession } = require('../services/standardPackageService');
 
 const validDefinition = () => ({
   programs: [{
@@ -34,6 +34,13 @@ const validDefinition = () => ({
       }]
     }]
   }]
+});
+
+test('session-aware adoption fails closed without an existing session', async () => {
+  await assert.rejects(
+    () => adoptPackageInSession({ packageDocument: { definition: validDefinition() }, schoolId: 'school', userId: 'user' }),
+    error => error.code === 'SESSION_REQUIRED'
+  );
 });
 
 test('accepts a valid standard package definition', () => {

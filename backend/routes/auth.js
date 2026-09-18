@@ -167,12 +167,12 @@ router.post('/login', [
     if (email && email.includes('@')) {
       user = await User.findOne({ email: email.toLowerCase() })
         .select('+password')
-        .populate('schoolId', 'name slug schoolType');
+        .populate('schoolId', 'name slug schoolType accountType organizationType customOrganizationTypeLabel terminologyProfile');
     } else {
       // Try to find by studentId (for student login)
       user = await User.findOne({ studentId: email.toUpperCase() })
         .select('+password')
-        .populate('schoolId', 'name slug schoolType');
+        .populate('schoolId', 'name slug schoolType accountType organizationType customOrganizationTypeLabel terminologyProfile');
     }
     if (!user) {
       logger.warn('Login failed', { reason: 'invalid_credentials' });
@@ -242,7 +242,7 @@ router.post('/login', [
 router.get('/me', protect, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .populate('schoolId', 'name slug schoolType');
+      .populate('schoolId', 'name slug schoolType accountType organizationType customOrganizationTypeLabel terminologyProfile');
 
     res.json({
       success: true,
@@ -376,6 +376,7 @@ router.post('/reset-password', [
 
     // Set new password
     user.password = password;
+    user.isEmailVerified = true;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     await user.save();
