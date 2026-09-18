@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect, authorize } = require('../middleware/auth');
+const { protect, authorize, authorizeSchool } = require('../middleware/auth');
 const User = require('../models/User');
 const Report = require('../models/Report');
 const { logger } = require('../utils/logger');
@@ -9,7 +9,7 @@ const firebaseService = require('../services/firebaseService');
 // @desc    Send report approval notification to school admins
 // @route   POST /api/communication/report-approval-notification
 // @access  Private (Teachers, School Admins)
-router.post('/report-approval-notification', protect, authorize('teacher', 'school_admin'), async (req, res) => {
+router.post('/report-approval-notification', protect, authorize('teacher', 'school_admin'), authorizeSchool, async (req, res) => {
   try {
     const { schoolId, reportData } = req.body;
     

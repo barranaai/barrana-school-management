@@ -6,10 +6,6 @@ import {
   TextField,
   Button,
   Typography,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Alert,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
@@ -19,7 +15,6 @@ import { PLATFORM } from '../../constants/platformBranding';
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('school_admin');
   const [error, setError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -29,8 +24,9 @@ const Login: React.FC = () => {
     setError('');
 
     try {
-      await login({ email, password, role });
-      switch (role) {
+      await login({ email, password });
+      const loggedInUser = JSON.parse(localStorage.getItem('user') || '{}') as { role?: string };
+      switch (loggedInUser.role) {
         case 'super_admin':
           navigate('/super-admin');
           break;
@@ -132,19 +128,6 @@ const Login: React.FC = () => {
                 '& .MuiInputLabel-root.Mui-focused': { color: PLATFORM.colors.secondary },
               }}
             />
-            <FormControl fullWidth sx={{ mb: 3 }}>
-              <InputLabel>Role</InputLabel>
-              <Select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                label="Role"
-              >
-                <MenuItem value="super_admin">Super Admin</MenuItem>
-                <MenuItem value="school_admin">School Admin</MenuItem>
-                <MenuItem value="teacher">Teacher</MenuItem>
-                <MenuItem value="parent">Parent</MenuItem>
-              </Select>
-            </FormControl>
             <Button
               type="submit"
               fullWidth

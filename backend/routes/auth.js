@@ -6,14 +6,17 @@ const router = express.Router();
 const User = require('../models/User');
 const School = require('../models/School');
 const { protect, authorize, auditLog } = require('../middleware/auth');
+const { developmentOnly, publicRegistrationDisabled } = require('../middleware/environment');
 const { sendEmail } = require('../utils/email');
 const { logger } = require('../utils/logger');
 
-// Rate limiting for auth routes - TEMPORARILY DISABLED FOR DEBUGGING
-const authLimiter = (req, res, next) => {
-  console.log('🔓 Rate limiter bypassed for debugging');
-  next();
-};
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'development' ? 50 : 10,
+  message: { success: false, message: 'Too many authentication attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 // const authLimiter = rateLimit({
 //   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -29,7 +32,7 @@ const authLimiter = (req, res, next) => {
 // @route   POST /api/auth/register
 // @desc    Register a new user
 // @access  Public
-router.post('/register', [
+router.post('/register', publicRegistrationDisabled, [
   authLimiter,
   body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
@@ -144,7 +147,6 @@ router.post('/login', [
     // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('❌ VALIDATION ERRORS:', errors.array());
       return res.status(400).json({
         success: false,
         message: 'Validation errors',
@@ -155,7 +157,7 @@ router.post('/login', [
     const { email, password } = req.body;
 
     // Debug logging
-    logger.info('Login attempt', { emailOrStudentId: email, timestamp: new Date().toISOString() });
+    logger.info('Login attempt received');
 
     // Find user by email OR studentId and include password for comparison
     // Email could be either an actual email or a studentId
@@ -172,18 +174,8 @@ router.post('/login', [
         .select('+password')
         .populate('schoolId', 'name slug schoolType');
     }
-    
-    logger.info('User lookup result', { 
-      userFound: !!user, 
-      email: email,
-      userEmail: user?.email,
-      userRole: user?.role,
-      userActive: user?.isActive,
-      hasPassword: !!user?.password
-    });
-    
     if (!user) {
-      logger.warn('Login failed - user not found', { email });
+      logger.warn('Login failed', { reason: 'invalid_credentials' });
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -192,22 +184,17 @@ router.post('/login', [
 
     // Check if user is active
     if (!user.isActive) {
+      logger.warn('Login failed', { reason: 'invalid_credentials' });
       return res.status(401).json({
         success: false,
-        message: 'Account is deactivated'
+        message: 'Invalid credentials'
       });
     }
 
     // Check password
     const isMatch = await user.comparePassword(password);
-    logger.info('Password check result', { 
-      email: email, 
-      passwordMatch: isMatch,
-      passwordLength: password?.length
-    });
-    
     if (!isMatch) {
-      logger.warn('Login failed - password mismatch', { email });
+      logger.warn('Login failed', { reason: 'invalid_credentials' });
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -241,7 +228,7 @@ router.post('/login', [
     });
 
   } catch (error) {
-    logger.error('Login error:', error);
+    logger.error('Login failed unexpectedly', { errorName: error?.name || 'Error' });
     res.status(500).json({
       success: false,
       message: 'Server error during login'
@@ -467,7 +454,7 @@ router.post('/verify-email', [
 // @route   GET /api/auth/test
 // @desc    Test auth route
 // @access  Public
-router.get('/test', (req, res) => {
+router.get('/test', developmentOnly, (req, res) => {
   res.json({
     success: true,
     message: 'Auth route is working!',
@@ -477,7 +464,7 @@ router.get('/test', (req, res) => {
 });
 
 // Temporary debug route (simplified)
-router.get('/debug/users', async (req, res) => {
+router.get('/debug/users', developmentOnly, async (req, res) => {
   try {
     const userCount = await User.countDocuments();
     res.status(200).json({
@@ -505,43 +492,19 @@ router.post('/logout', protect, auditLog('logout'), (req, res) => {
 });
 
 // Simple test login endpoint - bypasses all middleware
-router.post('/test-login', async (req, res) => {
-  console.log('🧪 TEST LOGIN ENDPOINT CALLED');
-  console.log('Request body:', req.body);
-  
+router.post('/test-login', developmentOnly, async (req, res) => {
   try {
     const { email, password } = req.body;
-    
-    console.log('Email:', email);
-    console.log('Password length:', password?.length);
-    
     const user = await User.findByEmail(email).select('+password');
-    console.log('User found:', !!user);
-    
-    if (!user) {
-      console.log('❌ User not found');
-      return res.json({ success: false, message: 'User not found' });
+    if (!user || !user.isActive || !(await user.comparePassword(password))) {
+      return res.json({ success: false, message: 'Invalid credentials' });
     }
-    
-    console.log('User email:', user.email);
-    console.log('User role:', user.role);
-    console.log('User active:', user.isActive);
-    
-    const isMatch = await user.comparePassword(password);
-    console.log('Password match:', isMatch);
-    
-    if (!isMatch) {
-      console.log('❌ Password mismatch');
-      return res.json({ success: false, message: 'Password mismatch' });
-    }
-    
-    console.log('✅ Login successful');
+
     res.json({ success: true, message: 'Test login successful', user: { email: user.email, role: user.role } });
-    
   } catch (error) {
-    console.error('❌ Test login error:', error);
-    res.json({ success: false, message: 'Error', error: error.message });
+    logger.error('Development test login failed', { errorName: error?.name || 'Error' });
+    res.json({ success: false, message: 'Error' });
   }
 });
 
-module.exports = router; 
+module.exports = router;
