@@ -81,3 +81,41 @@ test('authorization and unexpected failures do not expose backend details', asyn
     new StandardPackageServiceError('REQUEST_FAILED')
   );
 });
+
+test('catalog authoring uses the protected draft and publish endpoints', async () => {
+  (fetch as jest.Mock)
+    .mockResolvedValueOnce(reply([{ _id: 'draft-package' }]))
+    .mockResolvedValueOnce(reply({ _id: 'draft-package', status: 'draft' }, 201))
+    .mockResolvedValueOnce(reply({ _id: 'draft-package', status: 'draft' }))
+    .mockResolvedValueOnce(reply({ _id: 'draft-package', status: 'published' }));
+
+  const api = standardPackageService('platform-token');
+  const definition = {
+    programs: [{ key: 'music', name: 'Music', levels: [], roadmaps: [] }]
+  };
+
+  await api.listCatalog();
+  await api.createDraft({
+    slug: 'music-foundation', name: 'Music Foundation', version: 1,
+    organizationTypes: ['arts_studio'], definition
+  });
+  await api.updateDraft('draft/package', {
+    name: 'Music Foundation', organizationTypes: ['arts_studio'], definition
+  });
+  await api.publish('draft/package');
+
+  expect(fetch).toHaveBeenNthCalledWith(1, expect.stringContaining('/standard-packages?includeDrafts=true'), expect.objectContaining({ method: 'GET' }));
+  expect(fetch).toHaveBeenNthCalledWith(2, expect.stringContaining('/standard-packages'), expect.objectContaining({ method: 'POST' }));
+  expect(fetch).toHaveBeenNthCalledWith(3, expect.stringContaining('/standard-packages/draft%2Fpackage'), expect.objectContaining({ method: 'PUT' }));
+  expect(fetch).toHaveBeenNthCalledWith(4, expect.stringContaining('/standard-packages/draft%2Fpackage/publish'), expect.objectContaining({ method: 'PATCH', body: '{}' }));
+});
+
+test('catalog conflicts remain distinct from duplicate adoption', async () => {
+  (fetch as jest.Mock)
+    .mockResolvedValueOnce(reply({}, 409))
+    .mockResolvedValueOnce(reply({}, 409));
+
+  const api = standardPackageService('platform-token');
+  await expect(api.publish('package')).rejects.toEqual(new StandardPackageServiceError('CONFLICT'));
+  await expect(api.adopt('package')).rejects.toEqual(new StandardPackageServiceError('ALREADY_ADOPTED'));
+});

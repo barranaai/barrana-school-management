@@ -70,6 +70,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import SchoolConfiguration from '../admin/sections/SchoolConfiguration';
 import EnrollmentManagement from '../admin/sections/EnrollmentManagement';
+import StandardPackageCatalogManagement from './StandardPackageCatalogManagement';
 import apiService from '../../services/apiService';
 import { getTimezoneOptions } from '../../utils/timezoneUtils';
 import TimezoneSelector from '../common/TimezoneSelector';
@@ -197,6 +198,7 @@ const SuperAdminDashboard: React.FC = () => {
     { text: 'Global Overview', section: 'overview', icon: <Dashboard /> },
     { text: 'School Management', section: 'schools', icon: <School /> },
     { text: 'Enrollment Management', section: 'enrollments', icon: <AssignmentInd /> },
+    { text: 'Standard Packages', section: 'standard-packages', icon: <Description /> },
     { text: 'School Configuration', section: 'reportTemplates', icon: <Description /> },
     { text: 'User Management', section: 'users', icon: <People /> },
     { text: 'Billing Management', section: 'billing', icon: <Payment /> },
@@ -699,6 +701,8 @@ const SuperAdminDashboard: React.FC = () => {
         return <SchoolManagement />;
       case 'enrollments':
         return <EnrollmentManagement />;
+      case 'standard-packages':
+        return <StandardPackageCatalogManagement />;
       case 'reportTemplates':
         return <SchoolConfiguration />;
       case 'users':
@@ -2911,4 +2915,4 @@ const SuperAdminDashboard: React.FC = () => {
   );
 };
 
-export default SuperAdminDashboard; 
+export default SuperAdminDashboard;

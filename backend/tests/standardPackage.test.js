@@ -87,3 +87,76 @@ test('requires options for select parameters', () => {
     error => error.code === 'INVALID_PACKAGE'
   );
 });
+
+test('rejects unsupported fields at every package hierarchy boundary', () => {
+  const definition = validDefinition();
+  definition.programs[0].schoolId = 'tenant-injection';
+  assert.throws(
+    () => validateDefinition(definition),
+    error => error.code === 'INVALID_PACKAGE'
+  );
+
+  const nested = validDefinition();
+  nested.programs[0].levels[0].requirements[0].parameters[0].createdBy = 'user-injection';
+  assert.throws(
+    () => validateDefinition(nested),
+    error => error.code === 'INVALID_PACKAGE'
+  );
+});
+
+test('rejects sensitive tenant and credential values hidden in supported metadata', () => {
+  for (const metadata of [
+    { schoolId: 'tenant-injection' },
+    { nested: { ownerId: 'owner-injection' } },
+    { apiKey: 'secret-injection' }
+  ]) {
+    const definition = validDefinition();
+    definition.programs[0].metadata = metadata;
+    assert.throws(
+      () => validateDefinition(definition),
+      error => error.code === 'INVALID_PACKAGE'
+    );
+  }
+});
+
+test('accepts safe organization-independent metadata', () => {
+  const definition = validDefinition();
+  definition.programs[0].metadata = {
+    category: 'aquatics', tags: ['foundation', 'confidence'], recommendedAge: 6
+  };
+  assert.equal(validateDefinition(definition), true);
+});
+
+test('rejects roadmap and objective references that cross Program boundaries', () => {
+  const definition = validDefinition();
+  definition.programs.push({
+    key: 'music', name: 'Music',
+    levels: [{
+      key: 'music-beginner', name: 'Beginner',
+      requirements: [{
+        key: 'music-posture', name: 'Posture',
+        parameters: [{ key: 'music-rating', name: 'Rating', type: 'rating' }]
+      }]
+    }],
+    roadmaps: [{
+      key: 'music-roadmap', levelKey: 'water-confidence', name: 'Wrong Roadmap', plannedSessions: []
+    }]
+  });
+  assert.throws(
+    () => validateDefinition(definition),
+    error => error.code === 'INVALID_PACKAGE'
+  );
+});
+
+test('requires an objective parameter to belong to its selected requirement', () => {
+  const definition = validDefinition();
+  definition.programs[0].levels[0].requirements.push({
+    key: 'floating', name: 'Floating',
+    parameters: [{ key: 'duration', name: 'Duration', type: 'number' }]
+  });
+  definition.programs[0].roadmaps[0].plannedSessions[0].objectives[0].parameterKey = 'duration';
+  assert.throws(
+    () => validateDefinition(definition),
+    error => error.code === 'INVALID_PACKAGE'
+  );
+});
