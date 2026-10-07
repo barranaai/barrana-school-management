@@ -67,6 +67,7 @@ import {
   Send,
   PhotoCamera,
   Refresh,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { useData } from '../../../contexts/DataContext';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -78,6 +79,7 @@ import { communicationService } from '../../../services/communicationService';
 import { type ReportFrequency } from '../../../constants/reportFrequencies';
 import { type UploadedMedia } from '../../../services/mediaService';
 import MediaUpload from '../../common/MediaUpload';
+import ChildHistoryDialog from '../../staff/ChildHistoryDialog';
 import MedicalInfoDisplay from '../../common/MedicalInfoDisplay';
 import { formatGradeForDisplay, areGradesEqual } from '../../../utils/gradeDisplayUtils';
 import NotificationIcon from '../../common/NotificationIcon';
@@ -142,6 +144,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [openHistory, setOpenHistory] = useState(false);
   const [openStudentDialog, setOpenStudentDialog] = useState(false);
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
 
@@ -3039,6 +3042,15 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         </DialogContent>
         
         <DialogActions sx={{ p: 3, pt: 0, gap: 2 }}>
+          {selectedStudent && (
+            <Button
+              variant="contained"
+              startIcon={<HistoryIcon />}
+              onClick={() => setOpenHistory(true)}
+            >
+              View History
+            </Button>
+          )}
           <Button 
             onClick={handleCloseDialog}
             variant="outlined"
@@ -3161,6 +3173,13 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ChildHistoryDialog
+        open={openHistory}
+        childId={selectedStudent?._id || selectedStudent?.id}
+        schoolId={typeof user?.schoolId === 'string' ? user.schoolId : user?.schoolId?._id}
+        onClose={() => setOpenHistory(false)}
+      />
 
       {/* Quick Report Generation Dialog */}
       <Dialog
@@ -3856,4 +3875,4 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   );
 };
 
-export default StudentManagement; 
+export default StudentManagement;

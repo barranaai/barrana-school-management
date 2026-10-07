@@ -57,6 +57,10 @@ const routeDefinitions = [
     "students"
   ],
   [
+    "/api/child-history",
+    "childHistory"
+  ],
+  [
     "/api/teachers",
     "teachers"
   ],

@@ -41,6 +41,7 @@ import {
   Upload,
   Email,
   Phone,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { useData, type MedicalInfo } from '../../../contexts/DataContext';
 import toast from 'react-hot-toast';
@@ -49,6 +50,7 @@ import MedicalInfoEditor from '../../common/MedicalInfoEditor';
 import MedicalInfoDisplay from '../../common/MedicalInfoDisplay';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
+import ChildHistoryDialog from '../../staff/ChildHistoryDialog';
 import apiService from '../../../services/apiService';
 import {
   formatGradeForDisplay as formatGradeDisplay,
@@ -152,6 +154,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   const [participantEnrollmentsLoading, setParticipantEnrollmentsLoading] = useState(false);
   const [participantEnrollmentsError, setParticipantEnrollmentsError] = useState('');
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [openHistory, setOpenHistory] = useState(false);
   const [formData, setFormData] = useState<{
     firstName: string;
     lastName: string;
@@ -1942,6 +1945,15 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           borderTop: '1px solid rgba(102, 126, 234, 0.1)',
           gap: 2,
         }}>
+          {dialogType === 'view' && selectedStudentData && (
+            <Button
+              variant="contained"
+              startIcon={<HistoryIcon />}
+              onClick={() => setOpenHistory(true)}
+            >
+              View History
+            </Button>
+          )}
             <Button 
               onClick={handleCloseDialog}
               sx={{
@@ -1993,6 +2005,13 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           )}
         </DialogActions>
       </Dialog>
+
+      <ChildHistoryDialog
+        open={openHistory}
+        childId={selectedStudentData?.id || selectedStudentData?._id}
+        schoolId={school.id || (school as any)._id}
+        onClose={() => setOpenHistory(false)}
+      />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)} maxWidth="sm" fullWidth>
