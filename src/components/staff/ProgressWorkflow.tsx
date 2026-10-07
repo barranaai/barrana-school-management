@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
-import { identity, Parameter, Participation, Progress, Session, WorkflowReport, WorkflowService, workflowError, workflowService } from '../../services/progressWorkflowService';
+import { identity, Parameter, Participation, Progress, Session, WorkflowError, WorkflowReport, WorkflowService, workflowError, workflowService } from '../../services/progressWorkflowService';
 import SessionParticipationManagement from '../admin/sections/SessionParticipationManagement';
 
 const objectiveStatuses = ['not_observed', 'achieved', 'partially_achieved', 'not_achieved', 'needs_improvement'];
@@ -67,7 +67,7 @@ function SessionEntry({ api, sessionId, token, schoolId, initialParticipationId 
 }
 function ChildEntry({ api, session, participation, parameters, templates, parentEmail }: { api: WorkflowService; session: Session; participation: Participation; parameters: Parameter[]; templates: any[]; parentEmail: string }) {
   const [loaded, setLoaded] = useState(false); const [progress, setProgress] = useState<Progress>(); const [report, setReport] = useState<WorkflowReport>();
-  const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false); const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false); const [dirty, setDirty] = useState(false); const [conflicted, setConflicted] = useState(false);
   const [objectives, setObjectives] = useState<Record<string, { status: string; instructorNote: string; evidence: string }>>({});
   const [values, setValues] = useState<Record<string, { recorded: boolean; value: any; note: string }>>({});
   const [observations, setObservations] = useState(''); const [recommendations, setRecommendations] = useState(''); const [overall, setOverall] = useState('in_progress'); const [template, setTemplate] = useState('');
@@ -91,9 +91,9 @@ function ChildEntry({ api, session, participation, parameters, templates, parent
         if(p.type === 'select' && !p.options?.includes(value)) throw new Error(p.name + ': choose an option.');
         return { parameterId: p._id, value, note: v.note };
       });
-      const saved = await api.saveProgress(progress?._id, { childParticipationId: participation._id, objectiveResults: Object.entries(objectives).map(([objectiveId,v]) => ({ objectiveId,...v })), parameterResults, observations, recommendations, overallStatus: overall });
-      setProgress(saved); setDirty(false); setNotice('Progress saved. No report was approved or sent.');
-    } catch(e) { setError(workflowError(e)); } finally { setBusy(false); }
+      const saved = await api.saveProgress(progress?._id, { ...(progress ? { __v: progress.__v } : {}), childParticipationId: participation._id, objectiveResults: Object.entries(objectives).map(([objectiveId,v]) => ({ objectiveId,...v })), parameterResults, observations, recommendations, overallStatus: overall });
+      setProgress(saved); setDirty(false); setConflicted(false); setNotice('Progress saved. No report was approved or sent.');
+    } catch(e) { if (e instanceof WorkflowError && e.code === 'PROGRESS_REVISION_CONFLICT') setConflicted(true); setError(workflowError(e)); } finally { setBusy(false); }
   }
   async function generate() { if(!progress) return; setBusy(true);setError('');try {setReport(await api.draft(progress._id,template));}catch(e){setError(workflowError(e));}finally{setBusy(false);} }
   if(!loaded) return error ? <Alert severity="error">{error}</Alert> : <CircularProgress aria-label="Loading progress" />;
@@ -107,7 +107,7 @@ function ChildEntry({ api, session, participation, parameters, templates, parent
     {parameters.length===0 && <Typography>No applicable parameters configured.</Typography>}
     {parameters.map(p=><Paper key={p._id} sx={{p:2}}><FormControlLabel label={'Record ' + p.name} control={<Checkbox checked={values[p._id]?.recorded || false} onChange={e=>{setValues({...values,[p._id]:{...values[p._id],recorded:e.target.checked}});setDirty(true);}} />}/>{values[p._id]?.recorded && <Stack spacing={2}><ValueInput name={p.name} type={p.type} options={p.options} value={values[p._id].value} onChange={v=>{setValues({...values,[p._id]:{...values[p._id],value:v}});setDirty(true);}} /><TextField label={p.name + ' note'} value={values[p._id].note} onChange={e=>{setValues({...values,[p._id]:{...values[p._id],note:e.target.value}});setDirty(true);}} /></Stack>}</Paper>)}
     <TextField label="Internal observations" multiline value={observations} onChange={e=>{setObservations(e.target.value);setDirty(true);}} /><TextField label="Recommendations" multiline value={recommendations} onChange={e=>{setRecommendations(e.target.value);setDirty(true);}} /><TextField label="Overall status" select value={overall} onChange={e=>{setOverall(e.target.value);setDirty(true);}}>{['in_progress','achieved','partially_achieved','needs_improvement'].map(s=><MenuItem key={s} value={s}>{label(s)}</MenuItem>)}</TextField>
-    <Button variant="contained" disabled={busy || !eligible || !!unavailable} onClick={saveProgress}>Save progress</Button></Stack></Box>
+    <Button variant="contained" disabled={busy || !eligible || !!unavailable || conflicted} onClick={saveProgress}>Save progress</Button></Stack></Box>
     {progress && !report && <Stack spacing={2}><Typography variant="h6">Create a report draft</Typography>{templates.length===0 && <Alert severity="info">No active report templates are available.</Alert>}<TextField select label="Report template" value={template} onChange={e=>setTemplate(e.target.value)}>{templates.map(t=><MenuItem key={t._id} value={t._id}>{t.name}</MenuItem>)}</TextField><Button disabled={!template || busy || dirty || !eligible} onClick={generate}>Generate report draft</Button>{dirty && <Typography>Save progress before generating a draft.</Typography>}</Stack>}
     {report && progress && <ReportReview key={report._id} api={api} initial={report} progress={progress} childId={identity(participation.childId)} parentEmail={parentEmail} />}
   </Stack>;

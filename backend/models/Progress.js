@@ -11,6 +11,19 @@ const parameterResultSchema = new mongoose.Schema({
   type: { type: String, enum: ['text', 'rating', 'percentage', 'number', 'checkbox', 'select'], required: true },
   options: [String], value: { type: mongoose.Schema.Types.Mixed, required: true }, note: String
 }, { _id: false });
+const progressRevisionSchema = new mongoose.Schema({
+  revisionNumber: { type: Number, required: true, min: 1 },
+  objectiveResults: { type: [objectiveResultSchema], default: [] },
+  parameterResults: { type: [parameterResultSchema], default: [] },
+  observations: String,
+  recommendations: String,
+  overallStatus: { type: String, enum: ['in_progress', 'achieved', 'partially_achieved', 'needs_improvement'] },
+  metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+  originallySavedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  originallySavedAt: { type: Date, required: true },
+  supersededBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  supersededAt: { type: Date, required: true }
+}, { _id: false });
 const schema = new mongoose.Schema({
   schoolId: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true, index: true },
   childParticipationId: { type: mongoose.Schema.Types.ObjectId, ref: 'ChildParticipation', required: true, index: true },
@@ -20,7 +33,9 @@ const schema = new mongoose.Schema({
   overallStatus: { type: String, enum: ['in_progress', 'achieved', 'partially_achieved', 'needs_improvement'] },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  revisionNumber: { type: Number, min: 1, default: 1 },
+  revisions: { type: [progressRevisionSchema], default: [] }
 }, { timestamps: true });
 schema.index({ schoolId: 1, childParticipationId: 1 }, { unique: true });
 module.exports = mongoose.model('Progress', schema);

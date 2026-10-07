@@ -1,4 +1,4 @@
-import { workflowService, WorkflowError, workflowError, conflictMessage } from './progressWorkflowService';
+import { workflowService, WorkflowError, workflowError, conflictMessage, progressConflictMessage } from './progressWorkflowService';
 const api = workflowService('token','school');
 const reply = (data: any, extra: any = {}) => ({ok:true,status:200,json:async()=>({success:true,data,...extra})});
 test('Progress writes use POST for creation and PUT for update with scoped auth',async()=>{
@@ -23,10 +23,13 @@ test.each(['', 'invalid-school'])('invalid selected scope %p is not inferred and
  expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body).schoolId).toBe(schoolId);
 });
 
-test('Progress editing keeps its existing body unchanged', async () => {
- (fetch as jest.Mock).mockResolvedValue(reply({_id:'progress'}));
- await api.saveProgress('progress', {observations:'note'});
- expect((fetch as jest.Mock).mock.calls[0][1]).toMatchObject({method:'PUT',body:JSON.stringify({observations:'note'})});
+test('Progress editing sends its current concurrency token without revision snapshots', async () => {
+ (fetch as jest.Mock).mockResolvedValue(reply({_id:'progress',__v:4,revisionNumber:3}));
+ await api.saveProgress('progress', {observations:'note',__v:3});
+ const body=JSON.parse((fetch as jest.Mock).mock.calls[0][1].body);
+ expect((fetch as jest.Mock).mock.calls[0][1]).toMatchObject({method:'PUT'});
+ expect(body).toEqual({observations:'note',__v:3});
+ expect(body).not.toHaveProperty('revisions');
 });
 
 test('draft generation and approval use separate existing endpoints',async()=>{
@@ -35,6 +38,11 @@ test('draft generation and approval use separate existing endpoints',async()=>{
 test('revision conflict code is preserved and mapped to the required message',async()=>{
  (fetch as jest.Mock).mockResolvedValue({ok:false,status:409,json:async()=>({success:false,message:'stale',code:'REPORT_REVISION_CONFLICT'})});
  await expect(api.edit('report',{content:'local edit'})).rejects.toMatchObject({status:409,code:'REPORT_REVISION_CONFLICT'});expect(workflowError(new WorkflowError('stale',409,'REPORT_REVISION_CONFLICT'))).toBe(conflictMessage);
+});
+test('Progress revision conflict code is preserved and mapped to a reload message',async()=>{
+ (fetch as jest.Mock).mockResolvedValue({ok:false,status:409,json:async()=>({success:false,message:'stale',code:'PROGRESS_REVISION_CONFLICT'})});
+ await expect(api.saveProgress('progress',{__v:2,observations:'local'})).rejects.toMatchObject({status:409,code:'PROGRESS_REVISION_CONFLICT'});
+ expect(workflowError(new WorkflowError('stale',409,'PROGRESS_REVISION_CONFLICT'))).toBe(progressConflictMessage);
 });
 test('report lookup reads subsequent pages rather than creating a replacement',async()=>{
  (fetch as jest.Mock).mockResolvedValueOnce(reply([{_id:'other',progressId:'other'}],{pages:2})).mockResolvedValueOnce(reply([{_id:'report',progressId:'progress'}],{pages:2}));expect(await api.findReport('child','progress')).toMatchObject({_id:'report'});expect(fetch).toHaveBeenCalledTimes(2);expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('page=2'),expect.objectContaining({method:'GET'}));

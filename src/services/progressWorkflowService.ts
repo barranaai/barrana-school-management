@@ -5,12 +5,14 @@ export interface Objective { objectiveId: string; title: string; description?: s
 export interface Session { _id: string; title: string; schoolId: string; classId: string; programId: string; levelId: string; plannedSessionId: string; roadmapId: string; roadmapVersion: number; status: string; scheduledAt?: string; deliveredAt?: string; plannedSessionSnapshot: { title: string; objectives: Objective[] }; }
 export interface Participation { _id: string; childId: string; schoolId: string; deliveredSessionId: string; status: string; }
 export interface Parameter { _id: string; name: string; type: string; programId?: string; requirementId?: string; options?: string[]; }
-export interface Progress { _id: string; childParticipationId: string; objectiveResults: { objectiveId: string; status: string; instructorNote?: string; evidence?: string }[]; parameterResults: { parameterId: string; value: string | number | boolean; note?: string }[]; observations?: string; recommendations?: string; overallStatus?: string; }
+export interface Progress { _id: string; __v: number; revisionNumber: number; childParticipationId: string; objectiveResults: { objectiveId: string; status: string; instructorNote?: string; evidence?: string }[]; parameterResults: { parameterId: string; value: string | number | boolean; note?: string }[]; observations?: string; recommendations?: string; overallStatus?: string; }
 export interface WorkflowReport { _id: string; progressId: string; status: string; title: string; content: string; customFieldValues: Record<string, any>; templateSnapshot?: { customFields?: { name: string; type: string; isRequired?: boolean }[] }; finalizedSnapshot?: { parentVisibleContent: string; customFieldValues?: Record<string, any>; reportMetadata: { title: string } }; }
 export class WorkflowError extends Error { constructor(message: string, public status: number, public code?: string) { super(message); } }
 export const conflictMessage = 'This report was changed by another action. Refresh and review the latest version.';
+export const progressConflictMessage = 'This Progress record changed elsewhere. Reload and review the latest version before saving again.';
 export function workflowError(error: unknown): string {
   if (error instanceof WorkflowError && error.code === 'REPORT_REVISION_CONFLICT') return conflictMessage;
+  if (error instanceof WorkflowError && error.code === 'PROGRESS_REVISION_CONFLICT') return progressConflictMessage;
   if (error instanceof WorkflowError && [401, 403].includes(error.status)) return 'You are not authorized for this action. Sign in again or contact your school administrator.';
   return error instanceof Error ? error.message : 'Request failed. Please try again.';
 }

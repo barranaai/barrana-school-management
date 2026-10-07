@@ -22,6 +22,21 @@ const valueValid = (p, value) => {
   if (p.type === 'select') return typeof value === 'string' && Array.isArray(p.options) && p.options.includes(value);
   return false;
 };
+const validRevision = value => value === null || (Number.isInteger(value) && value >= 0);
+const versionFilter = value => value === null ? { $exists: false } : value;
+const plain = value => value?.toObject ? value.toObject({ depopulate: true }) : value;
+const notFound = res => res.status(404).json({ success: false, message: 'Progress not found' });
+async function authorizedProgress(progressId, schoolId, user) {
+  if (!oid(schoolId) || !oid(progressId)) return null;
+  const row = await Progress.findOne({ _id: progressId, schoolId });
+  if (!row) return null;
+  if (user.role === 'teacher') {
+    const participation = await ChildParticipation.findOne({ _id: row.childParticipationId, schoolId });
+    const session = participation && await DeliveredSession.findOne({ _id: participation.deliveredSessionId, schoolId });
+    if (!session || !teacherOwns(session, user)) return null;
+  }
+  return row;
+}
 async function context(body, user) {
   const schoolId = scopeSchoolId(user, body.schoolId);
   if (!oid(schoolId) || !oid(body.childParticipationId)) return { error: 'Valid schoolId and childParticipationId are required' };
@@ -55,7 +70,75 @@ async function validatedResults(body, ctx) {
 }
 router.use(protect);
 router.get('/', authorize(...readers), async (req, res) => { try { const schoolId = schoolFor(req, req.query.schoolId); if (!oid(schoolId)) return res.status(400).json({ success: false, message: 'schoolId is required' }); const q = { schoolId }; if (req.query.childParticipationId) q.childParticipationId = req.query.childParticipationId; const rows = await Progress.find(q).sort({ createdAt: -1 }); if (req.user.role === 'teacher') { const sessions = await DeliveredSession.find({ schoolId, deliveredBy: req.user._id }).select('_id'); const participations = await ChildParticipation.find({ schoolId, deliveredSessionId: { $in: sessions.map(s => s._id) } }).select('_id'); const ids = new Set(participations.map(p => String(p._id))); return res.json({ success: true, data: rows.filter(r => ids.has(String(r.childParticipationId))) }); } res.json({ success: true, data: rows }); } catch (e) { res.status(500).json({ success: false, message: 'Unable to load Progress' }); } });
+router.get('/:id/revisions', authorize(...readers), async (req, res) => {
+  try {
+    const schoolId = schoolFor(req, req.query.schoolId);
+    const row = await authorizedProgress(req.params.id, schoolId, req.user);
+    if (!row) return notFound(res);
+    const revisions = [...(row.revisions || [])]
+      .map(revision => plain(revision))
+      .sort((left, right) => (right.revisionNumber || 0) - (left.revisionNumber || 0));
+    return res.json({ success: true, data: { progressId: row._id, currentRevisionNumber: row.revisionNumber || 1, revisions } });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Unable to load Progress revisions' });
+  }
+});
 router.get('/:id', authorize(...readers), async (req, res) => { try { const schoolId = schoolFor(req, req.query.schoolId); if (!oid(schoolId) || !oid(req.params.id)) return res.status(404).json({ success: false, message: 'Progress not found' }); const row = await Progress.findOne({ _id: req.params.id, schoolId }); if (!row) return res.status(404).json({ success: false, message: 'Progress not found' }); if (req.user.role === 'teacher') { const p = await ChildParticipation.findOne({ _id: row.childParticipationId, schoolId }); const s = p && await DeliveredSession.findOne({ _id: p.deliveredSessionId, schoolId }); if (!s || !teacherOwns(s, req.user)) return res.status(404).json({ success: false, message: 'Progress not found' }); } res.json({ success: true, data: row }); } catch (e) { res.status(500).json({ success: false, message: 'Unable to load Progress' }); } });
-router.post('/', authorize(...managers, 'teacher'), async (req, res) => { try { const c = await context(req.body, req.user); if (c.error) return res.status(c.status || 400).json({ success: false, message: c.error }); const results = await validatedResults(req.body, c); if (results.error) return res.status(400).json({ success: false, message: results.error }); const data = await Progress.create({ schoolId: c.schoolId, childParticipationId: c.participation._id, ...results, observations: req.body.observations, recommendations: req.body.recommendations, overallStatus: req.body.overallStatus, metadata: req.body.metadata, createdBy: req.user._id, updatedBy: req.user._id }); res.status(201).json({ success: true, data }); } catch (e) { res.status(400).json({ success: false, message: e.code === 11000 ? 'Progress already exists for this participation' : 'Unable to save Progress' }); } });
-router.put('/:id', authorize(...managers, 'teacher'), async (req, res) => { try { const schoolId = schoolFor(req, req.body.schoolId || req.query.schoolId); const row = oid(schoolId) && oid(req.params.id) ? await Progress.findOne({ _id: req.params.id, schoolId }) : null; if (!row) return res.status(404).json({ success: false, message: 'Progress not found' }); const p = await ChildParticipation.findOne({ _id: row.childParticipationId, schoolId }); const s = p && await DeliveredSession.findOne({ _id: p.deliveredSessionId, schoolId }); if (req.user.role === 'teacher' && (!s || !teacherOwns(s, req.user))) return res.status(403).json({ success: false, message: 'Not authorized' }); if (!s || s.status === 'cancelled') return res.status(409).json({ success: false, message: 'Progress context is not editable' }); const ctx = await context({ schoolId, childParticipationId: row.childParticipationId }, req.user); if (ctx.error) return res.status(ctx.status || 409).json({ success: false, message: ctx.error }); const results = await validatedResults(req.body, ctx); if (results.error) return res.status(400).json({ success: false, message: results.error }); Object.assign(row, results, { observations: req.body.observations, recommendations: req.body.recommendations, overallStatus: req.body.overallStatus, metadata: req.body.metadata, updatedBy: req.user._id }); await row.save(); res.json({ success: true, data: row }); } catch (e) { res.status(400).json({ success: false, message: 'Unable to update Progress' }); } });
+router.post('/', authorize(...managers, 'teacher'), async (req, res) => { try { const c = await context(req.body, req.user); if (c.error) return res.status(c.status || 400).json({ success: false, message: c.error }); const results = await validatedResults(req.body, c); if (results.error) return res.status(400).json({ success: false, message: results.error }); const data = await Progress.create({ schoolId: c.schoolId, childParticipationId: c.participation._id, ...results, observations: req.body.observations, recommendations: req.body.recommendations, overallStatus: req.body.overallStatus, metadata: req.body.metadata, createdBy: req.user._id, updatedBy: req.user._id, revisionNumber: 1, revisions: [] }); res.status(201).json({ success: true, data }); } catch (e) { res.status(400).json({ success: false, message: e.code === 11000 ? 'Progress already exists for this participation' : 'Unable to save Progress' }); } });
+router.put('/:id', authorize(...managers, 'teacher'), async (req, res) => {
+  try {
+    if (!Object.hasOwn(req.body, '__v') || !validRevision(req.body.__v)) {
+      return res.status(400).json({ success: false, message: 'Expected Progress revision is required' });
+    }
+    const schoolId = schoolFor(req, req.body.schoolId || req.query.schoolId);
+    const row = oid(schoolId) && oid(req.params.id) ? await Progress.findOne({ _id: req.params.id, schoolId }) : null;
+    if (!row) return notFound(res);
+    const participation = await ChildParticipation.findOne({ _id: row.childParticipationId, schoolId });
+    const session = participation && await DeliveredSession.findOne({ _id: participation.deliveredSessionId, schoolId });
+    if (req.user.role === 'teacher' && (!session || !teacherOwns(session, req.user))) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    if (!session || session.status === 'cancelled') return res.status(409).json({ success: false, message: 'Progress context is not editable' });
+    const ctx = await context({ schoolId, childParticipationId: row.childParticipationId }, req.user);
+    if (ctx.error) return res.status(ctx.status || 409).json({ success: false, message: ctx.error });
+    const results = await validatedResults(req.body, ctx);
+    if (results.error) return res.status(400).json({ success: false, message: results.error });
+    const now = new Date();
+    const currentRevision = Number.isInteger(row.revisionNumber) ? row.revisionNumber : 1;
+    const snapshot = {
+      revisionNumber: currentRevision,
+      objectiveResults: (row.objectiveResults || []).map(plain),
+      parameterResults: (row.parameterResults || []).map(plain),
+      observations: row.observations,
+      recommendations: row.recommendations,
+      overallStatus: row.overallStatus,
+      metadata: plain(row.metadata) || {},
+      originallySavedBy: row.updatedBy || row.createdBy,
+      originallySavedAt: row.updatedAt || row.createdAt || now,
+      supersededBy: req.user._id,
+      supersededAt: now
+    };
+    const setChanges = { ...results, updatedBy: req.user._id, updatedAt: now, revisionNumber: currentRevision + 1 };
+    const unsetChanges = {};
+    for (const [field, value] of Object.entries({ observations: req.body.observations, recommendations: req.body.recommendations, overallStatus: req.body.overallStatus, metadata: req.body.metadata })) {
+      if (value === undefined) unsetChanges[field] = 1;
+      else setChanges[field] = value;
+    }
+    const update = {
+      $push: { revisions: snapshot },
+      $set: setChanges,
+      $inc: { __v: 1 }
+    };
+    if (Object.keys(unsetChanges).length) update.$unset = unsetChanges;
+    const data = await Progress.findOneAndUpdate(
+      { _id: row._id, schoolId, __v: versionFilter(req.body.__v) },
+      update,
+      { new: true, runValidators: true }
+    );
+    if (!data) return res.status(409).json({ success: false, code: 'PROGRESS_REVISION_CONFLICT', message: 'Progress was changed by another action. Reload and review the latest version.' });
+    return res.json({ success: true, data });
+  } catch (e) {
+    return res.status(400).json({ success: false, message: 'Unable to update Progress' });
+  }
+});
 module.exports = router;

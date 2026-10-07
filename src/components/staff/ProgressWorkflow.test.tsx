@@ -3,12 +3,12 @@ import { act, Simulate } from 'react-dom/test-utils';
 import { createRoot, Root } from 'react-dom/client';
 import ProgressWorkflow from './ProgressWorkflow';
 import { useAuth } from '../../contexts/AuthContext';
-import { workflowService, WorkflowError, conflictMessage } from '../../services/progressWorkflowService';
+import { workflowService, WorkflowError, conflictMessage, progressConflictMessage } from '../../services/progressWorkflowService';
 jest.mock('../../contexts/AuthContext', () => ({ useAuth: jest.fn() }));
 jest.mock('../../services/progressWorkflowService', () => ({ ...jest.requireActual('../../services/progressWorkflowService'), workflowService: jest.fn() }));
 jest.mock('../admin/sections/SessionParticipationManagement', () => ({ __esModule: true, default: (props:any) => <div>Participation manager for {props.session.title}<button onClick={props.onClose}>Back from participants</button></div> }));
 const session = { _id:'session', schoolId:'school', title:'Swimming', status:'completed', classId:'class', programId:'program', levelId:'level', plannedSessionSnapshot:{title:'Floating lesson',objectives:[{objectiveId:'objective',title:'Float'}]} };
-const progress = { _id:'progress',childParticipationId:'participation',objectiveResults:[],parameterResults:[],observations:'Observed floating',overallStatus:'in_progress' };
+const progress = { _id:'progress',__v:2,revisionNumber:2,childParticipationId:'participation',objectiveResults:[],parameterResults:[],observations:'Observed floating',overallStatus:'in_progress' };
 const draft = { _id:'report',progressId:'progress',status:'draft',title:'Swimming report',content:'Review this draft',customFieldValues:{},templateSnapshot:{customFields:[]} };
 let api: any;
 beforeEach(()=>{
@@ -37,7 +37,12 @@ test('records objective result, evidence, recommendation and overall status befo
 });
 test('validates an authoritative percentage parameter and preserves zero as a measured value',async()=>{api.session.mockResolvedValue({...await api.session(),parameters:[{_id:'percentage',name:'Confidence',type:'percentage',programId:'program'}]});await openChild();const record=Array.from(document.querySelectorAll('input[type="checkbox"]'))[0] as HTMLInputElement;await step(()=>Simulate.change(record,{target:{checked:true}} as any));await step(()=>Simulate.change(field('Confidence'),{target:{value:'101'}} as any));await step(()=>Simulate.click(button('Save progress')));expect(text()).toContain('enter 0–100');expect(api.saveProgress).not.toHaveBeenCalled();await step(()=>Simulate.change(field('Confidence'),{target:{value:'0'}} as any));await step(()=>Simulate.click(button('Save progress')));expect(api.saveProgress).toHaveBeenCalledWith(undefined,expect.objectContaining({parameterResults:[{parameterId:'percentage',value:0,note:''}]}));});
 test('absent participation is visible but Progress editing remains disabled',async()=>{api.session.mockResolvedValue({...await api.session(),children:[{_id:'participation',childId:'child',status:'absent'}]});await openChild();expect(button('Save progress')).toBeDisabled();});
-test('updates existing Progress rather than creating another record',async()=>{api.progress.mockResolvedValue([progress]);await openChild();await step(()=>Simulate.click(button('Save progress')));expect(api.saveProgress).toHaveBeenCalledWith('progress',expect.any(Object));});
+test('updates existing Progress with its concurrency token rather than creating another record',async()=>{api.progress.mockResolvedValue([progress]);await openChild();await step(()=>Simulate.click(button('Save progress')));expect(api.saveProgress).toHaveBeenCalledWith('progress',expect.objectContaining({__v:2}));});
+test('Progress conflict preserves local work and blocks another save until reload',async()=>{
+ api.progress.mockResolvedValue([progress]);api.saveProgress.mockRejectedValue(new WorkflowError('stale',409,'PROGRESS_REVISION_CONFLICT'));await openChild();
+ await step(()=>Simulate.change(field('Internal observations'),{target:{value:'My unsaved observation'}} as any));await step(()=>Simulate.click(button('Save progress')));
+ expect(text()).toContain(progressConflictMessage);expect(field('Internal observations')).toHaveValue('My unsaved observation');expect(button('Save progress')).toBeDisabled();expect(api.saveProgress).toHaveBeenCalledWith('progress',expect.objectContaining({__v:2,observations:'My unsaved observation'}));
+});
 test('approval requires confirmation and finalized content becomes read-only',async()=>{
  api.progress.mockResolvedValue([progress]);api.findReport.mockResolvedValue(draft);await openChild();await step(()=>Simulate.click(button('Approve / Finalize')));expect(api.approve).not.toHaveBeenCalled();await step(()=>Simulate.click(button('Confirm finalization')));
  expect(text()).toContain('Finalized');expect(api.approve).toHaveBeenCalledWith('report');expect(field('Parent-visible content')).toHaveAttribute('readonly');expect(text()).not.toContain('Save draft');expect(api.send).not.toHaveBeenCalled();

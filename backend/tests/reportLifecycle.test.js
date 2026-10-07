@@ -28,23 +28,23 @@ function report(status = 'approved') {
     async save() {} };
 }
 function harness(reportRow = report(), reportOverrides = {}) {
-  const calls = { email: [], queries: [], progressCreates: [], progressSaves: 0, pdfCreates: [], pdfReads: 0, reportSaves: 0 };
+  const calls = { email: [], queries: [], progressCreates: [], progressSaves: 0, progressUpdates: 0, reportCreates: [], pdfCreates: [], pdfReads: 0, reportSaves: 0 };
   const actor = { _id: teacher, schoolId: school, role: 'teacher', isActive: true, async save() {} };
   const objectiveId = id(13);
   const state = { report: reportRow, actor, roadmap: { _id: roadmapId, programId, levelId }, session: { _id: sessionId, schoolId: school, deliveredBy: teacher, plannedSessionId: plannedId, roadmapId, roadmapVersion: 1, status: 'completed', plannedSessionSnapshot: { objectives: [{ objectiveId, requirementId, parameterId, sequence: 1, title: 'Float' }] } }, participation: { _id: participationId, schoolId: school, deliveredSessionId: sessionId, status: 'active' } };
   reportRow.save = async () => { if (state.saveFailure) throw Error('database unavailable'); calls.reportSaves++; };
-  const row = { _id: progressId, childParticipationId: participationId, async save() { calls.progressSaves++; } };
+  const row = { _id: progressId, schoolId: school, childParticipationId: participationId, objectiveResults: [], parameterResults: [], observations: 'Current observation', recommendations: 'Current recommendation', overallStatus: 'in_progress', metadata: {}, createdBy: teacher, updatedBy: teacher, createdAt: new Date(), updatedAt: new Date(), revisionNumber: 3, revisions: [], __v: 0, async save() { calls.progressSaves++; } };
   const models = {
     User: { findById: () => chain(state.actor), findOne: () => chain(null), find: () => chain([{ _id: id(21) }]) },
-    Report: { findById: () => chain(state.report), findOne: q => { calls.queries.push(['Report', q]); return chain(q.schoolId && String(q.schoolId) !== String(school) ? null : state.report); }, find: () => chain([state.report]) },
-    Progress: { find: q => { calls.queries.push(['Progress', q]); return chain([row, { _id: id(30), childParticipationId: id(31) }]); }, findOne: q => { calls.queries.push(['Progress', q]); return chain(String(q.schoolId) === String(school) ? row : null); } },
+    Report: { findById: () => chain(state.report), findOne: q => { calls.queries.push(['Report', q]); return chain(q.schoolId && String(q.schoolId) !== String(school) ? null : state.report); }, find: () => chain([state.report]), create: async payload => { calls.reportCreates.push(payload); return payload; } },
+    Progress: { find: q => { calls.queries.push(['Progress', q]); return chain([row, { _id: id(30), childParticipationId: id(31) }]); }, findOne: q => { calls.queries.push(['Progress', q]); return chain(String(q.schoolId) === String(school) ? row : null); }, findOneAndUpdate: (filter, update) => { calls.progressUpdates++; if (String(filter.schoolId) !== String(school) || filter.__v !== row.__v) return chain(null); row.revisions.push(update.$push.revisions); Object.assign(row, update.$set); for (const field of Object.keys(update.$unset || {})) delete row[field]; row.__v += update.$inc.__v; return chain(row); } },
     ChildParticipation: { find: q => { calls.queries.push(['ChildParticipation', q]); return chain([{ _id: participationId }]); }, findOne: q => { calls.queries.push(['ChildParticipation', q]); return chain(state.participation); } },
     DeliveredSession: { find: q => { calls.queries.push(['DeliveredSession', q]); return chain([{ _id: sessionId }]); }, findOne: () => chain(state.session) },
     PlannedSession: { findOne: () => chain({ _id: plannedId, roadmapId, roadmapVersion: 1, objectives: [{ _id: objectiveId, requirementId, parameterId, sequence: 1, title: 'Float' }] }) },
     Roadmap: { findOne: q => { calls.queries.push(['Roadmap', q]); return chain(state.roadmap); } },
     Parameter: { find: q => { calls.queries.push(['Parameter', q]); return chain([{ _id: parameterId, requirementId, name: 'Percent', type: 'percentage' }]); } },
     Requirement: { find: q => { calls.queries.push(['Requirement', q]); return chain([{ _id: requirementId, name: 'Float' }]); } },
-    School: {}, Class: {}, Event: {}, ReportTemplate: {}
+    School: {}, Class: {}, Event: {}, ReportTemplate: { findOne: () => chain({ _id: id(40), schoolId: school, name: 'Progress template', customFields: [], settings: {} }) }
   };
   Object.assign(models.Report, reportOverrides);
   models.Progress.create = async payload => { calls.progressCreates.push(payload); return { _id: progressId, ...payload }; };
@@ -64,7 +64,7 @@ function harness(reportRow = report(), reportOverrides = {}) {
     if (!routers[name]) load(name);
     if (role) state.actor.role = role;
     const route = routers[name].find(r => r.method === method && r.url === url); assert.ok(route, url);
-    const req = { headers: anonymous ? {} : { authorization: 'Bearer ' + jwt.sign({ id: String(state.actor._id) }, process.env.JWT_SECRET) }, params: { id: String(progressId) }, body, query };
+    const req = { headers: anonymous ? {} : { authorization: 'Bearer ' + jwt.sign({ id: String(state.actor._id) }, process.env.JWT_SECRET) }, params: { id: String(progressId), progressId: String(progressId) }, body, query };
     const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(data) { this.body = data; return this; }, setHeader() {}, end(bytes) { this.bytes = bytes; } };
     for (const handler of route.handlers) { let next = false; await handler(req, res, () => { next = true; }); if (!next) break; }
     return res;
@@ -131,12 +131,20 @@ test('teacher Progress listing follows participation IDs, keeps tenant and query
   const queries=Object.fromEntries(h.calls.queries); assert.equal(String(queries.Progress.schoolId),String(school)); assert.equal(queries.Progress.childParticipationId,String(participationId)); assert.equal(String(queries.DeliveredSession.deliveredBy),String(teacher)); assert.equal(String(queries.ChildParticipation.schoolId),String(school)); assert.equal(String(queries.ChildParticipation.deliveredSessionId.$in[0]),String(sessionId));
 });
 test('Progress edit supplies roadmap context and preserves parameter validation', async () => {
-  const h=harness(); const body={parameterResults:[{parameterId:String(parameterId),value:65}]};const r=await h.request('progress','put','/:id',{body});assert.equal(r.statusCode,200);assert.equal(h.calls.progressSaves,1);
+  const h=harness(); const body={__v:0,parameterResults:[{parameterId:String(parameterId),value:65}]};const r=await h.request('progress','put','/:id',{body});assert.equal(r.statusCode,200);assert.equal(h.calls.progressUpdates,1);
   const reqQuery=h.calls.queries.find(([name])=>name==='Requirement')[1];assert.equal(String(reqQuery.programId),String(programId));assert.equal(String(reqQuery.levelId),String(levelId));
-  body.parameterResults[0].value=101;assert.equal((await h.request('progress','put','/:id',{body})).statusCode,400);assert.equal(h.calls.progressSaves,1);
-  h.state.roadmap=null;assert.equal((await h.request('progress','put','/:id',{body})).statusCode,409);assert.equal(h.calls.progressSaves,1);
+  body.__v=1;body.parameterResults[0].value=101;assert.equal((await h.request('progress','put','/:id',{body})).statusCode,400);assert.equal(h.calls.progressUpdates,1);
+  h.state.roadmap=null;assert.equal((await h.request('progress','put','/:id',{body})).statusCode,409);assert.equal(h.calls.progressUpdates,1);
 });
-test('Progress edit rejects other tenant and teacher',async()=>{for(const field of ['schoolId','_id']){const h=harness();h.state.actor[field]=id(90);const r=await h.request('progress','put','/:id');assert.ok([403,404].includes(r.statusCode));assert.equal(h.calls.progressSaves,0);}});
+test('Progress edit rejects other tenant and teacher',async()=>{for(const field of ['schoolId','_id']){const h=harness();h.state.actor[field]=id(90);const r=await h.request('progress','put','/:id',{body:{__v:0}});assert.ok([403,404].includes(r.statusCode));assert.equal(h.calls.progressUpdates,0);}});
+test('new Progress-backed report snapshots capture the current Progress revision and remain independent',async()=>{
+  const h=harness(undefined,{findOne:q=>chain(q.progressId?null:h.state.report)});
+  const response=await h.request('reports','post','/from-progress/:progressId',{body:{schoolId:String(school),templateId:String(id(40))}});
+  assert.equal(response.statusCode,201);assert.equal(h.calls.reportCreates.length,1);assert.equal(h.calls.reportCreates[0].progressSnapshot.progressRevisionNumber,3);
+  const snapshot=JSON.stringify(h.calls.reportCreates[0].progressSnapshot);
+  const edited=await h.request('progress','put','/:id',{body:{__v:0,observations:'Later Progress edit'}});assert.equal(edited.statusCode,200);
+  assert.equal(JSON.stringify(h.calls.reportCreates[0].progressSnapshot),snapshot);
+});
 test('Progress rejects unavailable participation states and parent management',async()=>{
   for(const status of ['absent','excused','cancelled']){const h=harness();h.state.participation.status=status;const r=await h.request('progress','post','/',{body:{childParticipationId:String(participationId)}});assert.equal(r.statusCode,400);assert.equal(h.calls.progressCreates.length,0);}
   const h=harness();const denied=await h.request('progress','post','/',{role:'parent',body:{childParticipationId:String(participationId)}});assert.equal(denied.statusCode,403);assert.equal(h.calls.progressCreates.length,0);
