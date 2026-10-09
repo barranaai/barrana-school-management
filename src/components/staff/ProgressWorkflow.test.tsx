@@ -7,6 +7,7 @@ import { workflowService, WorkflowError, conflictMessage, progressConflictMessag
 jest.mock('../../contexts/AuthContext', () => ({ useAuth: jest.fn() }));
 jest.mock('../../services/progressWorkflowService', () => ({ ...jest.requireActual('../../services/progressWorkflowService'), workflowService: jest.fn() }));
 jest.mock('../admin/sections/SessionParticipationManagement', () => ({ __esModule: true, default: (props:any) => <div>Participation manager for {props.session.title}<button onClick={props.onClose}>Back from participants</button></div> }));
+jest.mock('./ObjectiveCarryForwardReview', () => ({ __esModule: true, default: (props:any) => <div>Carry-forward review for {props.progressId}</div> }));
 const session = { _id:'session', schoolId:'school', title:'Swimming', status:'completed', classId:'class', programId:'program', levelId:'level', plannedSessionSnapshot:{title:'Floating lesson',objectives:[{objectiveId:'objective',title:'Float'}]} };
 const progress = { _id:'progress',__v:2,revisionNumber:2,childParticipationId:'participation',objectiveResults:[],parameterResults:[],observations:'Observed floating',overallStatus:'in_progress' };
 const draft = { _id:'report',progressId:'progress',status:'draft',title:'Swimming report',content:'Review this draft',customFieldValues:{},templateSnapshot:{customFields:[]} };

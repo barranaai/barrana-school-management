@@ -45,6 +45,10 @@ const routeDefinitions = [
     "progress"
   ],
   [
+    "/api/objective-carry-forward",
+    "objectiveCarryForward"
+  ],
+  [
     "/api/users",
     "users"
   ],

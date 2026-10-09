@@ -3,6 +3,7 @@ import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogAct
 import { useAuth } from '../../contexts/AuthContext';
 import { identity, Parameter, Participation, Progress, Session, WorkflowError, WorkflowReport, WorkflowService, workflowError, workflowService } from '../../services/progressWorkflowService';
 import SessionParticipationManagement from '../admin/sections/SessionParticipationManagement';
+import ObjectiveCarryForwardReview from './ObjectiveCarryForwardReview';
 
 const objectiveStatuses = ['not_observed', 'achieved', 'partially_achieved', 'not_achieved', 'needs_improvement'];
 const label = (value: string) => value.replace(/_/g, ' ');
@@ -62,10 +63,10 @@ function SessionEntry({ api, sessionId, token, schoolId, initialParticipationId 
     {!['in_progress','completed'].includes(session.status) && <Alert severity="info">Progress can be recorded only for an in-progress or completed session.</Alert>}
     {initialParticipationId && !child && <Alert severity="error">The selected participation is unavailable for this session.</Alert>}
     {children.length === 0 ? <Alert severity="info">No participating children in this session.</Alert> : <TextField select label="Participating child" value={selected} onChange={e => setSelected(e.target.value)}>{children.map(p => { const u = users.find(u => u._id === identity(p.childId)); return <MenuItem key={p._id} value={p._id}>{u ? u.firstName + ' ' + u.lastName : 'Participant'} — {label(p.status)}</MenuItem>; })}</TextField>}
-    {child && <ChildEntry key={child._id} api={api} session={session} participation={child} parameters={data.parameters} templates={data.templates} parentEmail={user?.parentEmail || ''} />}
+    {child && <ChildEntry key={child._id} api={api} session={session} participation={child} parameters={data.parameters} templates={data.templates} parentEmail={user?.parentEmail || ''} token={token} schoolId={schoolId} />}
   </Stack>;
 }
-function ChildEntry({ api, session, participation, parameters, templates, parentEmail }: { api: WorkflowService; session: Session; participation: Participation; parameters: Parameter[]; templates: any[]; parentEmail: string }) {
+function ChildEntry({ api, session, participation, parameters, templates, parentEmail, token, schoolId }: { api: WorkflowService; session: Session; participation: Participation; parameters: Parameter[]; templates: any[]; parentEmail: string; token: string; schoolId: string }) {
   const [loaded, setLoaded] = useState(false); const [progress, setProgress] = useState<Progress>(); const [report, setReport] = useState<WorkflowReport>();
   const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false); const [dirty, setDirty] = useState(false); const [conflicted, setConflicted] = useState(false);
   const [objectives, setObjectives] = useState<Record<string, { status: string; instructorNote: string; evidence: string }>>({});
@@ -108,6 +109,7 @@ function ChildEntry({ api, session, participation, parameters, templates, parent
     {parameters.map(p=><Paper key={p._id} sx={{p:2}}><FormControlLabel label={'Record ' + p.name} control={<Checkbox checked={values[p._id]?.recorded || false} onChange={e=>{setValues({...values,[p._id]:{...values[p._id],recorded:e.target.checked}});setDirty(true);}} />}/>{values[p._id]?.recorded && <Stack spacing={2}><ValueInput name={p.name} type={p.type} options={p.options} value={values[p._id].value} onChange={v=>{setValues({...values,[p._id]:{...values[p._id],value:v}});setDirty(true);}} /><TextField label={p.name + ' note'} value={values[p._id].note} onChange={e=>{setValues({...values,[p._id]:{...values[p._id],note:e.target.value}});setDirty(true);}} /></Stack>}</Paper>)}
     <TextField label="Internal observations" multiline value={observations} onChange={e=>{setObservations(e.target.value);setDirty(true);}} /><TextField label="Recommendations" multiline value={recommendations} onChange={e=>{setRecommendations(e.target.value);setDirty(true);}} /><TextField label="Overall status" select value={overall} onChange={e=>{setOverall(e.target.value);setDirty(true);}}>{['in_progress','achieved','partially_achieved','needs_improvement'].map(s=><MenuItem key={s} value={s}>{label(s)}</MenuItem>)}</TextField>
     <Button variant="contained" disabled={busy || !eligible || !!unavailable || conflicted} onClick={saveProgress}>Save progress</Button></Stack></Box>
+    {progress && !dirty && <ObjectiveCarryForwardReview token={token} schoolId={schoolId} progressId={progress._id} />}
     {progress && !report && <Stack spacing={2}><Typography variant="h6">Create a report draft</Typography>{templates.length===0 && <Alert severity="info">No active report templates are available.</Alert>}<TextField select label="Report template" value={template} onChange={e=>setTemplate(e.target.value)}>{templates.map(t=><MenuItem key={t._id} value={t._id}>{t.name}</MenuItem>)}</TextField><Button disabled={!template || busy || dirty || !eligible} onClick={generate}>Generate report draft</Button>{dirty && <Typography>Save progress before generating a draft.</Typography>}</Stack>}
     {report && progress && <ReportReview key={report._id} api={api} initial={report} progress={progress} childId={identity(participation.childId)} parentEmail={parentEmail} />}
   </Stack>;
