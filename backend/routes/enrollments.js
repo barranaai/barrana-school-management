@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Program = require('../models/Program');
 const Level = require('../models/Level');
 const Class = require('../models/Class');
+const { terminalStatuses: lifecycleTerminalStatuses, canTransition, closeOpenHistory, findConflictingEnrollment } = require('../services/enrollmentLifecycleService');
 const router = express.Router();
 const management = ['school_admin','super_admin'];
 const readRoles = [...management, 'teacher', 'parent'];
@@ -74,7 +75,7 @@ async function refs(body, schoolId) {
 router.use(protect);
 router.get('/', authorize(...readRoles), async (req,res)=>{ try { const schoolId=schoolFor(req,req.query.schoolId); if(!oid(schoolId)) return res.status(400).json({success:false,message:'schoolId is required'}); const q={schoolId}; for(const k of ['childId','programId','currentClassId','status']) if(req.query[k]) q[k]=req.query[k]; let rows=await Enrollment.find(q).sort({createdAt:-1}); if(req.user.role==='parent'){const children=await User.find({schoolId,role:'student',parentId:req.user._id}).select('_id'); const allowed=new Set(children.map(c=>String(c._id))); rows=rows.filter(r=>allowed.has(String(r.childId)));} else if(req.user.role==='teacher'){const children=await User.find({schoolId,role:'student'}); const permitted=new Set(); for(const child of children) if(await canAccessStudent(req.user,child)) permitted.add(String(child._id)); rows=rows.filter(r=>permitted.has(String(r.childId)));} res.json({success:true,data:rows}); } catch(e){res.status(500).json({success:false,message:e.message});} });
 router.get('/:id', authorize(...readRoles), async (req,res)=>{ try { const schoolId=schoolFor(req,req.query.schoolId); if(!oid(schoolId)||!oid(req.params.id)) return res.status(404).json({success:false,message:'Enrollment not found'}); const row=await Enrollment.findOne({_id:req.params.id,schoolId}); if(!row) return res.status(404).json({success:false,message:'Enrollment not found'}); if(req.user.role==='parent'||req.user.role==='teacher'){const child=await User.findOne({_id:row.childId,schoolId,role:'student'}); if(!child||!(await canAccessStudent(req.user,child))) return res.status(403).json({success:false,message:'Not authorized'});} res.json({success:true,data:row}); }catch(e){res.status(500).json({success:false,message:e.message});} });
-router.post('/', authorize(...management), async (req,res)=>{ try { const schoolId=schoolFor(req,req.body.schoolId); if(!oid(schoolId)) return res.status(400).json({success:false,message:'Valid schoolId is required'}); const body={...req.body,schoolId}; delete body.statusHistory; const err=await refs(body,schoolId); if(err)return res.status(400).json({success:false,message:err}); body.statusHistory=[{status:body.status||'pending',changedBy:req.user._id}]; if(body.currentLevelId)body.levelHistory=[{levelId:body.currentLevelId,effectiveFrom:body.startDate||new Date(),changedBy:req.user._id,reason:'Initial level'}]; if(body.currentClassId)body.classAssignments=[{classId:body.currentClassId,effectiveFrom:body.startDate||new Date(),assignedBy:req.user._id}]; const row=await Enrollment.create(body); res.status(201).json({success:true,data:row}); }catch(e){res.status(400).json({success:false,message:e.code===11000?'An active enrollment already exists for this child and program':e.message});} });
+router.post('/', authorize(...management), async (req,res)=>{ try { const schoolId=schoolFor(req,req.body.schoolId); if(!oid(schoolId)) return res.status(400).json({success:false,message:'Valid schoolId is required'}); const body={...req.body,schoolId}; delete body.statusHistory; delete body.endDate; if(!['pending','active'].includes(body.status||'pending')) return res.status(400).json({success:false,message:'A new enrollment must start as pending or active'}); const err=await refs(body,schoolId); if(err)return res.status(400).json({success:false,message:err}); const conflict=await findConflictingEnrollment(Enrollment,{schoolId,childId:body.childId,programId:body.programId}); if(conflict)return res.status(409).json({success:false,message:'An ongoing enrollment already exists for this child and program'}); body.statusHistory=[{status:body.status||'pending',changedBy:req.user._id}]; if(body.currentLevelId)body.levelHistory=[{levelId:body.currentLevelId,effectiveFrom:body.startDate||new Date(),changedBy:req.user._id,reason:'Initial level'}]; if(body.currentClassId)body.classAssignments=[{classId:body.currentClassId,effectiveFrom:body.startDate||new Date(),assignedBy:req.user._id}]; const row=await Enrollment.create(body); res.status(201).json({success:true,data:row}); }catch(e){res.status(400).json({success:false,message:e.code===11000?'An ongoing enrollment already exists for this child and program':e.message});} });
 router.put('/:id/class-assignment', authorize(...management), async (req,res)=>{
   try {
     const schoolId=schoolFor(req,req.body.schoolId||req.query.schoolId);
@@ -108,6 +109,8 @@ router.put('/:id', authorize(...management), async (req,res)=>{
     if(!row)return res.status(404).json({success:false,message:'Enrollment not found'});
     const body={...req.body};
     delete body.schoolId;
+    for(const field of ['childId','programId','startDate','endDate','statusHistory','levelHistory','classAssignments','staffAssignments']) delete body[field];
+    if(lifecycleTerminalStatuses.includes(row.status)) return res.status(409).json({success:false,message:'Ended enrollments are historical records. Start a new enrollment when the participant returns'});
     if(body.currentClassId!==undefined&&!same(body.currentClassId,row.currentClassId)){
       return res.status(400).json({success:false,message:'Use the class-assignment operation to change an enrollment class'});
     }
@@ -129,10 +132,21 @@ router.put('/:id', authorize(...management), async (req,res)=>{
     }
     delete body.currentClassId;
     if(body.status && body.status!==row.status){
+      if(!canTransition(row.status,body.status)) return res.status(409).json({success:false,message:'This enrollment status change is not allowed'});
+      if(body.status==='active'){
+        const conflict=await findConflictingEnrollment(Enrollment,{schoolId,childId:row.childId,programId:row.programId,excludeId:row._id});
+        if(conflict)return res.status(409).json({success:false,message:'An ongoing enrollment already exists for this child and program'});
+      }
       row.status=body.status;
       row.statusHistory.push({status:body.status,changedBy:req.user._id,reason:body.reason});
+      if(lifecycleTerminalStatuses.includes(body.status)){
+        row.endDate=now;
+        closeOpenHistory(row,now);
+      }
     }
     delete body.status;
+    delete body.reason;
+    delete body.effectiveDate;
     Object.assign(row,body);
     await row.save();
     res.json({success:true,data:row});
@@ -140,7 +154,7 @@ router.put('/:id', authorize(...management), async (req,res)=>{
     res.status(400).json({success:false,message:e.code===11000?'An active enrollment already exists for this child and program':e.message});
   }
 });
-router.delete('/:id', authorize(...management), async (req,res)=>{try{const schoolId=schoolFor(req,req.body?.schoolId||req.query.schoolId);if(!oid(schoolId)||!oid(req.params.id))return res.status(404).json({success:false,message:'Enrollment not found'});const row=await Enrollment.findOneAndUpdate({_id:req.params.id,schoolId},{$set:{status:'withdrawn',endDate:new Date()},$push:{statusHistory:{status:'withdrawn',changedBy:req.user._id,reason:req.body?.reason}}},{new:true});if(!row)return res.status(404).json({success:false,message:'Enrollment not found'});res.json({success:true,data:row});}catch(e){res.status(400).json({success:false,message:e.message});}});
+router.delete('/:id', authorize(...management), async (req,res)=>{try{const schoolId=schoolFor(req,req.body?.schoolId||req.query.schoolId);if(!oid(schoolId)||!oid(req.params.id))return res.status(404).json({success:false,message:'Enrollment not found'});const row=await Enrollment.findOne({_id:req.params.id,schoolId});if(!row)return res.status(404).json({success:false,message:'Enrollment not found'});if(lifecycleTerminalStatuses.includes(row.status))return res.status(409).json({success:false,message:'Enrollment is already ended'});const endedAt=new Date();row.status='withdrawn';row.endDate=endedAt;row.statusHistory.push({status:'withdrawn',changedBy:req.user._id,reason:req.body?.reason});closeOpenHistory(row,endedAt);await row.save();res.json({success:true,data:row});}catch(e){res.status(400).json({success:false,message:e.message});}});
 module.exports=router;
 
 

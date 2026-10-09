@@ -36,3 +36,8 @@ test('surfaces allowlisted class validation while hiding arbitrary backend detai
   (fetch as jest.Mock).mockResolvedValueOnce({ ok: false, json: async () => ({ success: false, message: 'PRIVATE_DATABASE_ERROR' }) });
   await expect(enrollmentService('token', 'school').changeClass('enrollment', 'class-2', '2026-09-20', '')).rejects.toThrow('Unable to complete the request');
 });
+
+test('surfaces safe lifecycle guidance when a historical enrollment cannot be reactivated', async () => {
+  (fetch as jest.Mock).mockResolvedValueOnce({ ok: false, json: async () => ({ success: false, message: 'Ended enrollments are historical records. Start a new enrollment when the participant returns' }) });
+  await expect(enrollmentService('token', 'school').changeStatus('enrollment', 'active', '')).rejects.toThrow('Start a new enrollment');
+});

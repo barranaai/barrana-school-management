@@ -8,7 +8,11 @@ const safeValidationMessages = new Set([
   'Effective date cannot be before the enrollment start date',
   'Effective date must be after the current class assignment start date',
   'Class is already the current assignment',
-  'Enrollment class assignment history is inconsistent'
+  'Enrollment class assignment history is inconsistent',
+  'An ongoing enrollment already exists for this child and program',
+  'Ended enrollments are historical records. Start a new enrollment when the participant returns',
+  'This enrollment status change is not allowed',
+  'Enrollment is already ended'
 ]);
 
 export type EnrollmentStatus = 'pending' | 'active' | 'paused' | 'completed' | 'withdrawn' | 'cancelled';

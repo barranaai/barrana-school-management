@@ -37,7 +37,8 @@ function fixture(change = () => {}) {
     '../middleware/auth': { protect() {}, authorize: () => (_req, _res, next) => next() },
     '../middleware/resourceAuthorization': { scopeSchoolId: user => user.schoolId, canAccessStudent: async () => true },
     '../models/Enrollment': Enrollment, '../models/User': always, '../models/Program': always,
-    '../models/Level': always, '../models/Class': Class
+    '../models/Level': always, '../models/Class': Class,
+    '../services/enrollmentLifecycleService': require('../services/enrollmentLifecycleService')
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../routes/enrollments.js'), 'utf8'), { module: { exports: {} }, require: name => { assert.ok(deps[name], name); return deps[name]; } });
   return {

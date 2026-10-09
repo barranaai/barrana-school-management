@@ -107,7 +107,7 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
   const actionClasses = action ? classes.filter(item => item._id !== String(action.row.currentClassId || '')) : [];
   const createValid = !!programId && !!levelId && !!startDate;
 
-  function openCreate() { setProgramId(''); setLevelId(''); setInitialStatus('active'); setError(''); setSuccess(''); setCreateOpen(true); }
+  function openCreate(selectedProgramId = '') { setProgramId(selectedProgramId); setLevelId(''); setInitialStatus('active'); setError(''); setSuccess(''); setCreateOpen(true); }
   async function create() {
     if (!createValid || busy) return;
     setBusy(true); setError('');
@@ -135,7 +135,7 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
   if (loading) return <CircularProgress aria-label="Loading enrollments" />;
   return <Stack spacing={2}>
     {error && !createOpen && !action && <Alert severity="error">{error}</Alert>}{success && <Alert severity="success">{success}</Alert>}
-    <Stack direction="row" spacing={1}><Button variant="contained" onClick={openCreate} disabled={busy}>Add Enrollment</Button><Button onClick={() => setRefresh(value => value + 1)} disabled={busy}>Refresh</Button></Stack>
+    <Stack direction="row" spacing={1}><Button variant="contained" onClick={() => openCreate()} disabled={busy}>Add Enrollment</Button><Button onClick={() => setRefresh(value => value + 1)} disabled={busy}>Refresh</Button></Stack>
     {!rows.length ? <Paper sx={{ p: 3 }}><Typography>No enrollment history for this participant.</Typography></Paper> : rows.map(row => {
       const editable = !terminal.includes(row.status);
       return <Paper key={row._id} sx={{ p: 2 }}><Stack spacing={1.5}>
@@ -150,6 +150,7 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
           {row.status === 'paused' && <Button onClick={() => openAction('resume', row)}>Resume</Button>}
           <Button color="warning" onClick={() => openAction('end', row)}>End Enrollment</Button>
         </Stack>}
+        {!editable && <Button sx={{ alignSelf: 'flex-start' }} onClick={() => openCreate(String(row.programId))}>Start New Participation Period</Button>}
         <Divider /><Typography variant="subtitle2">History</Typography>
         {!row.levelHistory?.length && !row.statusHistory?.length && !row.classAssignments?.length ? <Typography color="text.secondary">No changes recorded yet.</Typography> : <Stack spacing={0.5}>
           {row.levelHistory?.map((item, index) => <Typography key={item._id || `level-${index}`} variant="body2">Level: {levelName(item.levelId)} from {date(item.effectiveFrom)}{item.effectiveTo ? ` to ${date(item.effectiveTo)}` : ' (current)'}</Typography>)}
@@ -177,7 +178,7 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
         <Alert severity="info">Classes are organization-scoped. Confirm this class is appropriate for the enrollment's Program and Level.</Alert>
       </>}
       <TextField label="Reason (optional)" value={reason} onChange={event => setReason(event.target.value)} />
-      {action?.type === 'end' && <Alert severity="warning">This ends the enrollment as withdrawn. Its history will be retained.</Alert>}
+      {action?.type === 'end' && <Alert severity="warning">This withdraws the participant from this Program and preserves the full participation history. A future return will start a new participation period.</Alert>}
     </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={() => setAction(undefined)}>Cancel</Button><Button color={action?.type === 'end' ? 'warning' : 'primary'} variant="contained" disabled={busy || (action?.type === 'level' && !actionLevel) || (action?.type === 'class' && (!actionClass || !effectiveDate))} onClick={runAction}>Confirm</Button></DialogActions></Dialog>
   </Stack>;
 }

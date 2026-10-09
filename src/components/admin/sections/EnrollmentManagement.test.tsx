@@ -103,7 +103,7 @@ test('shows safe class-assignment validation returned by the service', async () 
 
 test('ending requires confirmation and keeps the history message', async () => {
   await openChild(); expect(api.end).not.toHaveBeenCalled(); await step(() => Simulate.click(button('End Enrollment')));
-  expect(document.body).toHaveTextContent('history will be retained'); await step(() => Simulate.click(button('Confirm')));
+  expect(document.body).toHaveTextContent('preserves the full participation history'); await step(() => Simulate.click(button('Confirm')));
   expect(api.end).toHaveBeenCalledWith('enrollment', ''); expect(document.body).toHaveTextContent('Enrollment ended and retained in history.');
 });
 
@@ -121,4 +121,14 @@ test('Super Admin must choose an organization and selected scope is used', async
   (useAuth as jest.Mock).mockReturnValue({ user: { _id: 'super', role: 'super_admin' }, token: 'token' }); await render();
   expect(document.body).toHaveTextContent('Choose an organization to manage enrollments.'); expect(api.children).not.toHaveBeenCalled();
   await choose('Organization', 'Demo Organization'); expect(enrollmentService).toHaveBeenCalledWith('token', 'school'); expect(api.children).toHaveBeenCalled();
+});
+
+test('an ended enrollment offers a new participation period instead of reactivating history', async () => {
+  api.list.mockResolvedValueOnce([{ ...enrollment, status: 'withdrawn', endDate: '2026-10-01' }]);
+  await openChild();
+  expect(button('Resume')).toBeUndefined();
+  await step(() => Simulate.click(button('Start New Participation Period')));
+  await choose('Level', 'Beginner');
+  expect(button('Save Enrollment')).not.toBeDisabled();
+  expect(document.body).toHaveTextContent('Add Enrollment');
 });
