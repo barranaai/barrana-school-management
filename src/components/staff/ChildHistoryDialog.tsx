@@ -5,6 +5,8 @@ import {
 } from '@mui/material';
 import { History, School, Event, TrendingUp, Description, SwapHoriz } from '@mui/icons-material';
 import { ChildHistoryData, ChildHistoryEvent, getChildHistory } from '../../services/childHistoryService';
+import { downloadChildHistory } from '../../services/childHistoryService';
+import { useAuth } from '../../contexts/AuthContext';
 
 type Props = {
   open: boolean;
@@ -58,6 +60,8 @@ const ChildHistoryDialog: React.FC<Props> = ({ open, childId, schoolId, onClose,
   const [data, setData] = useState<ChildHistoryData>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     let active = true;
@@ -102,7 +106,14 @@ const ChildHistoryDialog: React.FC<Props> = ({ open, childId, schoolId, onClose,
         </Box>
       </Stack>}
     </DialogContent>
-    <DialogActions><Button onClick={onClose}>Back to participants</Button></DialogActions>
+    <DialogActions>
+      {user && ['school_admin', 'super_admin'].includes(user.role) && childId && <Button disabled={exporting} onClick={async () => {
+        setExporting(true); setError('');
+        try { await downloadChildHistory(childId, schoolId); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Participant history could not be exported.'); }
+        finally { setExporting(false); }
+      }}>{exporting ? 'Preparing export…' : 'Export history'}</Button>}
+      <Button onClick={onClose}>Back to participants</Button>
+    </DialogActions>
   </Dialog>;
 };
 

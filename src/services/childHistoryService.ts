@@ -50,3 +50,19 @@ export async function getChildHistory(childId: string, schoolId?: string): Promi
   }
   return payload.data as ChildHistoryData;
 }
+
+export async function downloadChildHistory(childId: string, schoolId?: string): Promise<void> {
+  const token = apiService.getToken();
+  const query = schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : '';
+  const response = await fetch(`${API_BASE_URL}/child-history/${encodeURIComponent(childId)}/export${query}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined
+  });
+  if (!response.ok) throw new Error(response.status === 401 || response.status === 403 || response.status === 404
+    ? 'You are not authorized to export this participant history.'
+    : 'Participant history could not be exported. Please try again.');
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'participant-history.json';
+  const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
+  anchor.href = url; anchor.download = filename; document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+}

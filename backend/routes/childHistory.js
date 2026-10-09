@@ -9,6 +9,8 @@ const DeliveredSession = require('../models/DeliveredSession');
 const Progress = require('../models/Progress');
 const Report = require('../models/Report');
 const { logger } = require('../utils/logger');
+const School = require('../models/School');
+const { buildParticipantHistoryExport } = require('../services/participantHistoryExport');
 
 const router = express.Router();
 const validId = value => mongoose.Types.ObjectId.isValid(value);
@@ -22,6 +24,28 @@ const event = (type, date, title, description, details = {}) => ({
   title,
   description,
   details
+});
+
+router.get('/:childId/export', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = scopeSchoolId(req.user, req.query.schoolId);
+    if (!validId(schoolId)) return res.status(400).json({ success: false, message: 'An organization must be selected' });
+    if (!validId(req.params.childId)) return res.status(404).json({ success: false, message: 'Participant not found' });
+    const [child, organization] = await Promise.all([
+      User.findOne({ _id: req.params.childId, schoolId, role: 'student' }).select('_id firstName lastName studentId dateOfBirth enrollmentDate isActive'),
+      School.findOne({ _id: schoolId }).select('_id name')
+    ]);
+    if (!child || !organization) return res.status(404).json({ success: false, message: 'Participant not found' });
+    const document = await buildParticipantHistoryExport(child, schoolId, organization);
+    const safeName = `${child.firstName || 'participant'}-${child.lastName || 'history'}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName || 'participant'}-history.json"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.status(200).send(JSON.stringify(document, null, 2));
+  } catch (error) {
+    logger.error('Unable to export participant history', { error: error.message, userId: req.user?._id });
+    return res.status(500).json({ success: false, message: 'Unable to export participant history' });
+  }
 });
 
 router.get('/:childId', protect, authorize('school_admin', 'super_admin', 'teacher'), async (req, res) => {
