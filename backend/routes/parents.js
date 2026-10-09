@@ -7,8 +7,9 @@ const Event = require('../models/Event');
 const School = require('../models/School');
 const Class = require('../models/Class');
 const { logger } = require('../utils/logger');
-const fs = require('fs').promises;
 const { readReportPdf } = require('../services/reportPdf');
+const { authorizedParticipants } = require('../services/guardianAccessService');
+const { isDeliveredParentReport, canGuardianReadReport } = require('../services/guardianReportAccessService');
 
 const router = express.Router();
 const parentReportView = report => {
@@ -46,14 +47,10 @@ const parentReportView = report => {
 router.get('/me/children', protect, authorize('parent'), async (req, res) => {
   try {
     // Find all students where this parent is the parent
-    const children = await User.find({
-      role: 'student',
-      schoolId: req.user.schoolId,
-      parentEmail: req.user.email
-    })
+    const permitted = await authorizedParticipants(req.user, 'profile');
+    const children = await User.find({ _id: { $in: permitted.map(child => child._id) } })
       .populate('classId', 'name grade')
-      .select('firstName lastName studentId email phone classId photo parentEmail parentPhone medicalInfo emergencyContact studentGrade dateOfBirth')
-      .lean();
+      .select('firstName lastName studentId email phone classId photo parentEmail parentPhone medicalInfo emergencyContact studentGrade dateOfBirth').lean();
 
     // Get teacher info for each child
     const childrenWithTeachers = await Promise.all(children.map(async (child) => {
@@ -116,11 +113,7 @@ router.get('/me/children', protect, authorize('parent'), async (req, res) => {
 router.get('/me/reports', protect, authorize('parent'), async (req, res) => {
   try {
     // Find all students for this parent
-    const children = await User.find({
-      role: 'student',
-      schoolId: req.user.schoolId,
-      parentEmail: req.user.email
-    }).select('_id');
+    const children = await authorizedParticipants(req.user, 'reports', { includeInactive: true });
 
     const studentIds = children.map(child => child._id);
 
@@ -144,7 +137,7 @@ router.get('/me/reports', protect, authorize('parent'), async (req, res) => {
       .lean();
 
     // Add PDF URL if exists
-    const reportsWithPdf = reports.map(report => {
+    const reportsWithPdf = reports.filter(isDeliveredParentReport).map(report => {
       return parentReportView(report);
     }).filter(Boolean);
 
@@ -175,26 +168,19 @@ router.get('/me/reports', protect, authorize('parent'), async (req, res) => {
 router.get('/me/reports/:id', protect, authorize('parent'), async (req, res) => {
   try {
     const report = await Report.findOne({ _id: req.params.id, schoolId: req.user.schoolId })
-      .populate('studentId', 'firstName lastName studentId parentEmail')
+      .populate('studentId', 'firstName lastName studentId parentEmail parentId schoolId role')
       .populate('teacherId', 'firstName lastName email')
       .populate('templateId', 'name type')
       .lean();
 
-    if (!report || (report.progressId && !canExposeProgressReport(report))) {
+    if (!report || !(await canGuardianReadReport(req.user, report))) {
       return res.status(404).json({
         success: false,
         message: 'Report not found'
       });
     }
 
-    // Verify parent has access to this report
-    if (report.studentId.parentEmail !== req.user.email) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to view this report'
-      });
-    }
-
+    res.setHeader('Cache-Control', 'private, no-store');
     res.json({
       success: true,
       data: parentReportView(report)
@@ -217,27 +203,16 @@ router.get('/me/reports/:id/pdf', protect, authorize('parent'), async (req, res)
     logger.info(`Parent ${req.user.email} requesting PDF for report ${req.params.id}`);
     
     const report = await Report.findOne({ _id: req.params.id, schoolId: req.user.schoolId })
-      .populate('studentId', 'parentEmail firstName lastName')
+      .populate('studentId', 'parentEmail parentId schoolId role firstName lastName')
       .lean();
 
-    if (!report || (report.progressId && !canExposeProgressReport(report))) {
+    if (!report || !(await canGuardianReadReport(req.user, report))) {
       logger.warn(`Report ${req.params.id} not found`);
       return res.status(404).json({
         success: false,
         message: 'Report not found'
       });
     }
-
-
-    // Verify parent has access
-    if (report.studentId.parentEmail !== req.user.email) {
-      logger.warn(`Parent ${req.user.email} not authorized for report ${req.params.id}`);
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to view this report'
-      });
-    }
-    if (!['approved', 'sent'].includes(report.status)) return res.status(404).json({ success: false, message: 'Report not available' });
 
     let bytes;
     try { bytes = await readReportPdf(report); }
@@ -266,11 +241,8 @@ router.get('/me/reports/:id/pdf', protect, authorize('parent'), async (req, res)
 router.get('/me/events', protect, authorize('parent'), async (req, res) => {
   try {
     // Find parent's children
-    const children = await User.find({
-      role: 'student',
-      schoolId: req.user.schoolId,
-      parentEmail: req.user.email
-    }).select('classId').lean();
+    const permitted = await authorizedParticipants(req.user, 'profile');
+    const children = await User.find({ _id: { $in: permitted.map(child => child._id) } }).select('classId').lean();
 
     if (!children.length) {
       return res.json({
