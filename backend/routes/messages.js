@@ -6,6 +6,8 @@ const fs = require('fs');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
+const { authorizeGuardianParticipant } = require('../services/guardianAccessService');
+const { conversationLookup, guardianCanUseConversation, conversationCanDeliver } = require('../services/guardianCommunicationService');
 const { protect, authorize } = require('../middleware/auth');
 const { logger } = require('../utils/logger');
 const firebaseService = require('../services/firebaseService');
@@ -91,7 +93,9 @@ router.get('/conversations', protect, authorize('parent', 'school_admin', 'super
       .lean();
 
     // Format conversations for response
-    const formattedConversations = conversations.map(conv => {
+    const visibleConversations = [];
+    for (const conversation of conversations) if (await guardianCanUseConversation(req.user, conversation)) visibleConversations.push(conversation);
+    const formattedConversations = visibleConversations.map(conv => {
       const otherParticipant = conv.participants.find(
         p => p.userId._id.toString() !== req.user._id.toString()
       );
@@ -149,6 +153,10 @@ router.get('/conversation/:conversationId', protect, authorize('parent', 'school
         success: false,
         message: 'Not authorized to view this conversation'
       });
+    }
+
+    if (!(await guardianCanUseConversation(req.user, conversation))) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
     }
 
     // Build query
@@ -243,6 +251,10 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
           message: 'Student not found'
         });
       }
+      const guardian = senderIsParent ? req.user : recipientIsParent ? recipient : null;
+      if (guardian && !(await authorizeGuardianParticipant(guardian, student._id, 'communication')).allowed) {
+        return res.status(404).json({ success: false, message: 'Participant not found' });
+      }
       studentData = {
         studentId: student._id,
         studentName: `${student.firstName} ${student.lastName}`
@@ -253,11 +265,9 @@ router.post('/conversation', protect, authorize('parent', 'school_admin', 'super
 
     // Check if conversation already exists (only if not forcing new thread)
     if (!forceNewThread) {
-      conversation = await Conversation.findOne({
-        schoolId: req.user.schoolId,
-        'participants.userId': { $all: [req.user._id, recipientId] },
-        isActive: true
-      });
+      conversation = await Conversation.findOne(conversationLookup(
+        req.user.schoolId, req.user._id, recipientId, studentData?.studentId
+      ));
     }
 
     // Create new conversation if doesn't exist or if forcing new thread
@@ -441,6 +451,9 @@ router.post('/send', protect, authorize('parent', 'school_admin', 'super_admin')
         message: 'Not authorized to send messages in this conversation'
       });
     }
+    if (!(await guardianCanUseConversation(req.user, conversation)) || !(await conversationCanDeliver(conversation))) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
 
     // Get recipient
     const recipient = conversation.participants.find(
@@ -554,7 +567,6 @@ router.patch('/conversation/:conversationId/read', protect, authorize('parent', 
         message: 'Conversation not found'
       });
     }
-
     const isParticipant = conversation.participants.some(
       p => p.userId.toString() === req.user._id.toString()
     );
@@ -564,6 +576,9 @@ router.patch('/conversation/:conversationId/read', protect, authorize('parent', 
         success: false,
         message: 'Not authorized to access this conversation'
       });
+    }
+    if (!(await guardianCanUseConversation(req.user, conversation))) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
     }
 
     // Mark all unread messages as read
@@ -620,8 +635,10 @@ router.get('/unread-count', protect, authorize('parent', 'school_admin', 'super_
       isActive: true
     });
 
+    const visibleConversations = [];
+    for (const conversation of conversations) if (await guardianCanUseConversation(req.user, conversation)) visibleConversations.push(conversation);
     let totalUnread = 0;
-    conversations.forEach(conv => {
+    visibleConversations.forEach(conv => {
       if (req.user.role === 'parent') {
         totalUnread += conv.unreadCount.parent || 0;
       } else {
@@ -633,7 +650,7 @@ router.get('/unread-count', protect, authorize('parent', 'school_admin', 'super_
       success: true,
       data: {
         unreadCount: totalUnread,
-        conversationsWithUnread: conversations.filter(conv => {
+        conversationsWithUnread: visibleConversations.filter(conv => {
           const count = req.user.role === 'parent' ? conv.unreadCount.parent : conv.unreadCount.admin;
           return count > 0;
         }).length

@@ -103,7 +103,7 @@ test('scheduler protects historical references and skips cleanup if reference lo
     let scheduled; const cleaned = []; const deps = {
       'node-cron': { schedule: (_, fn) => { scheduled = fn; } }, path,
       '../utils/logger': { logger: log }, './notificationService': {}, './pdfService': { async cleanupOldPDFs(days, retained) { cleaned.push({ days, retained }); return { deleted: 0 }; } },
-      '../utils/dateUtils': {}, './firebaseService': {}, './socketService': {}
+      '../utils/dateUtils': {}, './firebaseService': {}, './socketService': {}, './guardianCommunicationService': { async authorizeScheduledMessageDelivery() { return true; } }
     };
     for (const name of ['Event','User','ParentGroup','Message','Conversation','ReportTemplate','School']) deps['../models/' + name] = {};
     deps['../models/Report'] = { find: () => ({ select: () => ({ lean: async () => { if (fails) throw Error('no database'); return [{ pdfUrl: '/uploads/pdfs/historical.pdf' }]; } }) }) };

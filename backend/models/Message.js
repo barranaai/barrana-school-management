@@ -102,6 +102,12 @@ const messageSchema = new mongoose.Schema({
     default: 'UTC'
   },
 
+  deliveryBlockedAt: Date,
+  deliveryBlockReason: {
+    type: String,
+    enum: ['guardian_communication_not_authorized']
+  },
+
   // Metadata
   metadata: {
     studentId: {

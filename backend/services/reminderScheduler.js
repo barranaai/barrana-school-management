@@ -14,6 +14,7 @@ const { cleanupOldPDFs } = require('./pdfService');
 const { getCurrentDateInTimezone, isReportDue, calculateDueDate, getStartOfFrequencyPeriod } = require('../utils/dateUtils');
 const firebaseService = require('./firebaseService');
 const { getIO } = require('./socketService');
+const { authorizeScheduledMessageDelivery } = require('./guardianCommunicationService');
 
 /**
  * Get recipients for an event based on target type
@@ -261,13 +262,18 @@ async function processScheduledMessages() {
     
     for (const message of scheduledMessages) {
       try {
+        const conversation = message.conversationId;
+        if (!(await authorizeScheduledMessageDelivery(message))) {
+          logger.warn('Scheduled message ' + message._id + ' was blocked because guardian communication access is no longer active');
+          continue;
+        }
         // Mark message as sent
         message.sentAt = new Date();
         message.isScheduled = false;
         await message.save();
         
         // Update conversation
-        const conversation = message.conversationId;
+
         if (conversation) {
           await conversation.updateLastMessage(message);
           await conversation.incrementUnread(message.recipientRole);
