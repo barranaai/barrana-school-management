@@ -7,7 +7,7 @@ const User = require('../models/User');
 const School = require('../models/School');
 const { protect, authorize, auditLog } = require('../middleware/auth');
 const { developmentOnly, publicRegistrationDisabled } = require('../middleware/environment');
-const { sendEmail } = require('../utils/email');
+const { sendEmail, isEmailConfigured } = require('../utils/email');
 const { logger } = require('../utils/logger');
 
 const authLimiter = rateLimit({
@@ -290,6 +290,13 @@ router.post('/forgot-password', [
 
     const { email } = req.body;
 
+    if (!isEmailConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Password reset email delivery is currently unavailable. Contact your administrator.'
+      });
+    }
+
     const user = await User.findByEmail(email);
     if (!user) {
       // Don't reveal if email exists or not
@@ -320,10 +327,13 @@ router.post('/forgot-password', [
         message: 'If an account with that email exists, a password reset link has been sent'
       });
     } catch (emailError) {
-      logger.error('Failed to send password reset email:', emailError);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to send password reset email'
+      logger.error('Failed to send password reset email', { errorName: emailError?.name || 'Error', errorCode: emailError?.code || 'EMAIL_DELIVERY_FAILED' });
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save();
+      res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent'
       });
     }
 
@@ -340,6 +350,7 @@ router.post('/forgot-password', [
 // @desc    Reset password with token
 // @access  Public
 router.post('/reset-password', [
+  authLimiter,
   body('token').notEmpty().withMessage('Reset token is required'),
   body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
 ], async (req, res) => {
@@ -348,8 +359,7 @@ router.post('/reset-password', [
     if (!errors.isEmpty()) {
       return res.status(400).json({
         success: false,
-        message: 'Validation errors',
-        errors: errors.array()
+        message: 'Invalid password reset request'
       });
     }
 

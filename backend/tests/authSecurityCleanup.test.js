@@ -60,7 +60,7 @@ function harness({ role = 'school_admin', active = true, found = true, passwordM
           auditLog: () => (_req, _res, next) => next()
         },
         '../middleware/environment': environment,
-        '../utils/email': { sendEmail: async () => {} },
+        '../utils/email': { sendEmail: async () => {}, isEmailConfigured: () => true },
         '../utils/logger': { logger }
       };
       assert.ok(Object.hasOwn(dependencies, name), `Unexpected dependency: ${name}`);

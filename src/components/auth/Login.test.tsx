@@ -76,3 +76,11 @@ test('offers a public Create your workspace entry without changing sign in', asy
   expect(navigate).toHaveBeenCalledWith('/onboarding');
   expect(document.body).toHaveTextContent('Sign In');
 });
+
+test('offers password recovery without submitting login credentials', async () => {
+  await step(() => root.render(<Login />));
+  const recovery = Array.from(document.querySelectorAll('button')).find(element => element.textContent === 'Forgot password?') as HTMLButtonElement;
+  await step(() => Simulate.click(recovery));
+  expect(navigate).toHaveBeenCalledWith('/forgot-password');
+  expect(login).not.toHaveBeenCalled();
+});

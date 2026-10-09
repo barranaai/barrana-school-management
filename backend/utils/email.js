@@ -1,8 +1,15 @@
 const nodemailer = require('nodemailer');
 const { logger } = require('./logger');
 
+const isEmailConfigured = () => {
+  const user = process.env.SMTP_USER || process.env.EMAIL_USER;
+  const pass = process.env.SMTP_PASS || process.env.EMAIL_PASSWORD;
+  return Boolean(user && pass && (!process.env.SMTP_HOST || process.env.SMTP_PORT));
+};
+
 // Create transporter
 const createTransporter = () => {
+  if (!isEmailConfigured()) throw Object.assign(new Error('Email delivery is not configured'), { code: 'EMAIL_NOT_CONFIGURED' });
   const user = process.env.SMTP_USER || process.env.EMAIL_USER;
   const pass = process.env.SMTP_PASS || process.env.EMAIL_PASSWORD;
   if (process.env.SMTP_HOST) {
@@ -264,5 +271,6 @@ module.exports = {
   sendEmail,
   sendBulkEmail,
   verifyEmailConfig,
-  emailTemplates
-}; 
+  emailTemplates,
+  isEmailConfigured
+};

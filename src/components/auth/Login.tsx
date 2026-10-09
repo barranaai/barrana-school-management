@@ -148,6 +148,9 @@ const Login: React.FC = () => {
             >
               Sign In
             </Button>
+            <Button fullWidth variant="text" onClick={() => navigate('/forgot-password')} sx={{ mt: 1 }}>
+              Forgot password?
+            </Button>
             <Button
               fullWidth
               variant="text"

@@ -8,6 +8,8 @@ import ParentsUI from './components/parents/ParentsUI';
 import SuperAdminDashboard from './components/super-admin/SuperAdminDashboard';
 import Unauthorized from './components/common/Unauthorized';
 import { OnboardingStart, OnboardingVerify } from './components/auth/Onboarding';
+import ForgotPassword from './components/auth/ForgotPassword';
+import ResetPassword from './components/auth/ResetPassword';
 
 function App() {
   console.log('🚀 Full App component loaded successfully!');
@@ -18,6 +20,8 @@ function App() {
     <div className="App">
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/onboarding" element={<OnboardingStart />} />
         <Route path="/onboarding/verify" element={<OnboardingVerify />} />
         <Route path="/admin" element={
@@ -47,4 +51,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;
