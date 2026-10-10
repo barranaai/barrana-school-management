@@ -46,7 +46,7 @@ function displayType(value: string): string {
     .join(' ');
 }
 
-export default function StandardPackageManagement() {
+export default function StandardPackageManagement({ onStartBlank }: { onStartBlank?: () => void }) {
   const { user, token } = useAuth();
   const schoolId = assignedSchoolId(user);
 
@@ -58,11 +58,12 @@ export default function StandardPackageManagement() {
     <StandardPackageList
       key={user._id + token + schoolId}
       token={token}
+      onStartBlank={onStartBlank}
     />
   );
 }
 
-function StandardPackageList({ token }: { token: string }) {
+function StandardPackageList({ token, onStartBlank }: { token: string; onStartBlank?: () => void }) {
   const api = useMemo(() => standardPackageService(token), [token]);
   const [packages, setPackages] = useState<StandardPackage[]>([]);
   const [adoptions, setAdoptions] = useState<StandardPackageAdoption[]>([]);
@@ -154,6 +155,21 @@ function StandardPackageList({ token }: { token: string }) {
           copy and never changes the Kidsible standard.
         </Typography>
       </Box>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="h6">Start with a blank/custom setup</Typography>
+          <Typography color="text.secondary">
+            Keep the organization empty and create its own Programs, Levels,
+            Requirements and Parameters. Existing organization data is not changed.
+          </Typography>
+        </CardContent>
+        <CardActions>
+          <Button variant="outlined" onClick={onStartBlank} disabled={!onStartBlank}>
+            Continue with blank setup
+          </Button>
+        </CardActions>
+      </Card>
 
       {error && <Alert severity="error">{error}</Alert>}
       {success && <Alert severity="success">{success}</Alert>}

@@ -96,6 +96,19 @@ test('displays published package details and an Adopt action', async () => {
   expect(button('Adopt Standard')).toBeEnabled();
 });
 
+test('blank setup continues to the existing organization-owned configuration', async () => {
+  const onStartBlank = jest.fn();
+  (fetch as jest.Mock)
+    .mockResolvedValueOnce(reply([]))
+    .mockResolvedValueOnce(reply([]));
+
+  await step(() => root.render(<StandardPackageManagement onStartBlank={onStartBlank} />));
+  await step(() => Simulate.click(button('Continue with blank setup')));
+
+  expect(onStartBlank).toHaveBeenCalledTimes(1);
+  expect(document.body).toHaveTextContent('Existing organization data is not changed.');
+});
+
 test('an adopted package displays its organization-owned state', async () => {
   await renderPackages([swimming], [adoption]);
 

@@ -19,11 +19,12 @@ const validDefinition = () => ({
   }]
 });
 
-function loadRoute({ role = 'super_admin', currentStatus = 'draft', createError } = {}) {
-  const calls = { findQueries: [], creates: [] };
+function loadRoute({ role = 'super_admin', currentStatus = 'draft', createError, schoolType = 'arts_studio', packageTypes = ['arts_studio'] } = {}) {
+  const realService = require('../services/standardPackageService');
+  const calls = { findQueries: [], creates: [], adoptions: [] };
   const document = {
     _id: packageId, slug: 'music-foundation', name: 'Music Foundation', version: 1,
-    organizationTypes: ['arts_studio'], definition: validDefinition(), status: currentStatus,
+    organizationTypes: packageTypes, definition: validDefinition(), status: currentStatus,
     async save() { return this; }
   };
   const model = {
@@ -36,8 +37,8 @@ function loadRoute({ role = 'super_admin', currentStatus = 'draft', createError 
     async create(value) { if (createError) throw createError; calls.creates.push(value); return { _id: packageId, ...value }; }
   };
   const auth = {
-    protect: (req, _res, next) => { req.user = { _id: '222222222222222222222222', role }; next(); },
-    protectReadOnly: (req, _res, next) => { req.user = { _id: '222222222222222222222222', role }; next(); },
+    protect: (req, _res, next) => { req.user = { _id: '222222222222222222222222', role, schoolId: '333333333333333333333333' }; next(); },
+    protectReadOnly: (req, _res, next) => { req.user = { _id: '222222222222222222222222', role, schoolId: '333333333333333333333333' }; next(); },
     authorize: (...roles) => (req, res, next) => roles.includes(req.user.role)
       ? next()
       : res.status(403).json({ success: false, message: 'Forbidden' })
@@ -48,7 +49,24 @@ function loadRoute({ role = 'super_admin', currentStatus = 'draft', createError 
   const original = Module._load;
   Module._load = function(name, parent, isMain) {
     if (name === '../middleware/auth') return auth;
+    if (name === '../middleware/resourceAuthorization') return {
+      scopeSchoolId: user => user.schoolId
+    };
+    if (name === '../models/School') return {
+      findOne() {
+        const school = { _id: '333333333333333333333333', organizationType: schoolType };
+        return {
+          select: async () => school,
+          then(resolve, reject) { return Promise.resolve(school).then(resolve, reject); }
+        };
+      }
+    };
     if (name === '../models/StandardPackage') return model;
+    if (name === '../models/StandardPackageAdoption') return { find() { return { populate() { return this; }, sort: async () => [] }; } };
+    if (name === '../services/standardPackageService') return {
+      validateDefinition: realService.validateDefinition,
+      adoptPackage: async input => { calls.adoptions.push(input); return { _id: '444444444444444444444444' }; }
+    };
     return original.call(this, name, parent, isMain);
   };
   let router;
@@ -64,6 +82,44 @@ test('super admin catalog includes draft, published and retired package summarie
   const response = await request(h.app).get('/api/standard-packages?includeDrafts=true');
   assert.equal(response.status, 200);
   assert.deepEqual(h.calls.findQueries[0], {});
+});
+
+test('organization catalog is limited to published packages compatible with its type', async () => {
+  const h = loadRoute({ role: 'school_admin', schoolType: 'sports_club' });
+  const response = await request(h.app).get('/api/standard-packages');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(h.calls.findQueries[0], {
+    status: 'published',
+    $or: [
+      { organizationTypes: { $size: 0 } },
+      { organizationTypes: 'sports_club' }
+    ]
+  });
+});
+
+test('organization cannot adopt a package for another organization type', async () => {
+  const h = loadRoute({ role: 'school_admin', schoolType: 'sports_club', packageTypes: ['arts_studio'], currentStatus: 'published' });
+  const response = await request(h.app)
+    .post(`/api/standard-packages/${packageId}/adopt`)
+    .send({});
+
+  assert.equal(response.status, 400);
+  assert.equal(response.body.message, 'Standard Package is not compatible with this organization type');
+  assert.equal(h.calls.adoptions.length, 0);
+});
+
+test('organization can adopt a compatible or universal package', async () => {
+  for (const packageTypes of [['sports_club'], []]) {
+    const h = loadRoute({ role: 'school_admin', schoolType: 'sports_club', packageTypes, currentStatus: 'published' });
+    const response = await request(h.app)
+      .post(`/api/standard-packages/${packageId}/adopt`)
+      .send({ schoolId: '999999999999999999999999' });
+
+    assert.equal(response.status, 201);
+    assert.equal(h.calls.adoptions.length, 1);
+    assert.equal(h.calls.adoptions[0].schoolId, '333333333333333333333333');
+  }
 });
 
 test('organization admins cannot create or publish global packages', async () => {

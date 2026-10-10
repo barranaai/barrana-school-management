@@ -29,6 +29,14 @@ const invalidInput = message => Object.assign(new Error(message), {
   code: 'INVALID_PACKAGE'
 });
 
+const compatiblePublishedQuery = organizationType => ({
+  status: 'published',
+  $or: [
+    { organizationTypes: { $size: 0 } },
+    { organizationTypes: organizationType }
+  ]
+});
+
 function exactBody(body, allowed) {
   const unsupported = Object.keys(body || {}).filter(key => !allowed.has(key));
   if (unsupported.length) throw invalidInput('Package request contains unsupported fields');
@@ -72,9 +80,17 @@ function updatePayload(body) {
 
 router.get('/', protectReadOnly, authorize(...admins), async (req, res) => {
   try {
-    const query = req.user.role === 'super_admin' && req.query.includeDrafts === 'true'
-      ? {}
-      : { status: 'published' };
+    let query;
+    if (req.user.role === 'super_admin') {
+      query = req.query.includeDrafts === 'true' ? {} : { status: 'published' };
+    } else {
+      const schoolId = scopeSchoolId(req.user);
+      const school = validId(schoolId)
+        ? await School.findOne({ _id: schoolId, isActive: { $ne: false } }).select('organizationType')
+        : null;
+      if (!school) return res.status(404).json({ success: false, message: 'Organization not found' });
+      query = compatiblePublishedQuery(school.organizationType);
+    }
     const data = await StandardPackage.find(query)
       .sort({ slug: 1, version: -1 })
       .select('-definition');
@@ -172,6 +188,9 @@ router.post('/:id/adopt', protect, authorize(...admins), async (req, res) => {
       StandardPackage.findOne({ _id: req.params.id, status: 'published' })
     ]);
     if (!school || !pkg) return res.status(404).json({ success: false, message: 'Organization or standard package not found' });
+    if (pkg.organizationTypes?.length && !pkg.organizationTypes.includes(school.organizationType)) {
+      return res.status(400).json({ success: false, message: 'Standard Package is not compatible with this organization type' });
+    }
     const data = await adoptPackage({ packageDocument: pkg, schoolId, userId: req.user._id });
     res.status(201).json({ success: true, data });
   } catch (caught) {
