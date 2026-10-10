@@ -5,6 +5,7 @@ import StandardPackageCatalogManagement from './StandardPackageCatalogManagement
 import { useAuth } from '../../contexts/AuthContext';
 import apiService from '../../services/apiService';
 import { standardPackageService } from '../../services/standardPackageService';
+import { activityPackageBlueprints, copyActivityPackageBlueprint } from '../../domain/activityPackageBlueprints';
 
 jest.mock('../../contexts/AuthContext', () => ({ useAuth: jest.fn() }));
 jest.mock('../../services/standardPackageService', () => {
@@ -86,7 +87,7 @@ test('shows grouped package versions and lifecycle actions only for drafts', asy
 
 test('creates a structured draft without a raw JSON editor', async () => {
   await renderCatalog();
-  await step(() => Simulate.click(button('Create Package')));
+  await step(() => Simulate.click(button('Create Blank Package')));
   expect(document.body.textContent).not.toContain('JSON');
 
   await step(() => Simulate.change(field('Package name'), { target: { value: 'Piano Foundation' } }));
@@ -145,6 +146,63 @@ test('loads a draft for editing and publishes only after confirmation', async ()
   expect(catalogApi.publish).toHaveBeenCalledWith('draft-1');
 });
 
+test.each(activityPackageBlueprints.map(blueprint => [blueprint.name, blueprint.slug] as const))(
+  'loads, edits, saves and publishes %s through the normal catalog workflow',
+  async (name, slug) => {
+    const expected = copyActivityPackageBlueprint(slug)!;
+    const originalProgramName = expected.definition.programs[0].name;
+    const editedProgramName = `${originalProgramName} — Organization Ready`;
+    let saved: any;
+    catalogApi.createDraft.mockImplementation(async input => {
+      saved = {
+        ...input, _id: `draft-${slug}`, status: 'draft',
+        createdAt: '2026-10-10T00:00:00.000Z', updatedAt: '2026-10-10T00:00:00.000Z'
+      };
+      catalogApi.listCatalog.mockResolvedValue([saved]);
+      return saved;
+    });
+
+    await renderCatalog();
+    await step(() => Simulate.click(button(`Use ${name}`)));
+    expect(field('Package name')).toHaveValue(name);
+    expect(field('Slug')).toHaveValue(slug);
+
+    await step(() => Simulate.click(button('Continue')));
+    expect(field('Program name')).toHaveValue(originalProgramName);
+    const inputValues = Array.from(document.querySelectorAll('input')).map(input => input.value);
+    expect(inputValues).toEqual(expect.arrayContaining(expected.definition.programs[0].levels.map(level => level.name)));
+    await step(() => Simulate.change(field('Program name'), { target: { value: editedProgramName } }));
+    expect(activityPackageBlueprints.find(item => item.slug === slug)?.definition.programs[0].name).toBe(originalProgramName);
+
+    await step(() => Simulate.click(button('Continue')));
+    await step(() => Simulate.click(button('Continue')));
+    await step(() => Simulate.click(button('Continue')));
+    expected.definition.programs[0].name = editedProgramName;
+    await step(() => Simulate.click(button('Save Draft')));
+
+    expect(catalogApi.createDraft).toHaveBeenCalledWith(expected);
+    const submitted = catalogApi.createDraft.mock.calls[0][0];
+    for (const program of submitted.definition.programs) {
+      for (const level of program.levels) {
+        const roadmap = program.roadmaps.find((item: any) => item.levelKey === level.key);
+        expect(roadmap).toBeDefined();
+        for (const session of roadmap.plannedSessions) {
+          for (const objective of session.objectives) {
+            const requirement = level.requirements.find((item: any) => item.key === objective.requirementKey);
+            expect(requirement).toBeDefined();
+            expect(requirement.parameters.some((item: any) => item.key === objective.parameterKey)).toBe(true);
+          }
+        }
+      }
+    }
+
+    expect(document.body).toHaveTextContent(name);
+    await step(() => Simulate.click(button('Publish')));
+    await step(() => Simulate.click(button('Confirm Publish')));
+    expect(catalogApi.publish).toHaveBeenCalledWith(`draft-${slug}`);
+  }
+);
+
 test('view mode renders hierarchy details without edit controls', async () => {
   await renderCatalog();
   await step(() => Simulate.click(button('View', 1)));
@@ -157,7 +215,7 @@ test('view mode renders hierarchy details without edit controls', async () => {
 
 test('shows validation errors before leaving incomplete package details', async () => {
   await renderCatalog();
-  await step(() => Simulate.click(button('Create Package')));
+  await step(() => Simulate.click(button('Create Blank Package')));
   await step(() => Simulate.click(button('Continue')));
   expect(document.body).toHaveTextContent('Enter a name, lowercase hyphenated slug and positive version.');
   expect(document.body).toHaveTextContent('Package Details');

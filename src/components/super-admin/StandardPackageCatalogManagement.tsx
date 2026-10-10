@@ -11,6 +11,7 @@ import {
   StandardPackage, StandardPackageDraftInput, StandardPackageServiceError,
   StandardParameterType, standardPackageService
 } from '../../services/standardPackageService';
+import { activityPackageBlueprints, copyActivityPackageBlueprint } from '../../domain/activityPackageBlueprints';
 
 const steps = ['Package Details', 'Programs & Levels', 'Requirements & Parameters', 'Roadmaps & Sessions', 'Review'];
 const parameterTypes: StandardParameterType[] = ['text', 'rating', 'percentage', 'number', 'checkbox', 'select'];
@@ -64,8 +65,9 @@ function Review({ pkg }: { pkg: StandardPackage | StandardPackageDraftInput }) {
   </Stack>;
 }
 
-function Editor({ initial, types, cancel, save }: {
+function Editor({ initial, starter, types, cancel, save }: {
   initial?: StandardPackage;
+  starter?: StandardPackageDraftInput;
   types: OnboardingMetadata['organizationTypes'];
   cancel: () => void;
   save: (draft: StandardPackageDraftInput) => Promise<void>;
@@ -76,7 +78,7 @@ function Editor({ initial, types, cancel, save }: {
     slug: initial.slug, name: initial.name, description: initial.description || '',
     version: initial.version, organizationTypes: initial.organizationTypes,
     definition: initial.definition || { programs: [] }
-  } : blank());
+  } : starter ? copy(starter) : blank());
   const mutate = (fn: (next: StandardPackageDraftInput) => void) =>
     setDraft(value => { const next = copy(value); fn(next); return next; });
   const programs = draft.definition.programs;
@@ -250,6 +252,7 @@ export default function StandardPackageCatalogManagement() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [publishTarget, setPublishTarget] = useState<StandardPackage>();
+  const [starter, setStarter] = useState<StandardPackageDraftInput>();
 
   const load = useCallback(async () => {
     if (!token || user?.role !== 'super_admin') return;
@@ -278,7 +281,7 @@ export default function StandardPackageCatalogManagement() {
         organizationTypes: input.organizationTypes, definition: input.definition
       });
       else await api.createDraft(input);
-      setNotice('Standard Package draft saved.'); setMode('catalog'); setSelected(undefined); await load();
+      setNotice('Standard Package draft saved.'); setMode('catalog'); setSelected(undefined); setStarter(undefined); await load();
     } catch (caught) { setError(safeError(caught)); } finally { setLoading(false); }
   };
   const publish = async () => {
@@ -294,8 +297,8 @@ export default function StandardPackageCatalogManagement() {
 
   if (mode === 'create' || mode === 'edit') return <Box>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-    <Editor initial={mode === 'edit' ? selected : undefined} types={metadata?.organizationTypes || []}
-      cancel={() => { setMode('catalog'); setSelected(undefined); setError(''); }} save={save} />
+    <Editor initial={mode === 'edit' ? selected : undefined} starter={mode === 'create' ? starter : undefined} types={metadata?.organizationTypes || []}
+      cancel={() => { setMode('catalog'); setSelected(undefined); setStarter(undefined); setError(''); }} save={save} />
   </Box>;
   if (mode === 'view' && selected) return <Box>
     <Button startIcon={<ArrowBack />} onClick={() => { setMode('catalog'); setSelected(undefined); }}>Back to catalog</Button>
@@ -310,8 +313,19 @@ export default function StandardPackageCatalogManagement() {
   return <Box>
     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={2} mb={3}>
       <Box><Typography variant="h4">Standard Packages</Typography><Typography color="text.secondary">Create and publish global reusable Kidsible configuration.</Typography></Box>
-      <Button variant="contained" startIcon={<Add />} disabled={!metadata} onClick={() => setMode('create')}>Create Package</Button>
+      <Button variant="contained" startIcon={<Add />} disabled={!metadata} onClick={() => { setStarter(undefined); setMode('create'); }}>Create Blank Package</Button>
     </Stack>
+    <Box mb={3}>
+      <Typography variant="h6" gutterBottom>Ready-to-use activity starters</Typography>
+      <Typography color="text.secondary" mb={2}>
+        Start with a complete editable draft, review it, then publish it when it is ready for organizations.
+      </Typography>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
+        {activityPackageBlueprints.map(blueprint => <Button key={blueprint.slug} variant="outlined" onClick={() => {
+          setStarter(copyActivityPackageBlueprint(blueprint.slug)); setMode('create');
+        }}>Use {blueprint.name}</Button>)}
+      </Stack>
+    </Box>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     {notice && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice('')}>{notice}</Alert>}
     {loading && <CircularProgress aria-label="Loading Standard Package catalog" />}
