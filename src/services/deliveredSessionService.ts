@@ -7,7 +7,8 @@ export type DeliveryStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancel
 export interface ClassOption { _id: string; name: string; schoolId: string; }
 export interface DeliveredSession {
   _id: string; schoolId: string; programId: string; levelId: string; roadmapId: string; roadmapVersion: number;
-  plannedSessionId: string; classId: string; deliveredBy: string; title: string; scheduledAt: string; deliveredAt?: string;
+  plannedSessionId: string; deliveryMode?: 'group' | 'individual'; classId?: string; individualEnrollmentId?: string;
+  individualChildId?: string; deliveredBy: string; title: string; scheduledAt: string; deliveredAt?: string;
   status: DeliveryStatus; deliveryNotes?: string; methodologyAdjustments?: string;
   plannedSessionSnapshot: { title: string; description?: string; methodology: string; expectedOutcomes: string[];
     objectives: (PlannedObjective & { objectiveId?: string; requirementLabel?: string; parameterLabel?: string })[] };
@@ -16,7 +17,8 @@ export interface DeliveryInput { scheduledAt: string; deliveryNotes: string; met
 export const nextDeliveryStatuses: Record<DeliveryStatus, DeliveryStatus[]> = {
   scheduled: ['in_progress', 'cancelled'], in_progress: ['completed', 'cancelled'], completed: [], cancelled: []
 };
-export function deliveredSessionService(token: string, context: Roadmap, plannedId: string) {
+export interface IndividualDeliveryTarget { enrollmentId: string; childId: string; }
+export function deliveredSessionService(token: string, context: Roadmap, plannedId: string, individualTarget?: IndividualDeliveryTarget) {
   async function request<T>(path: string, method = 'GET', body?: object): Promise<T> {
     if (!token || !context.schoolId || !context._id || !context.programId || !context.levelId || !plannedId) throw new Error(deliveredSessionFailure);
     try {
@@ -39,15 +41,25 @@ export function deliveredSessionService(token: string, context: Roadmap, planned
     async load() {
       const planned = await request<PlannedSession>('/planned-sessions/' + encodeURIComponent(plannedId));
       if (planned._id !== plannedId || planned.schoolId !== context.schoolId || planned.roadmapId !== context._id || planned.roadmapVersion !== context.version) throw new Error(deliveredSessionFailure);
-      const [rows, classes] = await Promise.all([
+      const [allRows, classes] = await Promise.all([
         request<DeliveredSession[]>('/delivered-sessions?plannedSessionId=' + encodeURIComponent(plannedId)),
-        request<ClassOption[]>('/classes/options')
+        individualTarget ? Promise.resolve([] as ClassOption[]) : request<ClassOption[]>('/classes/options')
       ]);
+      const rows = allRows.filter(row => individualTarget
+        ? row.deliveryMode === 'individual' && row.individualEnrollmentId === individualTarget.enrollmentId && row.individualChildId === individualTarget.childId
+        : !row.deliveryMode || row.deliveryMode === 'group');
       rows.forEach(check);
       if (!classes.every(c => c.schoolId === context.schoolId)) throw new Error(deliveredSessionFailure);
       return { planned, rows, classes };
     },
     create(classId: string, input: DeliveryInput) {
+      if (individualTarget) return request<DeliveredSession>('/delivered-sessions', 'POST', {
+        plannedSessionId: plannedId,
+        deliveryMode: 'individual',
+        individualEnrollmentId: individualTarget.enrollmentId,
+        individualChildId: individualTarget.childId,
+        ...fields(input)
+      });
       if (!classId) throw new Error(deliveredSessionFailure);
       return request<DeliveredSession>('/delivered-sessions', 'POST', { plannedSessionId: plannedId, classId, ...fields(input) });
     },

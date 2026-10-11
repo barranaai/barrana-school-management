@@ -19,6 +19,14 @@ test('create sends only permitted fields and authoritative school/planned identi
   expect(url).toBe('/api/delivered-sessions?schoolId=s'); expect(options.method).toBe('POST');
   expect(JSON.parse(options.body)).toEqual({...input,schoolId:'s',plannedSessionId:'ps',classId:'c'});
 });
+test('individual creation omits classId and sends only the explicit authorized target',async()=>{
+  const individualApi=deliveredSessionService('synthetic-token',context,'ps',{enrollmentId:'enrollment',childId:'child'});
+  await individualApi.create('',input);
+  const [url,options]=(fetch as jest.Mock).mock.calls[0];
+  expect(url).toBe('/api/delivered-sessions?schoolId=s');
+  expect(JSON.parse(options.body)).toEqual({...input,schoolId:'s',plannedSessionId:'ps',deliveryMode:'individual',individualEnrollmentId:'enrollment',individualChildId:'child'});
+  expect(JSON.parse(options.body)).not.toHaveProperty('classId');
+});
 test('edit cannot send snapshot, class or creator changes',async()=>{
   await api.edit(row,{...input,classId:'other',plannedSessionSnapshot:{}} as any);
   expect((fetch as jest.Mock).mock.calls[0][1].method).toBe('PUT');

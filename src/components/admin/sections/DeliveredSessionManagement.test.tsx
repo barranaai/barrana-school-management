@@ -60,6 +60,18 @@ test('teacher uses filtered selector and cannot manage another creator',async()=
 test('teacher can manage own occurrence',async()=>{
   (useAuth as jest.Mock).mockReturnValue({user:{_id:'teacher',role:'teacher',schoolId:'s'},token:'t'});rows=[{...occurrence,deliveredBy:'teacher'}];await render();expect(button('Edit Occurrence')).toBeEnabled();
 });
+test('teacher creates an individual lesson without selecting or sending a class',async()=>{
+  (useAuth as jest.Mock).mockReturnValue({user:{_id:'teacher',role:'teacher',schoolId:'s'},token:'t'});
+  rows=[];
+  await render({individualTarget:{enrollmentId:'enrollment',childId:'child',childName:'Maya Demo'},initialScheduledAt:'2026-09-19T09:00:00.000Z'});
+  expect(button('Add Individual Lesson')).toBeEnabled();
+  expect((fetch as jest.Mock).mock.calls.some(([url])=>url.includes('/classes/options'))).toBe(false);
+  await click('Add Individual Lesson');
+  expect(document.body).toHaveTextContent('Individual learner: Maya Demo');
+  await click('Save Delivered Session');
+  expect(JSON.parse(writes()[0][1].body)).toEqual({schoolId:'s',plannedSessionId:'ps',deliveryMode:'individual',individualEnrollmentId:'enrollment',individualChildId:'child',scheduledAt:'2026-09-19T09:00:00.000Z',deliveryNotes:'',methodologyAdjustments:''});
+  expect(JSON.parse(writes()[0][1].body)).not.toHaveProperty('classId');
+});
 test.each(['parent','student'])('%s cannot access',async role=>{
   (useAuth as jest.Mock).mockReturnValue({user:{role,schoolId:'s'},token:'t'});await render();expect(fetch).not.toHaveBeenCalled();
 });

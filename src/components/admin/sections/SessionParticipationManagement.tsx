@@ -51,7 +51,9 @@ export default function SessionParticipationManagement({ token, schoolId, sessio
             {eligible.map(child => <MenuItem key={child.childId} value={child.childId}>{child.firstName} {child.lastName}</MenuItem>)}
           </TextField><Button variant="contained" disabled={!selected || busy || blocked} onClick={add}>Add Participant</Button>
         </Stack>}
-        <Typography variant="body2" color="text.secondary">Eligibility is verified by the server from the session, enrollment, class assignment and tenant context.</Typography>
+        <Typography variant="body2" color="text.secondary">{session.deliveryMode === 'individual'
+          ? 'Eligibility is verified by the server from the individual lesson, Enrollment, staff assignment and tenant context.'
+          : 'Eligibility is verified by the server from the session, enrollment, class assignment and tenant context.'}</Typography>
       </Stack></Paper>
       <Typography variant="h6">Current participants</Typography>
       {!rows.length ? <Typography>No children are participating in this Delivered Session yet.</Typography> : rows.map(row => <Paper key={row._id} sx={{ p: 2 }}><Stack spacing={1}>

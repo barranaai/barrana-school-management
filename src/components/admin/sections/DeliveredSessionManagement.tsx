@@ -5,11 +5,11 @@ import { Program } from '../../../services/programService';
 import { Level } from '../../../services/levelService';
 import { Roadmap } from '../../../services/roadmapService';
 import { PlannedSession } from '../../../services/plannedSessionService';
-import { DeliveredSession, DeliveryStatus, deliveredSessionService, deliveredSessionFailure, nextDeliveryStatuses } from '../../../services/deliveredSessionService';
+import { DeliveredSession, DeliveryStatus, IndividualDeliveryTarget, deliveredSessionService, deliveredSessionFailure, nextDeliveryStatuses } from '../../../services/deliveredSessionService';
 import SessionParticipationManagement from './SessionParticipationManagement';
 import ProgressWorkflow from '../../staff/ProgressWorkflow';
 
-interface Context { schoolId: string; program: Program; level: Level; roadmap: Roadmap; plannedSession: PlannedSession; onBack: () => void; }
+interface Context { schoolId: string; program: Program; level: Level; roadmap: Roadmap; plannedSession: PlannedSession; onBack: () => void; individualTarget?: IndividualDeliveryTarget & { childName: string }; initialScheduledAt?: string; }
 const displayDate = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString().replace('T', ' ').replace('.000Z', ' UTC') : 'Not recorded';
 const inputDate = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString().slice(0, 16) : '';
 const labels: Record<DeliveryStatus, string> = { scheduled: 'scheduled', in_progress: 'in_progress', completed: 'completed', cancelled: 'cancelled' };
@@ -29,8 +29,8 @@ export default function DeliveredSessionManagement(props: Context) {
 }
 
 type Loaded = Awaited<ReturnType<ReturnType<typeof deliveredSessionService>['load']>>;
-function Occurrences({ program, level, roadmap, plannedSession, onBack, token, userId, role }: Context & { token: string; userId: string; role: string }) {
-  const api = useMemo(() => deliveredSessionService(token, roadmap, plannedSession._id), [token, roadmap, plannedSession._id]);
+function Occurrences({ program, level, roadmap, plannedSession, onBack, token, userId, role, individualTarget, initialScheduledAt }: Context & { token: string; userId: string; role: string }) {
+  const api = useMemo(() => deliveredSessionService(token, roadmap, plannedSession._id, individualTarget), [token, roadmap, plannedSession._id, individualTarget]);
   const [data, setData] = useState<Loaded>();
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -58,11 +58,11 @@ function Occurrences({ program, level, roadmap, plannedSession, onBack, token, u
   const className = (id: string) => data?.classes.find(c => c._id === id)?.name || 'Class ID: ' + id;
   function refresh() { setForm(undefined); setAction(undefined); setDetail(undefined); setParticipationSession(undefined); setError(false); setSuccess(''); setReload(n => n + 1); }
   function open(row?: DeliveredSession) {
-    setForm({ row }); setClassId(row?.classId || ''); setScheduledAt(inputDate(row?.scheduledAt));
+    setForm({ row }); setClassId(row?.classId || ''); setScheduledAt(inputDate(row?.scheduledAt || initialScheduledAt));
     setNotes(row?.deliveryNotes || ''); setAdjustments(row?.methodologyAdjustments || ''); setSuccess('');
   }
   const valid = !!scheduledAt && Number.isFinite(Date.parse(scheduledAt + ':00Z')) && notes.length <= 10000 && adjustments.length <= 10000 &&
-    (!!form?.row || !!data?.classes.some(c => c._id === classId));
+    (!!form?.row || !!individualTarget || !!data?.classes.some(c => c._id === classId));
   async function save() {
     if (!form || !valid || disabled) return;
     setBusy(true);
@@ -82,17 +82,17 @@ function Occurrences({ program, level, roadmap, plannedSession, onBack, token, u
   if (participationSession) return <SessionParticipationManagement token={token} schoolId={roadmap.schoolId} session={participationSession} onClose={() => setParticipationSession(undefined)} onRecordProgress={setProgressParticipationId} />;
   return <Stack spacing={2}>
     <Button disabled={busy} onClick={onBack}>Back to Planned Sessions</Button>
-    <Typography variant="h5">{program.name} → {level.name} → {roadmap.name} — Version {roadmap.version} → {data?.planned.title || plannedSession.title} → Delivered Sessions</Typography>
+    <Typography variant="h5">{program.name} → {level.name} → {roadmap.name} — Version {roadmap.version} → {data?.planned.title || plannedSession.title} → {individualTarget ? 'Individual Lessons' : 'Delivered Sessions'}</Typography>
     {!form && !action && feedback}{success && <Alert severity="success">{success}</Alert>}
     <Button disabled={busy || loading} onClick={refresh}>Reload Occurrences</Button>
     {loading && <CircularProgress aria-label="Loading Delivered Sessions" />}
     {data && data.planned.status !== 'active' && <Alert severity="info">An active Planned Session is required to create an occurrence. Existing history remains available.</Alert>}
-    <Button variant="contained" disabled={disabled || data?.planned.status !== 'active' || !['active', 'archived'].includes(roadmap.status) || !data?.classes.length} onClick={() => open()}>Add Delivered Session</Button>
-    {data && !data.classes.length && <Alert severity="info">No eligible classes are available for this account.</Alert>}
+    <Button variant="contained" disabled={disabled || data?.planned.status !== 'active' || !['active', 'archived'].includes(roadmap.status) || (!individualTarget && !data?.classes.length)} onClick={() => open()}>{individualTarget ? 'Add Individual Lesson' : 'Add Delivered Session'}</Button>
+    {data && !individualTarget && !data.classes.length && <Alert severity="info">No eligible classes are available for this account.</Alert>}
     {data?.rows.length === 0 && <Typography>No Delivered Sessions yet.</Typography>}
     {data?.rows.map(row => <Paper key={row._id} sx={{ p: 2 }}><Stack spacing={1}>
       <Typography variant="h6">{row.title}</Typography><Chip label={labels[row.status] || row.status} />
-      <Typography>Class: {className(row.classId)}</Typography>
+      <Typography>{(row.deliveryMode || 'group') === 'individual' ? 'Delivery: Individual Lesson' : `Class: ${className(row.classId || '')}`}</Typography>
       <Typography>Delivered By: {row.deliveredBy === userId ? 'You' : 'Staff ID: ' + row.deliveredBy}</Typography>
       <Typography>Scheduled At: {displayDate(row.scheduledAt)}</Typography><Typography>Delivered At: {displayDate(row.deliveredAt)}</Typography>
       <Typography sx={{ whiteSpace: 'pre-wrap' }}>Delivery Notes: {row.deliveryNotes || 'None'}</Typography>
@@ -103,9 +103,9 @@ function Occurrences({ program, level, roadmap, plannedSession, onBack, token, u
         {nextDeliveryStatuses[row.status].map(status => <Button key={status} disabled={disabled} color={status === 'cancelled' ? 'warning' : 'primary'} onClick={() => setAction({ row, status })}>{actionLabels[status]}</Button>)}
       </Stack>}
     </Stack></Paper>)}
-    <Dialog open={!!form} fullWidth maxWidth="sm" onClose={() => { if (!busy) setForm(undefined); }}><DialogTitle>{form?.row ? 'Edit Occurrence' : 'Add Delivered Session'}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>{feedback}
+    <Dialog open={!!form} fullWidth maxWidth="sm" onClose={() => { if (!busy) setForm(undefined); }}><DialogTitle>{form?.row ? 'Edit Occurrence' : individualTarget ? 'Add Individual Lesson' : 'Add Delivered Session'}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>{feedback}
       <Typography>Title: {form?.row?.title || data?.planned.title} (from Planned Session)</Typography>
-      {form?.row ? <Typography>Class: {className(form.row.classId)}</Typography> : <TextField select label="Class" required value={classId} disabled={busy || blocked} onChange={e => setClassId(e.target.value)}>{data?.classes.map(c => <MenuItem key={c._id} value={c._id}>{c.name}</MenuItem>)}</TextField>}
+      {individualTarget ? <Typography>Individual learner: {individualTarget.childName}</Typography> : form?.row ? <Typography>{(form.row.deliveryMode || 'group') === 'individual' ? 'Delivery: Individual Lesson' : `Class: ${className(form.row.classId || '')}`}</Typography> : <TextField select label="Class" required value={classId} disabled={busy || blocked} onChange={e => setClassId(e.target.value)}>{data?.classes.map(c => <MenuItem key={c._id} value={c._id}>{c.name}</MenuItem>)}</TextField>}
       <TextField label="Scheduled At (UTC)" type="datetime-local" required InputLabelProps={{ shrink: true }} value={scheduledAt} disabled={busy || blocked} onChange={e => setScheduledAt(e.target.value)} />
       <TextField label="Delivery Notes" multiline value={notes} disabled={busy || blocked} onChange={e => setNotes(e.target.value)} inputProps={{ maxLength: 10000 }} />
       <TextField label="Methodology Adjustments" multiline value={adjustments} disabled={busy || blocked} onChange={e => setAdjustments(e.target.value)} inputProps={{ maxLength: 10000 }} />

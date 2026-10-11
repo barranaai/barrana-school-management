@@ -7,12 +7,14 @@ import { apiService } from '../../../services/apiService';
 import { roadmapService } from '../../../services/roadmapService';
 import { plannedSessionService } from '../../../services/plannedSessionService';
 import { levelService } from '../../../services/levelService';
+import { getIndividualLessonEnrollments } from '../../../services/individualLessonService';
 
 jest.mock('../../../contexts/AuthContext', () => ({ useAuth: jest.fn() }));
 jest.mock('../../../services/roadmapService', () => ({ roadmapService: jest.fn() }));
 jest.mock('../../../services/plannedSessionService', () => ({ plannedSessionService: jest.fn() }));
 jest.mock('../../../services/levelService', () => ({ levelService: jest.fn() }));
-jest.mock('../../admin/sections/DeliveredSessionManagement', () => ({ __esModule: true, default: (props: any) => <div>Delivered workflow for {props.program.name} / {props.level.name} / {props.plannedSession.title}<button onClick={props.onBack}>Back to selector</button></div> }));
+jest.mock('../../../services/individualLessonService', () => ({ getIndividualLessonEnrollments: jest.fn() }));
+jest.mock('../../admin/sections/DeliveredSessionManagement', () => ({ __esModule: true, default: (props: any) => <div>Delivered workflow for {props.program.name} / {props.level.name} / {props.plannedSession.title}{props.individualTarget ? ` / Individual learner ${props.individualTarget.childName}` : ''}<button onClick={props.onBack}>Back to selector</button></div> }));
 
 const group = { _id: 'group', name: 'Thursday Swimming', schoolId: 'school', programId: { _id: 'program', name: 'Learn to Swim' }, levelIds: [{ _id: 'level', name: 'Water Confidence', programId: 'program' }] };
 const roadmap = { _id: 'roadmap', schoolId: 'school', programId: 'program', levelId: 'level', name: 'Foundation Roadmap', version: 1, status: 'active' };
@@ -33,6 +35,7 @@ beforeEach(() => {
   (levelService as jest.Mock).mockReturnValue({ list: jest.fn().mockResolvedValue([{ _id: 'level', schoolId: 'school', programId: 'program', name: 'Water Confidence', sequence: 1, isActive: true }]) });
   (roadmapService as jest.Mock).mockReturnValue({ list: jest.fn().mockResolvedValue([roadmap]) });
   (plannedSessionService as jest.Mock).mockReturnValue({ load: jest.fn().mockResolvedValue({ roadmap, sessions: [planned], requirements: [], parameters: [] }) });
+  (getIndividualLessonEnrollments as jest.Mock).mockResolvedValue([{ _id: 'enrollment', child: { _id: 'child', firstName: 'Leo', lastName: 'Demo' }, program: { _id: 'program', name: 'Learn to Swim' }, level: { _id: 'level', name: 'Water Confidence' }, status: 'active', startDate: '2026-01-01' }]);
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host);
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); jest.restoreAllMocks(); });
@@ -72,4 +75,27 @@ test('rejects non-teacher access without loading assignments', async () => {
   await step(() => root.render(<DeliveredSessionWorkflow />));
   expect(document.body).toHaveTextContent('Instructor access');
   expect(apiService.getTeacherAssignedClasses).not.toHaveBeenCalled();
+});
+
+test('loads date-authorized individual Enrollments and derives Program and Level from the selected Enrollment', async () => {
+  await step(() => root.render(<DeliveredSessionWorkflow />)); await settle();
+  await step(() => Simulate.click(Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Individual Lesson')!)); await settle();
+  expect(getIndividualLessonEnrollments).toHaveBeenCalledWith('token', expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/));
+  await choose('Assigned learner and Enrollment', /Leo Demo/);
+  expect(document.body).toHaveTextContent('Program: Learn to Swim. Level: Water Confidence.');
+  expect(roadmapService).toHaveBeenCalledWith('token', 'school', 'program', 'level');
+  await choose('Roadmap', /Foundation Roadmap/);
+  await choose('Planned Session', /Safe Entry/);
+  expect(document.body).toHaveTextContent('Individual learner Leo Demo');
+});
+
+test('shows safe empty and API-error states for individual assignments', async () => {
+  (getIndividualLessonEnrollments as jest.Mock).mockResolvedValue([]);
+  await step(() => root.render(<DeliveredSessionWorkflow />)); await settle();
+  await step(() => Simulate.click(Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Individual Lesson')!)); await settle();
+  expect(document.body).toHaveTextContent('No active individual lesson assignments cover this date.');
+  (getIndividualLessonEnrollments as jest.Mock).mockRejectedValue(new Error('denied'));
+  const date = field('Lesson date and time') as HTMLInputElement;
+  await step(() => Simulate.change(date, { target: { value: '2026-11-12T10:00' } })); await settle();
+  expect(document.body).toHaveTextContent('Unable to confirm your authorized session options.');
 });
