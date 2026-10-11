@@ -41,3 +41,16 @@ test('surfaces safe lifecycle guidance when a historical enrollment cannot be re
   (fetch as jest.Mock).mockResolvedValueOnce({ ok: false, json: async () => ({ success: false, message: 'Ended enrollments are historical records. Start a new enrollment when the participant returns' }) });
   await expect(enrollmentService('token', 'school').changeStatus('enrollment', 'active', '')).rejects.toThrow('Start a new enrollment');
 });
+
+test('instructor assignment operations remain organization scoped', async () => {
+  (fetch as jest.Mock)
+    .mockImplementationOnce(() => reply([{ _id: 'teacher', schoolId: 'school', firstName: 'Morgan', lastName: 'Coach', isActive: true }, { _id: 'foreign', schoolId: 'other', firstName: 'Other', lastName: 'Coach', isActive: true }]))
+    .mockImplementationOnce(() => reply({ _id: 'assignment' }))
+    .mockImplementationOnce(() => reply({ _id: 'assignment', status: 'ended' }));
+  const api = enrollmentService('token', 'school');
+  expect(await api.instructors()).toHaveLength(1);
+  await api.addInstructorAssignment('enrollment', { staffId: 'teacher', role: 'instructor', effectiveFrom: '2026-09-20', primary: true });
+  await api.endInstructorAssignment('enrollment', 'assignment', '2026-09-21');
+  expect(fetch).toHaveBeenNthCalledWith(2, expect.stringContaining('/enrollments/enrollment/staff-assignments?schoolId=school'), expect.objectContaining({ method: 'POST' }));
+  expect(fetch).toHaveBeenNthCalledWith(3, expect.stringContaining('/staff-assignments/assignment/end?schoolId=school'), expect.objectContaining({ method: 'PUT' }));
+});

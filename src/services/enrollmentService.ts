@@ -12,25 +12,39 @@ const safeValidationMessages = new Set([
   'An ongoing enrollment already exists for this child and program',
   'Ended enrollments are historical records. Start a new enrollment when the participant returns',
   'This enrollment status change is not allowed',
-  'Enrollment is already ended'
+  'Enrollment is already ended',
+  'Instructor assignments require an active enrollment',
+  'Enrollment instructor assignment history is inconsistent',
+  'Assignment start date must be valid',
+  'Assignment cannot start before the enrollment',
+  'A valid instructor is required',
+  'The enrollment participant is not active in this organization',
+  'Instructor not found or inactive in this organization',
+  'This instructor already has an overlapping assignment',
+  'This enrollment already has an active primary instructor',
+  'A valid assignment role is required',
+  'Instructor assignment is already ended',
+  'Assignment end date must be after its start date'
 ]);
 
 export type EnrollmentStatus = 'pending' | 'active' | 'paused' | 'completed' | 'withdrawn' | 'cancelled';
 export interface EnrollmentHistory { _id?: string; levelId: string; effectiveFrom: string; effectiveTo?: string; reason?: string; }
 export interface EnrollmentStatusHistory { _id?: string; status: EnrollmentStatus; changedAt: string; reason?: string; }
 export interface EnrollmentClassAssignment { _id?: string; classId: string; effectiveFrom: string; effectiveTo?: string; status: 'active' | 'ended'; reason?: string; }
+export interface EnrollmentStaffAssignment { _id?: string; staffId: string; role: string; effectiveFrom: string; effectiveTo?: string; primary: boolean; status: 'active' | 'ended'; }
 export interface Enrollment {
   _id: string; schoolId: string; childId: string; programId: string;
   currentLevelId?: string | null; currentClassId?: string | null;
   status: EnrollmentStatus; startDate: string; endDate?: string;
   levelHistory: EnrollmentHistory[]; statusHistory: EnrollmentStatusHistory[];
-  classAssignments: EnrollmentClassAssignment[];
+  classAssignments: EnrollmentClassAssignment[]; staffAssignments: EnrollmentStaffAssignment[];
 }
 export interface EnrollmentChild { _id: string; schoolId: string; firstName: string; lastName: string; }
 export interface EnrollmentProgram { _id: string; schoolId: string; name: string; isActive: boolean; }
 export interface EnrollmentLevel { _id: string; schoolId: string; programId: string; name: string; isActive: boolean; sequence: number; }
 export interface EnrollmentClass { _id: string; schoolId: string; name: string; }
 export interface EnrollmentSchool { _id: string; name: string; }
+export interface EnrollmentInstructor { _id: string; schoolId: string | { _id: string }; firstName: string; lastName: string; isActive: boolean; }
 
 const id = (value: unknown) => typeof value === 'string' ? value : String((value as any)?._id || '');
 
@@ -62,6 +76,7 @@ export function enrollmentService(token: string, schoolId: string) {
     programs: () => request<EnrollmentProgram[]>(scope('/config/programs')),
     levels: (programId: string) => request<EnrollmentLevel[]>(scope('/config/levels', '&programId=' + encodeURIComponent(programId))),
     classes: () => request<EnrollmentClass[]>(scope('/classes/options')),
+    instructors: async () => (await request<EnrollmentInstructor[]>('/teachers')).filter(instructor => id(instructor.schoolId) === schoolId && instructor.isActive),
     list: (childId: string) => request<Enrollment[]>(scope('/enrollments', '&childId=' + encodeURIComponent(childId))),
     create: (data: { childId: string; programId: string; currentLevelId?: string; startDate: string; status: 'pending' | 'active' }) =>
       request<Enrollment>('/enrollments', 'POST', { ...data, schoolId }),
@@ -69,6 +84,12 @@ export function enrollmentService(token: string, schoolId: string) {
       request<Enrollment>(scope('/enrollments/' + encodeURIComponent(enrollmentId)), 'PUT', { schoolId, currentLevelId, effectiveDate, reason: reason.trim() }),
     changeClass: (enrollmentId: string, classId: string, effectiveDate: string, reason: string) =>
       request<Enrollment>(scope('/enrollments/' + encodeURIComponent(enrollmentId) + '/class-assignment'), 'PUT', { schoolId, classId, effectiveDate, reason: reason.trim() }),
+    listInstructorAssignments: (enrollmentId: string) =>
+      request<EnrollmentStaffAssignment[]>(scope('/enrollments/' + encodeURIComponent(enrollmentId) + '/staff-assignments')),
+    addInstructorAssignment: (enrollmentId: string, data: { staffId: string; role: string; effectiveFrom: string; primary: boolean }) =>
+      request<EnrollmentStaffAssignment>(scope('/enrollments/' + encodeURIComponent(enrollmentId) + '/staff-assignments'), 'POST', { schoolId, ...data }),
+    endInstructorAssignment: (enrollmentId: string, assignmentId: string, effectiveTo: string) =>
+      request<EnrollmentStaffAssignment>(scope('/enrollments/' + encodeURIComponent(enrollmentId) + '/staff-assignments/' + encodeURIComponent(assignmentId) + '/end'), 'PUT', { schoolId, effectiveTo }),
     changeStatus: (enrollmentId: string, status: 'active' | 'paused', reason: string) =>
       request<Enrollment>(scope('/enrollments/' + encodeURIComponent(enrollmentId)), 'PUT', { schoolId, status, reason: reason.trim() }),
     end: (enrollmentId: string, reason: string) =>

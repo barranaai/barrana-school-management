@@ -14,11 +14,12 @@ const level = { _id: 'level', schoolId: 'school', programId: 'program', name: 'B
 const nextLevel = { ...level, _id: 'level-2', name: 'Intermediate', sequence: 2 };
 const classOption = { _id: 'class', schoolId: 'school', name: 'Saturday Group' };
 const nextClass = { _id: 'class-2', schoolId: 'school', name: 'Sunday Group' };
+const instructor = { _id: 'teacher', schoolId: 'school', firstName: 'Morgan', lastName: 'Coach', isActive: true };
 const enrollment = {
   _id: 'enrollment', schoolId: 'school', childId: 'child', programId: 'program', currentLevelId: 'level', currentClassId: 'class', status: 'active', startDate: '2026-09-19',
   levelHistory: [{ levelId: 'level', effectiveFrom: '2026-09-19' }],
   classAssignments: [{ classId: 'class', effectiveFrom: '2026-09-19', status: 'active' }],
-  statusHistory: [{ status: 'active', changedAt: '2026-09-19' }]
+  statusHistory: [{ status: 'active', changedAt: '2026-09-19' }], staffAssignments: []
 };
 
 let root: Root, host: HTMLDivElement, api: any;
@@ -27,9 +28,10 @@ beforeEach(() => {
   api = {
     schools: jest.fn().mockResolvedValue([{ _id: 'school', name: 'Demo Organization' }]),
     children: jest.fn().mockResolvedValue([child]), programs: jest.fn().mockResolvedValue([program]),
-    levels: jest.fn().mockResolvedValue([level, nextLevel]), classes: jest.fn().mockResolvedValue([classOption, nextClass]),
+    levels: jest.fn().mockResolvedValue([level, nextLevel]), classes: jest.fn().mockResolvedValue([classOption, nextClass]), instructors: jest.fn().mockResolvedValue([instructor]),
     list: jest.fn().mockResolvedValue([enrollment]), create: jest.fn().mockResolvedValue(enrollment),
-    changeLevel: jest.fn().mockResolvedValue(enrollment), changeClass: jest.fn().mockResolvedValue(enrollment), changeStatus: jest.fn().mockResolvedValue(enrollment), end: jest.fn().mockResolvedValue({ ...enrollment, status: 'withdrawn' })
+    changeLevel: jest.fn().mockResolvedValue(enrollment), changeClass: jest.fn().mockResolvedValue(enrollment), changeStatus: jest.fn().mockResolvedValue(enrollment), end: jest.fn().mockResolvedValue({ ...enrollment, status: 'withdrawn' }),
+    addInstructorAssignment: jest.fn().mockResolvedValue({}), endInstructorAssignment: jest.fn().mockResolvedValue({})
   };
   (enrollmentService as jest.Mock).mockImplementation(() => api);
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host);
@@ -92,6 +94,26 @@ test('changes Class on the existing enrollment with an effective date and preser
   await step(() => Simulate.click(button('Confirm')));
   expect(api.changeClass).toHaveBeenCalledWith('enrollment', 'class-2', '2026-09-20', '');
   expect(document.body).toHaveTextContent('Enrollment updated.');
+});
+
+test('adds an instructor assignment with role, date and primary designation', async () => {
+  await openChild(); await step(() => Simulate.click(button('Assign Instructor'))); await choose('Instructor', 'Morgan Coach');
+  await step(() => Simulate.change(input('Assignment role'), { target: { value: 'lead instructor' } }));
+  await step(() => Simulate.change(input('Assignment start date'), { target: { value: '2026-09-20' } }));
+  await choose('Primary instructor', 'Yes'); await step(() => Simulate.click(button('Save Assignment')));
+  expect(api.addInstructorAssignment).toHaveBeenCalledWith('enrollment', { staffId: 'teacher', role: 'lead instructor', effectiveFrom: '2026-09-20', primary: true });
+  expect(document.body).toHaveTextContent('Instructor assignment added.');
+});
+
+test('ends an instructor assignment while keeping it visible in history', async () => {
+  api.list.mockResolvedValueOnce([{ ...enrollment, staffAssignments: [{ _id: 'assignment', staffId: 'teacher', role: 'instructor', effectiveFrom: '2026-09-19', primary: true, status: 'active' }] }]);
+  await openChild(); expect(document.body).toHaveTextContent('Morgan Coach · instructor · Primary');
+  await step(() => Simulate.click(button('End Assignment')));
+  expect(document.body).toHaveTextContent('remain in Enrollment history');
+  await step(() => Simulate.change(input('Assignment end date'), { target: { value: '2026-09-21' } }));
+  await step(() => Simulate.click(button('Confirm End')));
+  expect(api.endInstructorAssignment).toHaveBeenCalledWith('enrollment', 'assignment', '2026-09-21');
+  expect(document.body).toHaveTextContent('Instructor assignment ended and retained in history.');
 });
 
 test('shows safe class-assignment validation returned by the service', async () => {

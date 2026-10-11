@@ -6,7 +6,7 @@ import {
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   Enrollment, EnrollmentChild, EnrollmentClass, EnrollmentLevel, EnrollmentProgram,
-  EnrollmentSchool, EnrollmentStatus, enrollmentService
+  EnrollmentInstructor, EnrollmentSchool, EnrollmentStaffAssignment, EnrollmentStatus, enrollmentService
 } from '../../../services/enrollmentService';
 
 const failure = 'Unable to complete the request. Check your access and connection, then refresh before retrying.';
@@ -72,6 +72,7 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
   const [programs, setPrograms] = useState<EnrollmentProgram[]>([]);
   const [levels, setLevels] = useState<EnrollmentLevel[]>([]);
   const [classes, setClasses] = useState<EnrollmentClass[]>([]);
+  const [instructors, setInstructors] = useState<EnrollmentInstructor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -87,14 +88,21 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [assignmentEnrollment, setAssignmentEnrollment] = useState<Enrollment>();
+  const [assignmentInstructor, setAssignmentInstructor] = useState('');
+  const [assignmentRole, setAssignmentRole] = useState('instructor');
+  const [assignmentPrimary, setAssignmentPrimary] = useState(false);
+  const [assignmentDate, setAssignmentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endingAssignment, setEndingAssignment] = useState<{ enrollment: Enrollment; assignment: EnrollmentStaffAssignment }>();
+  const [assignmentEndDate, setAssignmentEndDate] = useState(new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     let active = true; setLoading(true); setError('');
-    Promise.all([api.list(childId), api.programs(), api.classes()]).then(async ([enrollments, programRows, classRows]) => {
+    Promise.all([api.list(childId), api.programs(), api.classes(), api.instructors()]).then(async ([enrollments, programRows, classRows, instructorRows]) => {
       if (!enrollments.every(row => String(row.schoolId) === schoolId && String(row.childId) === childId)) throw new Error();
       const levelRows = (await Promise.all(programRows.map(program => api.levels(program._id)))).flat();
       if (!levelRows.every(level => level.schoolId === schoolId)) throw new Error();
-      if (active) { setRows(enrollments); setPrograms(programRows); setLevels(levelRows); setClasses(classRows); }
+      if (active) { setRows(enrollments); setPrograms(programRows); setLevels(levelRows); setClasses(classRows); setInstructors(instructorRows); }
     }).catch(() => { if (active) setError(failure); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [api, childId, refresh, schoolId]);
@@ -102,6 +110,7 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
   const programName = (id: string) => programs.find(program => program._id === String(id))?.name || 'Unavailable Program';
   const levelName = (id?: string | null) => id ? levels.find(level => level._id === String(id))?.name || 'Unavailable Level' : 'Not assigned';
   const className = (id?: string | null) => id ? classes.find(item => item._id === String(id))?.name || 'Unavailable Class' : 'Not assigned';
+  const instructorName = (id: string) => { const instructor = instructors.find(item => item._id === String(id)); return instructor ? `${instructor.firstName} ${instructor.lastName}` : 'Unavailable Instructor'; };
   const createLevels = levels.filter(level => level.programId === programId);
   const actionLevels = action ? levels.filter(level => level.programId === String(action.row.programId) && level._id !== String(action.row.currentLevelId || '')) : [];
   const actionClasses = action ? classes.filter(item => item._id !== String(action.row.currentClassId || '')) : [];
@@ -131,6 +140,26 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
       setAction(undefined); setSuccess(action.type === 'end' ? 'Enrollment ended and retained in history.' : 'Enrollment updated.'); setRefresh(value => value + 1);
     } catch (error) { setError(error instanceof Error ? error.message : failure); } finally { setBusy(false); }
   }
+  function openAssignment(row: Enrollment) {
+    setAssignmentEnrollment(row); setAssignmentInstructor(''); setAssignmentRole('instructor'); setAssignmentPrimary(false);
+    setAssignmentDate(new Date().toISOString().slice(0, 10)); setError(''); setSuccess('');
+  }
+  async function addAssignment() {
+    if (!assignmentEnrollment || !assignmentInstructor || !assignmentRole.trim() || !assignmentDate || busy) return;
+    setBusy(true); setError('');
+    try {
+      await api.addInstructorAssignment(assignmentEnrollment._id, { staffId: assignmentInstructor, role: assignmentRole.trim(), effectiveFrom: assignmentDate, primary: assignmentPrimary });
+      setAssignmentEnrollment(undefined); setSuccess('Instructor assignment added.'); setRefresh(value => value + 1);
+    } catch (error) { setError(error instanceof Error ? error.message : failure); } finally { setBusy(false); }
+  }
+  async function endAssignment() {
+    if (!endingAssignment?.assignment._id || !assignmentEndDate || busy) return;
+    setBusy(true); setError('');
+    try {
+      await api.endInstructorAssignment(endingAssignment.enrollment._id, endingAssignment.assignment._id, assignmentEndDate);
+      setEndingAssignment(undefined); setSuccess('Instructor assignment ended and retained in history.'); setRefresh(value => value + 1);
+    } catch (error) { setError(error instanceof Error ? error.message : failure); } finally { setBusy(false); }
+  }
 
   if (loading) return <CircularProgress aria-label="Loading enrollments" />;
   return <Stack spacing={2}>
@@ -145,6 +174,7 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
         {editable && <Stack direction="row" spacing={1} flexWrap="wrap">
           <Button onClick={() => openAction('level', row)}>Change Level</Button>
           <Button onClick={() => openAction('class', row)}>{row.currentClassId ? 'Change Class' : 'Assign Class'}</Button>
+          {row.status === 'active' && <Button onClick={() => openAssignment(row)}>Assign Instructor</Button>}
           {row.status === 'pending' && <Button onClick={() => openAction('activate', row)}>Activate</Button>}
           {row.status === 'active' && <Button onClick={() => openAction('pause', row)}>Pause</Button>}
           {row.status === 'paused' && <Button onClick={() => openAction('resume', row)}>Resume</Button>}
@@ -156,6 +186,13 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
           {row.levelHistory?.map((item, index) => <Typography key={item._id || `level-${index}`} variant="body2">Level: {levelName(item.levelId)} from {date(item.effectiveFrom)}{item.effectiveTo ? ` to ${date(item.effectiveTo)}` : ' (current)'}</Typography>)}
           {row.classAssignments?.map((item, index) => <Typography key={item._id || `class-${index}`} variant="body2">Class: {className(item.classId)} from {date(item.effectiveFrom)}{item.effectiveTo ? ` to ${date(item.effectiveTo)}` : ' (current)'}</Typography>)}
           {row.statusHistory?.map((item, index) => <Typography key={item._id || `status-${index}`} variant="body2">Status: {label(item.status)} on {date(item.changedAt)}</Typography>)}
+        </Stack>}
+        <Divider /><Typography variant="subtitle2">Instructor assignments</Typography>
+        {!row.staffAssignments?.length ? <Typography color="text.secondary">No instructor assignments.</Typography> : <Stack spacing={0.75}>
+          {row.staffAssignments.map((item, index) => <Stack key={item._id || `staff-${index}`} direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Typography variant="body2">{instructorName(item.staffId)} · {item.role}{item.primary ? ' · Primary' : ''} · {date(item.effectiveFrom)}{item.effectiveTo ? ` to ${date(item.effectiveTo)}` : ' (active)'}</Typography>
+            {item.status === 'active' && item._id && <Button size="small" onClick={() => { setEndingAssignment({ enrollment: row, assignment: item }); setAssignmentEndDate(new Date().toISOString().slice(0, 10)); setError(''); setSuccess(''); }}>End Assignment</Button>}
+          </Stack>)}
         </Stack>}
       </Stack></Paper>;
     })}
@@ -180,5 +217,21 @@ function ChildEnrollments({ api, childId, schoolId }: { api: ReturnType<typeof e
       <TextField label="Reason (optional)" value={reason} onChange={event => setReason(event.target.value)} />
       {action?.type === 'end' && <Alert severity="warning">This withdraws the participant from this Program and preserves the full participation history. A future return will start a new participation period.</Alert>}
     </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={() => setAction(undefined)}>Cancel</Button><Button color={action?.type === 'end' ? 'warning' : 'primary'} variant="contained" disabled={busy || (action?.type === 'level' && !actionLevel) || (action?.type === 'class' && (!actionClass || !effectiveDate))} onClick={runAction}>Confirm</Button></DialogActions></Dialog>
+
+    <Dialog open={!!assignmentEnrollment} onClose={() => { if (!busy) setAssignmentEnrollment(undefined); }} fullWidth maxWidth="sm"><DialogTitle>Assign Instructor</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
+      {error && <Alert severity="error">{error}</Alert>}
+      <TextField select required label="Instructor" value={assignmentInstructor} onChange={event => setAssignmentInstructor(event.target.value)}>
+        {instructors.map(instructor => <MenuItem key={instructor._id} value={instructor._id}>{instructor.firstName} {instructor.lastName}</MenuItem>)}
+      </TextField>
+      <TextField required label="Assignment role" value={assignmentRole} onChange={event => setAssignmentRole(event.target.value)} />
+      <TextField required label="Assignment start date" type="date" InputLabelProps={{ shrink: true }} value={assignmentDate} onChange={event => setAssignmentDate(event.target.value)} />
+      <TextField select label="Primary instructor" value={assignmentPrimary ? 'yes' : 'no'} onChange={event => setAssignmentPrimary(event.target.value === 'yes')}><MenuItem value="no">No</MenuItem><MenuItem value="yes">Yes</MenuItem></TextField>
+    </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={() => setAssignmentEnrollment(undefined)}>Cancel</Button><Button variant="contained" disabled={busy || !assignmentInstructor || !assignmentRole.trim() || !assignmentDate} onClick={addAssignment}>Save Assignment</Button></DialogActions></Dialog>
+
+    <Dialog open={!!endingAssignment} onClose={() => { if (!busy) setEndingAssignment(undefined); }} fullWidth maxWidth="sm"><DialogTitle>End Instructor Assignment</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
+      {error && <Alert severity="error">{error}</Alert>}
+      <Alert severity="info">The assignment will remain in Enrollment history.</Alert>
+      <TextField required label="Assignment end date" type="date" InputLabelProps={{ shrink: true }} value={assignmentEndDate} onChange={event => setAssignmentEndDate(event.target.value)} />
+    </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={() => setEndingAssignment(undefined)}>Cancel</Button><Button variant="contained" disabled={busy || !assignmentEndDate} onClick={endAssignment}>Confirm End</Button></DialogActions></Dialog>
   </Stack>;
 }

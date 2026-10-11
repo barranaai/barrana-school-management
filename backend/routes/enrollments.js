@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const { protect, authorize } = require('../middleware/auth');
 const { scopeSchoolId, canAccessStudent } = require('../middleware/resourceAuthorization');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const Enrollment = require('../models/Enrollment');
 const User = require('../models/User');
 const Program = require('../models/Program');
@@ -65,6 +66,15 @@ async function prepareClassAssignment(row, { classId, effectiveDate, reason, ass
   row.currentClassId = classId;
   return null;
 }
+function validateStaffHistory(assignments) {
+  for (const assignment of assignments || []) {
+    const from = validDate(assignment.effectiveFrom);
+    const to = assignment.effectiveTo ? validDate(assignment.effectiveTo) : null;
+    if (!from || (assignment.effectiveTo && !to) || (to && to <= from)) return false;
+    if ((assignment.status === 'active' && to) || (assignment.status === 'ended' && !to)) return false;
+  }
+  return true;
+}
 async function refs(body, schoolId) {
   if (!oid(schoolId) || !oid(body.childId) || !oid(body.programId)) return 'Valid childId, programId and schoolId are required';
   const [child, program] = await Promise.all([User.findOne({_id:body.childId, schoolId, role:'student'}), Program.findOne({_id:body.programId, schoolId, isActive:true})]);
@@ -76,8 +86,59 @@ async function refs(body, schoolId) {
 }
 router.use(protect);
 router.get('/', authorize(...readRoles), async (req,res)=>{ try { const schoolId=schoolFor(req,req.query.schoolId); if(!oid(schoolId)) return res.status(400).json({success:false,message:'schoolId is required'}); const q={schoolId}; for(const k of ['childId','programId','currentClassId','status']) if(req.query[k]) q[k]=req.query[k]; let rows=await Enrollment.find(q).sort({createdAt:-1}); if(req.user.role==='parent'){const children=await User.find({schoolId,role:'student',parentId:req.user._id}).select('_id'); const allowed=new Set(children.map(c=>String(c._id))); rows=rows.filter(r=>allowed.has(String(r.childId)));} else if(req.user.role==='teacher'){const children=await User.find({schoolId,role:'student'}); const permitted=new Set(); for(const child of children) if(await canAccessStudent(req.user,child)) permitted.add(String(child._id)); rows=rows.filter(r=>permitted.has(String(r.childId)));} res.json({success:true,data:rows}); } catch(e){res.status(500).json({success:false,message:e.message});} });
+router.get('/:id/staff-assignments', authorize(...management), async (req,res)=>{try{
+  const schoolId=schoolFor(req,req.query.schoolId);
+  const row=oid(schoolId)&&oid(req.params.id)?await Enrollment.findOne({_id:req.params.id,schoolId}):null;
+  if(!row)return res.status(404).json({success:false,message:'Enrollment not found'});
+  res.json({success:true,data:row.staffAssignments||[]});
+}catch(e){res.status(500).json({success:false,message:'Unable to load instructor assignments'});}});
+router.post('/:id/staff-assignments', authorize(...management), requireActiveOrganization, async (req,res)=>{try{
+  const schoolId=schoolFor(req,req.body.schoolId||req.query.schoolId);
+  const row=oid(schoolId)&&oid(req.params.id)?await Enrollment.findOne({_id:req.params.id,schoolId}):null;
+  if(!row)return res.status(404).json({success:false,message:'Enrollment not found'});
+  if(row.status!=='active')return res.status(409).json({success:false,message:'Instructor assignments require an active enrollment'});
+  if(!validateStaffHistory(row.staffAssignments))return res.status(409).json({success:false,message:'Enrollment instructor assignment history is inconsistent'});
+  const effectiveFrom=validDate(req.body.effectiveFrom);
+  if(!effectiveFrom)return res.status(400).json({success:false,message:'Assignment start date must be valid'});
+  const enrollmentStart=validDate(row.startDate);
+  if(!enrollmentStart||effectiveFrom<enrollmentStart)return res.status(400).json({success:false,message:'Assignment cannot start before the enrollment'});
+  if(!oid(req.body.staffId))return res.status(400).json({success:false,message:'A valid instructor is required'});
+  const [child,instructor]=await Promise.all([
+    User.findOne({_id:row.childId,schoolId,role:'student',isActive:true}),
+    User.findOne({_id:req.body.staffId,schoolId,role:'teacher',isActive:true})
+  ]);
+  if(!child)return res.status(409).json({success:false,message:'The enrollment participant is not active in this organization'});
+  if(!instructor)return res.status(400).json({success:false,message:'Instructor not found or inactive in this organization'});
+  const active=(row.staffAssignments||[]).filter(item=>item.status==='active'&&!item.effectiveTo);
+  const instructorHistory=(row.staffAssignments||[]).filter(item=>same(item.staffId,instructor._id));
+  if(instructorHistory.some(item=>!item.effectiveTo||validDate(item.effectiveTo)>effectiveFrom))return res.status(409).json({success:false,message:'This instructor already has an overlapping assignment'});
+  const primary=req.body.primary===true;
+  if(primary&&active.some(item=>item.primary===true))return res.status(409).json({success:false,message:'This enrollment already has an active primary instructor'});
+  const role=typeof req.body.role==='string'?req.body.role.trim():'';
+  if(!role||role.length>50)return res.status(400).json({success:false,message:'A valid assignment role is required'});
+  row.staffAssignments.push({staffId:instructor._id,role,effectiveFrom,primary,status:'active'});
+  await row.save();
+  res.status(201).json({success:true,data:row.staffAssignments[row.staffAssignments.length-1]});
+}catch(e){res.status(400).json({success:false,message:e.message});}});
+router.put('/:id/staff-assignments/:assignmentId/end', authorize(...management), requireActiveOrganization, async (req,res)=>{try{
+  const schoolId=schoolFor(req,req.body.schoolId||req.query.schoolId);
+  const row=oid(schoolId)&&oid(req.params.id)?await Enrollment.findOne({_id:req.params.id,schoolId}):null;
+  if(!row)return res.status(404).json({success:false,message:'Enrollment not found'});
+  if(!oid(req.params.assignmentId))return res.status(404).json({success:false,message:'Instructor assignment not found'});
+  if(!validateStaffHistory(row.staffAssignments))return res.status(409).json({success:false,message:'Enrollment instructor assignment history is inconsistent'});
+  const assignment=(row.staffAssignments||[]).find(item=>same(item._id,req.params.assignmentId));
+  if(!assignment)return res.status(404).json({success:false,message:'Instructor assignment not found'});
+  if(assignment.status!=='active'||assignment.effectiveTo)return res.status(409).json({success:false,message:'Instructor assignment is already ended'});
+  const effectiveTo=validDate(req.body.effectiveTo);
+  const effectiveFrom=validDate(assignment.effectiveFrom);
+  if(!effectiveTo||!effectiveFrom||effectiveTo<=effectiveFrom)return res.status(400).json({success:false,message:'Assignment end date must be after its start date'});
+  assignment.effectiveTo=effectiveTo;
+  assignment.status='ended';
+  await row.save();
+  res.json({success:true,data:assignment});
+}catch(e){res.status(400).json({success:false,message:e.message});}});
 router.get('/:id', authorize(...readRoles), async (req,res)=>{ try { const schoolId=schoolFor(req,req.query.schoolId); if(!oid(schoolId)||!oid(req.params.id)) return res.status(404).json({success:false,message:'Enrollment not found'}); const row=await Enrollment.findOne({_id:req.params.id,schoolId}); if(!row) return res.status(404).json({success:false,message:'Enrollment not found'}); if(req.user.role==='parent'||req.user.role==='teacher'){const child=await User.findOne({_id:row.childId,schoolId,role:'student'}); if(!child||!(await canAccessStudent(req.user,child))) return res.status(403).json({success:false,message:'Not authorized'});} res.json({success:true,data:row}); }catch(e){res.status(500).json({success:false,message:e.message});} });
-router.post('/', authorize(...management), async (req,res)=>{ try { const schoolId=schoolFor(req,req.body.schoolId); if(!oid(schoolId)) return res.status(400).json({success:false,message:'Valid schoolId is required'}); const body={...req.body,schoolId}; delete body.statusHistory; delete body.endDate; if(!['pending','active'].includes(body.status||'pending')) return res.status(400).json({success:false,message:'A new enrollment must start as pending or active'}); const err=await refs(body,schoolId); if(err)return res.status(400).json({success:false,message:err}); const conflict=await findConflictingEnrollment(Enrollment,{schoolId,childId:body.childId,programId:body.programId}); if(conflict)return res.status(409).json({success:false,message:'An ongoing enrollment already exists for this child and program'}); body.statusHistory=[{status:body.status||'pending',changedBy:req.user._id}]; if(body.currentLevelId)body.levelHistory=[{levelId:body.currentLevelId,effectiveFrom:body.startDate||new Date(),changedBy:req.user._id,reason:'Initial level'}]; if(body.currentClassId)body.classAssignments=[{classId:body.currentClassId,effectiveFrom:body.startDate||new Date(),assignedBy:req.user._id}]; const row=await Enrollment.create(body); res.status(201).json({success:true,data:row}); }catch(e){res.status(400).json({success:false,message:e.code===11000?'An ongoing enrollment already exists for this child and program':e.message});} });
+router.post('/', authorize(...management), async (req,res)=>{ try { const schoolId=schoolFor(req,req.body.schoolId); if(!oid(schoolId)) return res.status(400).json({success:false,message:'Valid schoolId is required'}); const body={...req.body,schoolId}; delete body.statusHistory; delete body.staffAssignments; delete body.endDate; if(!['pending','active'].includes(body.status||'pending')) return res.status(400).json({success:false,message:'A new enrollment must start as pending or active'}); const err=await refs(body,schoolId); if(err)return res.status(400).json({success:false,message:err}); const conflict=await findConflictingEnrollment(Enrollment,{schoolId,childId:body.childId,programId:body.programId}); if(conflict)return res.status(409).json({success:false,message:'An ongoing enrollment already exists for this child and program'}); body.statusHistory=[{status:body.status||'pending',changedBy:req.user._id}]; if(body.currentLevelId)body.levelHistory=[{levelId:body.currentLevelId,effectiveFrom:body.startDate||new Date(),changedBy:req.user._id,reason:'Initial level'}]; if(body.currentClassId)body.classAssignments=[{classId:body.currentClassId,effectiveFrom:body.startDate||new Date(),assignedBy:req.user._id}]; const row=await Enrollment.create(body); res.status(201).json({success:true,data:row}); }catch(e){res.status(400).json({success:false,message:e.code===11000?'An ongoing enrollment already exists for this child and program':e.message});} });
 router.put('/:id/class-assignment', authorize(...management), async (req,res)=>{
   try {
     const schoolId=schoolFor(req,req.body.schoolId||req.query.schoolId);
