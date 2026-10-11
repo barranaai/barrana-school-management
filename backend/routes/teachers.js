@@ -5,6 +5,8 @@ const router = express.Router();
 const User = require('../models/User');
 const Class = require('../models/Class');
 const Enrollment = require('../models/Enrollment');
+const Program = require('../models/Program');
+const Level = require('../models/Level');
 const Report = require('../models/Report');
 const School = require('../models/School');
 const { protect, authorize } = require('../middleware/auth');
@@ -127,6 +129,75 @@ router.get('/me/participants', protect, authorize('teacher'), async (req, res) =
       success: false,
       message: 'Server error while fetching teacher participant roster'
     });
+  }
+});
+
+// @desc    Get Enrollments the authenticated teacher may use for an individual lesson on a date
+// @route   GET /api/teachers/me/individual-enrollments?scheduledAt=<ISO date>
+// @access  Private (Teacher)
+router.get('/me/individual-enrollments', protect, authorize('teacher'), requireActiveOrganization, async (req, res) => {
+  try {
+    const scheduledAt = new Date(req.query.scheduledAt);
+    if (!req.query.scheduledAt || Number.isNaN(scheduledAt.getTime())) {
+      return res.status(400).json({ success: false, message: 'A valid scheduledAt date is required' });
+    }
+
+    const teacher = await User.findOne({
+      _id: req.user._id,
+      schoolId: req.user.schoolId,
+      role: 'teacher',
+      isActive: true
+    }).select('_id schoolId').lean();
+    if (!teacher) return res.status(403).json({ success: false, message: 'Active instructor access is required' });
+
+    const enrollments = await Enrollment.find({
+      schoolId: teacher.schoolId,
+      status: 'active',
+      startDate: { $lte: scheduledAt },
+      $or: [{ endDate: null }, { endDate: { $exists: false } }, { endDate: { $gte: scheduledAt } }],
+      staffAssignments: {
+        $elemMatch: {
+          staffId: teacher._id,
+          status: 'active',
+          effectiveFrom: { $lte: scheduledAt },
+          $or: [{ effectiveTo: null }, { effectiveTo: { $exists: false } }, { effectiveTo: { $gte: scheduledAt } }]
+        }
+      }
+    }).select('_id childId programId currentLevelId status startDate endDate').lean();
+
+    const childIds = enrollments.map(row => row.childId);
+    const programIds = enrollments.map(row => row.programId);
+    const levelIds = enrollments.map(row => row.currentLevelId).filter(Boolean);
+    const [children, programs, levels] = await Promise.all([
+      User.find({ _id: { $in: childIds }, schoolId: teacher.schoolId, role: 'student', isActive: true })
+        .select('_id firstName lastName').lean(),
+      Program.find({ _id: { $in: programIds }, schoolId: teacher.schoolId, isActive: true }).select('_id name').lean(),
+      Level.find({ _id: { $in: levelIds }, schoolId: teacher.schoolId, isActive: true }).select('_id name programId').lean()
+    ]);
+    const byId = rows => new Map(rows.map(row => [String(row._id), row]));
+    const childById = byId(children);
+    const programById = byId(programs);
+    const levelById = byId(levels);
+    const data = enrollments.flatMap(enrollment => {
+      const child = childById.get(String(enrollment.childId));
+      const program = programById.get(String(enrollment.programId));
+      const level = enrollment.currentLevelId ? levelById.get(String(enrollment.currentLevelId)) : null;
+      if (!child || !program || !level || String(level.programId) !== String(program._id)) return [];
+      return [{
+        _id: enrollment._id,
+        child,
+        program,
+        level: { _id: level._id, name: level.name },
+        status: enrollment.status,
+        startDate: enrollment.startDate,
+        endDate: enrollment.endDate
+      }];
+    });
+
+    res.json({ success: true, data, count: data.length });
+  } catch (error) {
+    logger.error('Error fetching individual lesson enrollments:', error);
+    res.status(500).json({ success: false, message: 'Server error while fetching individual lesson options' });
   }
 });
 

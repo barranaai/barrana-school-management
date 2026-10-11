@@ -13,12 +13,19 @@ const school = id(1), teacher = id(2), roadmap = id(3), program = id(4), level =
 function setup() {
   const planned = new PlannedSession({ schoolId: school, roadmapId: roadmap, roadmapVersion: 1, sequence: 1, title: 'Floating', description: 'Lesson', methodology: 'Supported practice', expectedOutcomes: ['Float safely'], createdBy: teacher, updatedBy: teacher,
     objectives: [{ _id: objective, sequence: 1, title: 'Float', description: 'Supported float', expectedOutcome: 'Float safely', instructionalGuidance: 'Offer support', requirementId: requirement, parameterId: parameter, metadata: { demo: true } }] });
-  const state = { planned, delivered: null, progressCreates: [] };
+  const state = {
+    planned, delivered: null, progressCreates: [], classContext: {},
+    child: { _id: id(11), schoolId: school, role: 'student', isActive: true },
+    enrollment: { _id: id(12), schoolId: school, childId: id(11), programId: program, currentLevelId: level, status: 'active', startDate: new Date('2026-09-01'), staffAssignments: [{ staffId: teacher, role: 'instructor', effectiveFrom: new Date('2026-09-01'), status: 'active' }] },
+    teacher: { _id: teacher, schoolId: school, role: 'teacher', isActive: true }
+  };
   const models = {
     PlannedSession: { findOne: async () => state.planned },
     Roadmap: { findOne: async () => ({ _id: roadmap, schoolId: school, programId: program, levelId: level, version: 1 }) },
     Program: { findOne: async () => ({ _id: program }) }, Level: { findOne: async () => ({ _id: level }) },
-    Class: { findOne: async () => ({ _id: cls, assignedTeachers: [{ teacherId: teacher }] }) },
+    Class: { findOne: async () => ({ _id: cls, assignedTeachers: [{ teacherId: teacher }], ...state.classContext }) },
+    Enrollment: { findOne: async () => state.enrollment },
+    User: { findOne: async query => query.role === 'teacher' ? state.teacher : state.child },
     Requirement: { find: async () => [{ _id: requirement, name: 'Floating' }] },
     Parameter: { find: async query => (query?._id?.$in || [parameter]).map(_id => ({ _id, requirementId: requirement, name: 'Seconds', type: 'number' })) },
     DeliveredSession: { findOne: async () => state.delivered, create: async payload => {
@@ -35,7 +42,10 @@ function setup() {
     const router = { use() {} };
     for (const method of ['get', 'post', 'put', 'patch', 'delete']) router[method] = (url, ...handlers) => routes.push({ method, url, handlers });
     const deps = { express: { Router: () => router }, mongoose, '../middleware/resourceAuthorization': access,
-      '../middleware/auth': { protect() {}, authorize: () => (_req, _res, next) => next() } };
+      '../middleware/auth': { protect() {}, authorize: () => (_req, _res, next) => next() },
+      '../middleware/lifecycleAuthorization': { requireActiveOrganization: (_req, _res, next) => next() },
+      '../services/deliveryGroupCompatibility': require('../services/deliveryGroupCompatibility'),
+      '../services/individualSessionAuthorization': require('../services/individualSessionAuthorization') };
     for (const [name, model] of Object.entries(models)) deps['../models/' + name] = model;
     const file = path.join(__dirname, '../routes/' + routeFile + '.js');
     vm.runInNewContext(fs.readFileSync(file, 'utf8'), { module: { exports: {} }, require(name) { assert.ok(Object.hasOwn(deps, name), name); return deps[name]; } }, { filename: file });
@@ -73,6 +83,49 @@ test('new Delivered Session rejects authoritative objectives with no ID rather t
   const r = await h.create(); assert.equal(r.statusCode, 400);
   assert.match(r.body.message, /objective identity/); assert.equal(h.state.delivered, null);
 });
+
+test('new Delivered Session rejects a group configured for another Program or Level', async () => {
+  for (const classContext of [{ programId: id(99), levelIds: [] }, { programId: program, levelIds: [id(99)] }]) {
+    const h = setup();
+    h.state.classContext = classContext;
+    const r = await h.create();
+    assert.equal(r.statusCode, 400);
+    assert.match(r.body.message, /not compatible/);
+    assert.equal(h.state.delivered, null);
+  }
+});
+
+test('assigned instructor creates an individual Delivered Session without classId using the authoritative snapshot', async () => {
+  const h = setup();
+  const r = await h.create({ deliveryMode: 'individual', classId: undefined, individualEnrollmentId: h.state.enrollment._id, individualChildId: h.state.child._id });
+  assert.equal(r.statusCode, 201);
+  assert.equal(h.state.delivered.deliveryMode, 'individual');
+  assert.equal(h.state.delivered.classId, undefined);
+  assert.equal(String(h.state.delivered.individualEnrollmentId), String(h.state.enrollment._id));
+  assert.equal(String(h.state.delivered.individualChildId), String(h.state.child._id));
+  assert.equal(String(h.state.delivered.plannedSessionSnapshot.objectives[0].objectiveId), String(objective));
+});
+
+const individualSessionDenials = {
+  'inactive instructor': state => { state.teacher.isActive = false; },
+  'wrong instructor': state => { state.enrollment.staffAssignments[0].staffId = id(90); },
+  'inactive Enrollment': state => { state.enrollment.status = 'paused'; },
+  'inactive participant': state => { state.child.isActive = false; },
+  'cross-tenant Enrollment': state => { state.enrollment.schoolId = id(90); },
+  'cross-tenant participant': state => { state.child.schoolId = id(90); },
+  'mismatched child': state => { state.enrollment.childId = id(90); },
+  'incompatible Program': state => { state.enrollment.programId = id(90); },
+  'incompatible Level': state => { state.enrollment.currentLevelId = id(90); },
+  'assignment not yet effective': state => { state.enrollment.staffAssignments[0].effectiveFrom = new Date('2026-09-20'); }
+};
+
+for (const [name, change] of Object.entries(individualSessionDenials)) {
+  test(`individual Delivered Session rejects ${name}`, async () => {
+    const h = setup(); change(h.state);
+    const r = await h.create({ deliveryMode: 'individual', classId: undefined, individualEnrollmentId: h.state.enrollment._id, individualChildId: h.state.child._id });
+    assert.equal(r.statusCode, 403); assert.equal(h.state.delivered, null);
+  });
+}
 
 test('legacy snapshots without objectiveId remain valid and readable without invented identity', async () => {
   const h = setup(); await h.create();

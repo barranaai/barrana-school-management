@@ -9,7 +9,7 @@ const id = n => String(n).padStart(24, '0');
 function fixture() {
   const schoolId = id(1), teacherId = id(2), childId = id(3), enrollmentId = id(4), classId = id(5);
   return { childId, enrollmentId,
-    teacher: { _id: teacherId, schoolId, role: 'teacher' }, child: { _id: childId, schoolId, role: 'student', firstName: 'Maya', lastName: 'Test' },
+    teacher: { _id: teacherId, schoolId, role: 'teacher', isActive: true }, child: { _id: childId, schoolId, role: 'student', isActive: true, firstName: 'Maya', lastName: 'Test' },
     session: { _id: id(6), schoolId, classId, programId: id(7), levelId: id(8), deliveredBy: teacherId, status: 'scheduled', scheduledAt: new Date('2026-09-19') },
     cls: { _id: classId, schoolId, isActive: true, assignedTeachers: [{ teacherId }] },
     enrollment: { _id: enrollmentId, schoolId, childId, programId: id(7), currentLevelId: id(8), status: 'active', startDate: '2026-09-15', classAssignments: [{ classId, status: 'active', effectiveFrom: '2026-09-15' }] }
@@ -22,12 +22,12 @@ function route(f) {
   const existing = f.existingParticipations || [];
   const models = {
     Class: { findOne:async()=>f.cls },
-    User:{findOne:async()=>f.child,find:()=>({select:async()=>[f.child]})},
+    User:{findOne:async query=>query.role==='teacher'?f.teacher:f.child,find:()=>({select:async()=>[f.child]})},
     Enrollment:{findOne:async()=>f.enrollment,find:async()=>[f.enrollment]},
     DeliveredSession:{findOne:async()=>f.session},
-    ChildParticipation:{findOne:async()=>participation,find:()=>({sort:async()=>existing}),create:async body=>{writes.push('create');return body;}}
+    ChildParticipation:{findOne:async query=>query.childId?(f.duplicateParticipation?participation:null):participation,find:()=>({sort:async()=>existing}),create:async body=>{writes.push('create');return body;}}
   };
-  const deps = { express:{Router:()=>router}, mongoose, '../middleware/auth':{protect(){},authorize:()=> (_req,_res,next)=>next()}, '../middleware/resourceAuthorization':{scopeSchoolId:user=>user.schoolId}, '../utils/operationalParticipationAuthorization':require('../utils/operationalParticipationAuthorization') };
+  const deps = { express:{Router:()=>router}, mongoose, '../middleware/auth':{protect(){},authorize:()=> (_req,_res,next)=>next()}, '../middleware/resourceAuthorization':{scopeSchoolId:user=>user.schoolId}, '../middleware/lifecycleAuthorization':{requireActiveOrganization:(_req,_res,next)=>next()}, '../utils/operationalParticipationAuthorization':require('../utils/operationalParticipationAuthorization'), '../services/individualSessionAuthorization':require('../services/individualSessionAuthorization') };
   for(const [name,model] of Object.entries(models))deps['../models/'+name]=model;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../routes/childParticipations.js'),'utf8'),{module:{exports:{}},require:name=>{assert.ok(deps[name],name);return deps[name];}});
   return {writes,async call(method='post',url='/',body={schoolId:id(1),deliveredSessionId:id(6),childId:f.childId,enrollmentId:f.enrollmentId},query={}) {
@@ -71,6 +71,33 @@ test('eligible roster excludes an existing participation and returns its safe di
   const f=fixture();f.existingParticipations=[{_id:id(9),schoolId:id(1),deliveredSessionId:id(6),childId:f.childId,enrollmentId:f.enrollmentId,status:'active'}];
   const r=route(f);const response=await r.call('get','/eligible',{}, {schoolId:id(1),deliveredSessionId:id(6)});
   assert.equal(response.statusCode,200);assert.equal(response.body.data.eligible.length,0);assert.equal(response.body.data.participations.length,1);assert.equal(response.body.data.participations[0].firstName,f.child.firstName);assert.deepEqual(r.writes,[]);
+});
+function individualFixture() {
+  const f=fixture();
+  delete f.session.classId;
+  f.session.deliveryMode='individual';f.session.individualEnrollmentId=f.enrollmentId;f.session.individualChildId=f.childId;
+  f.enrollment.staffAssignments=[{staffId:f.teacher._id,role:'instructor',effectiveFrom:'2026-09-15',status:'active'}];
+  return f;
+}
+test('individual participation eligibility contains only the designated child and creates without classId',async()=>{
+  const f=individualFixture();const r=route(f);
+  const eligible=await r.call('get','/eligible',{}, {schoolId:id(1),deliveredSessionId:id(6)});
+  assert.equal(eligible.statusCode,200);assert.equal(eligible.body.data.eligible.length,1);assert.equal(String(eligible.body.data.eligible[0].childId),f.childId);
+  const created=await r.call();assert.equal(created.statusCode,201);assert.deepEqual(r.writes,['create']);assert.equal(created.body.data.classId,null);
+});
+test('individual participation rejects another child or Enrollment and cross-tenant target',async()=>{
+  for(const change of [
+    f=>f.session.individualChildId=id(90),
+    f=>f.session.individualEnrollmentId=id(90),
+    f=>f.enrollment.schoolId=id(90)
+  ]){
+    const f=individualFixture();change(f);const r=route(f);const response=await r.call();
+    assert.equal(response.statusCode,403);assert.deepEqual(r.writes,[]);
+  }
+});
+test('duplicate individual participation is rejected before a write',async()=>{
+  const f=individualFixture();f.duplicateParticipation=true;const r=route(f);const response=await r.call();
+  assert.equal(response.statusCode,409);assert.match(response.body.message,/already has participation/);assert.deepEqual(r.writes,[]);
 });
 test('legacy child helper retains direct teacher/class behavior without enrollment fallback',async()=>{
   const box={module:{exports:{}},require:name=>{assert.equal(name,'../models/Class');return {exists:async q=>q._id===id(5)&&q.schoolId===id(1)&&q['assignedTeachers.teacherId']===id(2)};}};

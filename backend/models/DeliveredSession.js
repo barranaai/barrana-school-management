@@ -24,7 +24,19 @@ const schema = new mongoose.Schema({
   plannedSessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'PlannedSession', required: true, index: true },
   roadmapId: { type: mongoose.Schema.Types.ObjectId, ref: 'Roadmap', required: true, index: true },
   roadmapVersion: { type: Number, required: true, min: 1 },
-  classId: { type: mongoose.Schema.Types.ObjectId, ref: 'Class', required: true, index: true },
+  deliveryMode: { type: String, enum: ['group', 'individual'], default: 'group', index: true },
+  classId: {
+    type: mongoose.Schema.Types.ObjectId, ref: 'Class', index: true,
+    required() { return (this.deliveryMode || 'group') === 'group'; }
+  },
+  individualEnrollmentId: {
+    type: mongoose.Schema.Types.ObjectId, ref: 'Enrollment', index: true,
+    required() { return this.deliveryMode === 'individual'; }
+  },
+  individualChildId: {
+    type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true,
+    required() { return this.deliveryMode === 'individual'; }
+  },
   programId: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true, index: true },
   levelId: { type: mongoose.Schema.Types.ObjectId, ref: 'Level', required: true, index: true },
   scheduledAt: { type: Date, required: true },
@@ -40,5 +52,17 @@ const schema = new mongoose.Schema({
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true });
 
+schema.pre('validate', function validateDeliveryContext(next) {
+  const mode = this.deliveryMode || 'group';
+  if (mode === 'group' && (this.individualEnrollmentId || this.individualChildId)) {
+    return next(new Error('Group sessions cannot contain an individual lesson target'));
+  }
+  if (mode === 'individual' && this.classId) {
+    return next(new Error('Individual sessions cannot reference a Delivery Group'));
+  }
+  next();
+});
+
 schema.index({ schoolId: 1, classId: 1, scheduledAt: 1 });
+schema.index({ schoolId: 1, individualEnrollmentId: 1, scheduledAt: 1 });
 module.exports = mongoose.model('DeliveredSession', schema);
