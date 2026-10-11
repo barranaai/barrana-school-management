@@ -35,6 +35,7 @@ import StudentManagement from './sections/StudentManagement';
 import ReportsListing from './sections/ReportsListing';
 import IncidentReporting from './sections/IncidentReporting';
 import Meetings from './sections/Meetings';
+import DeliveredSessionWorkflow from './sections/DeliveredSessionWorkflow';
 import { createTeacherTheme } from '../../theme/teacherTheme';
 
 // import CommunicationCenter from './sections/CommunicationCenter';
@@ -44,6 +45,7 @@ import { createTeacherTheme } from '../../theme/teacherTheme';
 const drawerWidth = 250;
 
 const menuItems = [
+  { text: 'My Sessions', icon: <EventIcon />, section: 'delivered-sessions', color: '#26aea6' },
   { text: 'Session Progress', icon: <Description />, section: 'session-progress', color: '#4facfe' },
   { text: 'Teacher Overview', icon: <Dashboard />, section: 'overview', color: '#667eea' },
   { text: 'My Students', icon: <People />, section: 'students', color: '#764ba2' },
@@ -249,6 +251,7 @@ const TeacherDashboard: React.FC = () => {
 
   const renderSection = () => {
     switch (currentSection) {
+      case 'delivered-sessions': return <DeliveredSessionWorkflow />;
       case 'session-progress': return <ProgressWorkflow />;
       case 'overview':
         return <TeacherOverview schoolBranding={schoolBranding} />;
@@ -512,4 +515,4 @@ const TeacherDashboard: React.FC = () => {
   );
 };
 
-export default TeacherDashboard; 
+export default TeacherDashboard;
