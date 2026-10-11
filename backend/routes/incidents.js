@@ -9,15 +9,18 @@
  */
 
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
 const { protect, authorize } = require('../middleware/auth');
+const { scopeSchoolId } = require('../middleware/resourceAuthorization');
 const { body, validationResult } = require('express-validator');
 const IncidentReport = require('../models/IncidentReport');
 const User = require('../models/User');
+const School = require('../models/School');
 const firebaseService = require('../services/firebaseService');
 const loggerUtils = require('../utils/logger');
 const logger = loggerUtils.logger;
@@ -133,6 +136,24 @@ function ensureNotLocked(incident, res) {
   return true;
 }
 
+/** Resolve an organization for historical incident reads, including inactive organizations. */
+async function resolveIncidentReadOrganization(req, res, next) {
+  try {
+    const schoolId = scopeSchoolId(req.user, req.query?.schoolId);
+    if (!schoolId || !mongoose.isValidObjectId(schoolId)) {
+      return res.status(400).json({ success: false, error: 'Valid organization context is required' });
+    }
+    const organization = await School.findOne({ _id: schoolId }).select('_id isActive');
+    if (!organization) {
+      return res.status(404).json({ success: false, error: 'Organization not found' });
+    }
+    req.incidentSchoolId = organization._id;
+    next();
+  } catch (_error) {
+    return res.status(404).json({ success: false, error: 'Organization not found' });
+  }
+}
+
 const POPULATE = [
   { path: 'reportedBy', select: 'firstName lastName email role' },
   { path: 'studentsInvolved.studentId', select: 'firstName lastName studentGrade studentClass parentEmail' },
@@ -171,9 +192,10 @@ router.get(
   '/stats',
   protect,
   authorize('school_admin', 'super_admin', 'teacher'),
+  resolveIncidentReadOrganization,
   async (req, res) => {
     try {
-      const baseQuery = scopeQueryToUser(req.user);
+      const baseQuery = { ...scopeQueryToUser(req.user), schoolId: req.incidentSchoolId };
       const since = new Date();
       since.setDate(since.getDate() - 30);
       const last30 = { ...baseQuery, occurredAt: { $gte: since } };

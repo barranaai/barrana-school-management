@@ -8,6 +8,7 @@ const Enrollment = require('../models/Enrollment');
 const Report = require('../models/Report');
 const School = require('../models/School');
 const { protect, authorize } = require('../middleware/auth');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const { logger } = require('../utils/logger');
 const { sendTeacherWelcomeEmail } = require('../services/emailService');
 
@@ -311,6 +312,7 @@ router.get('/:id/reports', protect, authorize('teacher', 'school_admin', 'super_
 router.post('/', [
   protect,
   authorize('school_admin', 'super_admin'),
+  requireActiveOrganization,
   body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('email').isEmail().withMessage('Please provide a valid email'),
@@ -460,6 +462,7 @@ router.post('/', [
 router.put('/:id', [
   protect,
   authorize('school_admin', 'super_admin'),
+  requireActiveOrganization,
   body('firstName').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('email').optional({ checkFalsy: true }).isEmail().withMessage('Please provide a valid email'),
@@ -482,12 +485,11 @@ router.put('/:id', [
       });
     }
 
-    const query = { _id: req.params.id, role: 'teacher' };
-    
-    // If school admin, only update teachers from their school
-    if (req.user.role === 'school_admin') {
-      query.schoolId = req.user.schoolId;
-    }
+    const query = {
+      _id: req.params.id,
+      role: 'teacher',
+      schoolId: req.organization._id
+    };
 
     const teacher = await User.findOne(query);
     if (!teacher) {
@@ -563,14 +565,13 @@ router.put('/:id', [
 // @desc    Delete teacher
 // @route   DELETE /api/teachers/:id
 // @access  Private (School Admin, Super Admin)
-router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
-    const query = { _id: req.params.id, role: 'teacher' };
-    
-    // If school admin, only delete teachers from their school
-    if (req.user.role === 'school_admin') {
-      query.schoolId = req.user.schoolId;
-    }
+    const query = {
+      _id: req.params.id,
+      role: 'teacher',
+      schoolId: req.organization._id
+    };
 
     const teacher = await User.findOne(query);
     if (!teacher) {
@@ -580,13 +581,16 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (
       });
     }
 
-    await User.findByIdAndDelete(req.params.id);
+    // Preserve the account because historical sessions, progress and reports
+    // retain this teacher's identity for audit and child history.
+    teacher.isActive = false;
+    await teacher.save();
 
-    logger.info(`Teacher deleted: ${teacher.email}`);
+    logger.info(`Teacher deactivated: ${teacher.email}`);
 
     res.json({
       success: true,
-      message: 'Teacher deleted successfully'
+      message: 'Teacher deactivated successfully'
     });
   } catch (error) {
     logger.error('Error deleting teacher:', error);
@@ -722,4 +726,4 @@ router.get('/me/school-branding', protect, authorize('teacher'), async (req, res
   }
 });
 
-module.exports = router; 
+module.exports = router;

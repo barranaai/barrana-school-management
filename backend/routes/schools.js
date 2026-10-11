@@ -429,11 +429,13 @@ router.delete('/:id', protect, authorize('super_admin'), async (req, res) => {
       });
     }
 
-    await School.findByIdAndDelete(req.params.id);
+    // Organization removal is reversible and must retain all tenant history.
+    school.isActive = false;
+    await school.save();
 
     res.json({
       success: true,
-      message: 'School deleted successfully'
+      message: 'Organization deactivated successfully'
     });
   } catch (error) {
     logger.error('Error deleting school:', error);

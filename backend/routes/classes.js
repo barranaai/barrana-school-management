@@ -6,6 +6,7 @@ const School = require('../models/School');
 const Program = require('../models/Program');
 const { resolveWorkspaceProfile } = require('../domain/workspaceProfile');
 const { protect, authorize } = require('../middleware/auth');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const { logger } = require('../utils/logger');
 
 const router = express.Router();
@@ -169,7 +170,7 @@ router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req
 // @desc    Create new class
 // @route   POST /api/classes
 // @access  Private (School Admin, Super Admin)
-router.post('/', protect, authorize('school_admin', 'super_admin'), [
+router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, [
   body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Class name must be between 2 and 100 characters'),
   body('programId').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Valid Program ID is required'),
   body('grade').optional({ checkFalsy: true }).trim(),
@@ -239,7 +240,8 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), [
         const teacher = await User.findOne({
           _id: assignment.teacherId,
           role: 'teacher',
-          schoolId: schoolId
+          schoolId: schoolId,
+          isActive: true
         });
 
         if (!teacher) {
@@ -296,7 +298,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), [
 // @desc    Update class
 // @route   PUT /api/classes/:id
 // @access  Private (School Admin, Super Admin)
-router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
+router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, [
   body('programId').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Valid Program ID is required'),
   body('name').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 100 }).withMessage('Class name must be between 2 and 100 characters'),
   body('grade').optional({ checkFalsy: true }).trim().notEmpty().withMessage('Grade cannot be empty'),
@@ -368,7 +370,8 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
         const teacher = await User.findOne({
           _id: assignment.teacherId,
           role: 'teacher',
-          schoolId: classData.schoolId
+          schoolId: classData.schoolId,
+          isActive: true
         });
 
         if (!teacher) {
@@ -420,7 +423,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), [
 // @desc    Delete class
 // @route   DELETE /api/classes/:id
 // @access  Private (School Admin, Super Admin)
-router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
     let query = { _id: req.params.id, isActive: true };
 
@@ -458,7 +461,7 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (
 // @desc    Assign teacher to class
 // @route   POST /api/classes/:id/teachers
 // @access  Private (School Admin, Super Admin)
-router.post('/:id/teachers', protect, authorize('school_admin', 'super_admin'), [
+router.post('/:id/teachers', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, [
   body('teacherId').isMongoId().withMessage('Valid teacher ID is required'),
   body('role').optional().isIn(['primary', 'secondary', 'assistant']).withMessage('Invalid role')
 ], async (req, res) => {
@@ -492,7 +495,8 @@ router.post('/:id/teachers', protect, authorize('school_admin', 'super_admin'), 
     const teacher = await User.findOne({
       _id: teacherId,
       role: 'teacher',
-      schoolId: classData.schoolId
+      schoolId: classData.schoolId,
+      isActive: true
     });
 
     if (!teacher) {
@@ -547,7 +551,7 @@ router.post('/:id/teachers', protect, authorize('school_admin', 'super_admin'), 
 // @desc    Remove teacher from class
 // @route   DELETE /api/classes/:id/teachers/:teacherId
 // @access  Private (School Admin, Super Admin)
-router.delete('/:id/teachers/:teacherId', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+router.delete('/:id/teachers/:teacherId', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
     let query = { _id: req.params.id, isActive: true };
 
