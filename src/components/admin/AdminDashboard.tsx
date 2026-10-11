@@ -31,6 +31,7 @@ import {
   EventAvailable,
   AttachMoney,
   AssignmentInd,
+  FactCheck,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/apiService';
@@ -49,12 +50,14 @@ import NotificationLogs from './sections/NotificationLogs';
 import AdminCommunicationCenter from './sections/AdminCommunicationCenter';
 import ExpensesList from './sections/Expenses/ExpensesList';
 import EnrollmentManagement from './sections/EnrollmentManagement';
+import OrganizationSetupGuide, { configurationSectionForSetupDestination } from './sections/OrganizationSetupGuide';
 
 const drawerWidth = 250;
 
 const menuItems = [
   { text: 'Session Progress', icon: <Assessment />, section: 'session-progress', color: '#4facfe' },
   { text: 'Executive Summary', icon: <Dashboard />, section: 'dashboard', color: '#667eea' },
+  { text: 'Setup Guide', icon: <FactCheck />, section: 'setup-guide', color: '#26aea6' },
   { text: 'Participant Management', icon: <People />, section: 'students', color: '#764ba2' },
   { text: 'Enrollment Management', icon: <AssignmentInd />, section: 'enrollments', color: '#26aea6' },
   { text: 'Teacher Management', icon: <School />, section: 'teachers', color: '#f093fb' },
@@ -81,6 +84,7 @@ const AdminDashboard: React.FC = () => {
   };
   
   const [currentSection, setCurrentSection] = useState(getInitialSection);
+  const [configurationInitialSection, setConfigurationInitialSection] = useState<'existing' | 'programs'>('existing');
   const [schoolName, setSchoolName] = useState<string>('Barrana.ai');
   const [schoolBranding, setSchoolBranding] = useState<any>(null);
   const [loadingBranding, setLoadingBranding] = useState(true);
@@ -152,6 +156,8 @@ const AdminDashboard: React.FC = () => {
       case 'session-progress': return <ProgressWorkflow />;
       case 'dashboard':
         return <ExecutiveSummary schoolBranding={schoolBranding} />;
+      case 'setup-guide':
+        return <OrganizationSetupGuide onOpenConfiguration={destination => { setConfigurationInitialSection(configurationSectionForSetupDestination(destination)); setCurrentSection('reports'); }} />;
       case 'students':
         return <StudentManagement schoolBranding={schoolBranding} />;
       case 'enrollments':
@@ -161,7 +167,7 @@ const AdminDashboard: React.FC = () => {
       case 'classes':
         return <ClassManagement schoolBranding={schoolBranding} />;
       case 'reports':
-        return <SchoolConfiguration schoolBranding={schoolBranding} />;
+        return <SchoolConfiguration schoolBranding={schoolBranding} initialSection={configurationInitialSection} />;
       case 'all-reports':
         return <AllReports schoolBranding={schoolBranding} />;
       case 'expenses':
@@ -268,7 +274,7 @@ const AdminDashboard: React.FC = () => {
                     <ListItem disablePadding sx={{ mb: 0.5 }}>
                       <ListItemButton
                         selected={currentSection === item.section}
-                        onClick={() => setCurrentSection(item.section)}
+                        onClick={() => { if (item.section === 'reports') setConfigurationInitialSection('existing'); setCurrentSection(item.section); }}
                         sx={{
                           borderRadius: 2,
                           '&.Mui-selected': {

@@ -114,11 +114,12 @@ import {
 
 interface SchoolConfigurationProps {
   schoolBranding?: any;
+  initialSection?: 'existing' | 'programs' | 'standard-packages';
 }
 
 const SchoolConfiguration: React.FC<SchoolConfigurationProps> = (props) => {
   const { user } = useAuth();
-  const [section, setSection] = useState('existing');
+  const [section, setSection] = useState(props.initialSection || 'existing');
   if (!user || !['school_admin', 'super_admin'].includes(user.role)) return <Alert severity="error">Administrator access required.</Alert>;
   return <Box><Tabs value={section} onChange={(_, value) => setSection(value)} aria-label="School configuration sections"><Tab value="existing" label="School settings" /><Tab value="programs" label="Programs" />{user.role === 'school_admin' && <Tab value="standard-packages" label="Standard Packages" />}</Tabs>{section === 'programs' ? <ProgramManagement /> : section === 'standard-packages' ? <StandardPackageManagement onStartBlank={() => setSection('programs')} /> : <ExistingSchoolConfiguration {...props} />}</Box>;
 };
