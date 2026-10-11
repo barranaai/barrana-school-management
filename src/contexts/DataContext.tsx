@@ -39,6 +39,7 @@ export interface Student {
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
+  currentEnrollments?: ApiStudent['currentEnrollments'];
 }
 
 export interface Teacher {
@@ -325,7 +326,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     academicLevel: (apiStudent as any).academicLevel,
     notes: (apiStudent as any).notes,
     createdAt: apiStudent.createdAt,
-    updatedAt: apiStudent.updatedAt
+    updatedAt: apiStudent.updatedAt,
+    currentEnrollments: apiStudent.currentEnrollments
   });
 
   const convertApiTeacher = (apiTeacher: ApiTeacher): Teacher => ({
@@ -411,6 +413,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     students.filter(student => student.teacherId === teacherId);
 
   const getStudentsByTeacherClasses = (teacherId: string) => {
+    const authenticatedTeacherId = user?._id || user?.id;
+    if (user?.role === 'teacher' && authenticatedTeacherId === teacherId) {
+      return students;
+    }
+
     // Get teacher's assigned classes
     const teacherAssignedClasses = classes.filter(cls => 
       cls.assignedTeachers.some(assignment => 
@@ -550,12 +557,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
          const classesApiCall = user?.role === 'teacher' 
            ? apiService.getTeacherAssignedClasses() 
            : apiService.getClasses();
+         const studentsApiCall = user?.role === 'teacher'
+           ? apiService.getTeacherCurrentParticipants()
+           : apiService.getStudents();
          
          console.log('DataContext - User role:', user?.role);
          console.log('DataContext - Using classes API call:', user?.role === 'teacher' ? 'getTeacherAssignedClasses' : 'getClasses');
 
          const [studentsResponse, teachersResponse, reportsResponse, classesResponse, schoolResponse] = await Promise.allSettled([
-           apiService.getStudents(),
+           studentsApiCall,
            apiService.getTeachers(),
            apiService.getReports(true), // Include cross-teacher reports for due calculation
            classesApiCall,

@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const User = require('../models/User');
 const Class = require('../models/Class');
+const Enrollment = require('../models/Enrollment');
 const Report = require('../models/Report');
 const School = require('../models/School');
 const { protect, authorize } = require('../middleware/auth');
@@ -51,6 +52,79 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), as
     res.status(500).json({
       success: false,
       message: 'Server error while fetching teachers'
+    });
+  }
+});
+
+// @desc    Get the authenticated teacher's current enrolled participants
+// @route   GET /api/teachers/me/participants
+// @access  Private (Teacher)
+router.get('/me/participants', protect, authorize('teacher'), async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const teacherId = req.user._id;
+
+    const assignedGroups = await Class.find({
+      schoolId,
+      status: 'active',
+      isActive: true,
+      'assignedTeachers.teacherId': teacherId
+    }).select('_id name').lean();
+
+    const groupIds = assignedGroups.map(group => group._id);
+    if (groupIds.length === 0) {
+      return res.json({ success: true, data: [], count: 0 });
+    }
+
+    const enrollments = await Enrollment.find({
+      schoolId,
+      status: 'active',
+      currentClassId: { $in: groupIds }
+    }).select('_id childId programId currentLevelId currentClassId status startDate').lean();
+
+    const participantIds = [...new Set(enrollments.map(enrollment => enrollment.childId.toString()))];
+    if (participantIds.length === 0) {
+      return res.json({ success: true, data: [], count: 0 });
+    }
+
+    const participants = await User.find({
+      _id: { $in: participantIds },
+      schoolId,
+      role: 'student',
+      isActive: true
+    })
+      .select('_id firstName lastName avatar studentId studentGrade grade dateOfBirth enrollmentDate parentName parentEmail parentPhone schoolId isActive')
+      .lean();
+
+    const groupsById = new Map(assignedGroups.map(group => [group._id.toString(), group]));
+    const enrollmentsByParticipant = new Map();
+    enrollments.forEach(enrollment => {
+      const childId = enrollment.childId.toString();
+      const currentGroup = groupsById.get(enrollment.currentClassId.toString());
+      const currentEnrollments = enrollmentsByParticipant.get(childId) || [];
+      currentEnrollments.push({
+        _id: enrollment._id,
+        programId: enrollment.programId,
+        currentLevelId: enrollment.currentLevelId,
+        currentClassId: enrollment.currentClassId,
+        currentGroupName: currentGroup?.name,
+        status: enrollment.status,
+        startDate: enrollment.startDate
+      });
+      enrollmentsByParticipant.set(childId, currentEnrollments);
+    });
+
+    const roster = participants.map(participant => ({
+      ...participant,
+      currentEnrollments: enrollmentsByParticipant.get(participant._id.toString()) || []
+    }));
+
+    res.json({ success: true, data: roster, count: roster.length });
+  } catch (error) {
+    logger.error('Error fetching teacher participant roster:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching teacher participant roster'
     });
   }
 });

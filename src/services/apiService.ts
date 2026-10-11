@@ -188,6 +188,15 @@ export interface Student {
   medicalInfo?: MedicalInfo | string;
   createdAt: string;
   updatedAt: string;
+  currentEnrollments?: Array<{
+    _id: string;
+    programId: string;
+    currentLevelId?: string | null;
+    currentClassId: string;
+    currentGroupName?: string;
+    status: 'active';
+    startDate: string;
+  }>;
 }
 
 export interface Teacher {
@@ -1015,6 +1024,10 @@ class ApiService {
   async getStudents(schoolId?: string): Promise<ApiResponse<Student[]>> {
     const query = schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : '';
     return this._request<Student[]>(`/students${query}`);
+  }
+
+  async getTeacherCurrentParticipants(): Promise<ApiResponse<Student[]>> {
+    return this._request<Student[]>('/teachers/me/participants');
   }
 
   async getStudent(id: string, schoolId?: string): Promise<ApiResponse<Student>> {
