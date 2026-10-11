@@ -39,7 +39,7 @@ function loadRoute(stubs) {
   try { return require(resolved); } finally { Module._load = original; }
 }
 
-function harness({ empty = false } = {}) {
+function harness({ empty = false, individual = false } = {}) {
   const child = { _id: childId, schoolId: schoolA, role: 'student', firstName: 'Maya', lastName: 'Demo', studentId: 'P-001', isActive: true };
   const enrollment = {
     _id: 'dddddddddddddddddddddddd', schoolId: schoolA, childId, status: 'active', startDate: new Date('2026-09-01T00:00:00Z'),
@@ -54,7 +54,8 @@ function harness({ empty = false } = {}) {
   const session = {
     _id: '141414141414141414141414', schoolId: schoolA, deliveredBy: { _id: teacherId, firstName: 'Morgan', lastName: 'Coach' },
     title: 'Safe Entry', scheduledAt: new Date('2026-09-05T09:00:00Z'), status: 'completed',
-    programId: enrollment.programId, levelId: enrollment.currentLevelId, classId: enrollment.currentClassId
+    programId: enrollment.programId, levelId: enrollment.currentLevelId,
+    deliveryMode: individual ? 'individual' : 'group', classId: individual ? null : enrollment.currentClassId
   };
   const progress = {
     _id: '151515151515151515151515', schoolId: schoolA, childParticipationId: participation._id,
@@ -114,6 +115,17 @@ test('authorized teacher sees only sessions and reports already scoped to that t
   assert.equal(String(h.observed.sessionQuery.deliveredBy), teacherId);
   assert.equal(String(h.observed.reportQuery.teacherId), teacherId);
   assert.ok(response.body.data.events.some(item => item.type === 'progress'));
+});
+
+test('individual lesson appears only through the designated child participation with attribution and context', async () => {
+  const response = await request(harness({ individual: true }).app).get(`/${childId}`);
+  assert.equal(response.status, 200);
+  const session = response.body.data.events.find(item => item.type === 'session');
+  assert.equal(session.details.deliveryMode, 'individual');
+  assert.equal(session.details.group.name, 'Individual Lesson');
+  assert.equal(session.details.instructor.name, 'Morgan Coach');
+  assert.equal(session.details.program.name, 'Learn-to-Swim');
+  assert.equal(session.details.level.name, 'Water Confidence');
 });
 
 test('unauthorized teacher cannot retrieve child history', async () => {

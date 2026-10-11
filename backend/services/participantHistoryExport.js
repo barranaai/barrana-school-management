@@ -7,6 +7,9 @@ const Report = require('../models/Report');
 const id = value => value ? String(value._id || value) : null;
 const iso = value => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toISOString() : null;
 const named = value => value ? { id: id(value), name: value.name || null } : null;
+const deliveryGroup = session => (session?.deliveryMode || 'group') === 'individual'
+  ? { id: null, name: 'Individual Lesson' }
+  : named(session?.classId);
 const person = value => value ? { id: id(value), name: [value.firstName, value.lastName].filter(Boolean).join(' ') || null } : null;
 const objective = value => ({ objectiveId: id(value.objectiveId), title: value.title || null, expectedOutcome: value.expectedOutcome || null, status: value.status });
 const parameter = value => ({ parameterId: id(value.parameterId), requirement: value.requirementLabel || null, parameter: value.parameterLabel || null, type: value.type, value: value.value });
@@ -33,7 +36,7 @@ async function buildParticipantHistoryExport(child, schoolId, organization) {
   const historyEvents = [
     ...enrollments.map(row => ({ type: 'enrollment', date: iso(row.startDate || row.createdAt), label: named(row.programId)?.name || 'Enrollment', program: named(row.programId), level: named(row.currentLevelId) })),
     ...enrollments.flatMap(row => (row.levelHistory || []).map(change => ({ type: 'level', date: iso(change.effectiveFrom), label: named(change.levelId)?.name || 'Level change', program: named(row.programId), level: named(change.levelId) }))),
-    ...participations.map(row => { const session = sessionById.get(id(row.deliveredSessionId)); return ({ type: 'session', date: iso(session?.deliveredAt || session?.scheduledAt || row.createdAt), label: session?.title || 'Session record unavailable', attendanceStatus: row.status, program: named(session?.programId), level: named(session?.levelId) }); }),
+    ...participations.map(row => { const session = sessionById.get(id(row.deliveredSessionId)); return ({ type: 'session', date: iso(session?.deliveredAt || session?.scheduledAt || row.createdAt), label: session?.title || 'Session record unavailable', attendanceStatus: row.status, deliveryMode: session?.deliveryMode || 'group', group: deliveryGroup(session), program: named(session?.programId), level: named(session?.levelId) }); }),
     ...progressRows.map(row => { const participation = participationById.get(id(row.childParticipationId)); const session = participation && sessionById.get(id(participation.deliveredSessionId)); return ({ type: 'progress', date: iso(session?.deliveredAt || session?.scheduledAt || row.createdAt), label: session?.title || 'Progress', overallStatus: row.overallStatus || null, program: named(session?.programId), level: named(session?.levelId) }); }),
     ...reports.map(row => ({ type: 'report', date: iso(row.finalizedSnapshot?.finalizedAt), label: row.finalizedSnapshot?.reportMetadata?.title || row.title, status: row.status }))
   ].sort((left, right) => new Date(left.date || 0) - new Date(right.date || 0));
@@ -59,13 +62,13 @@ async function buildParticipantHistoryExport(child, schoolId, organization) {
       const session = sessionById.get(id(participation.deliveredSessionId));
       return { participationId: id(participation), attendanceStatus: participation.status,
         session: session ? { id: id(session), title: session.title, scheduledAt: iso(session.scheduledAt), deliveredAt: iso(session.deliveredAt), status: session.status,
-          program: named(session.programId), level: named(session.levelId), group: named(session.classId), deliveredBy: person(session.deliveredBy) } : null };
+          deliveryMode: session.deliveryMode || 'group', program: named(session.programId), level: named(session.levelId), group: deliveryGroup(session), deliveredBy: person(session.deliveredBy) } : null };
     }),
     progress: progressRows.map(row => {
       const participation = participationById.get(id(row.childParticipationId));
       const session = participation && sessionById.get(id(participation.deliveredSessionId));
       return { progressId: id(row), participationId: id(participation), sessionId: id(session),
-        program: named(session?.programId), level: named(session?.levelId), sessionDate: iso(session?.deliveredAt || session?.scheduledAt),
+        deliveryMode: session?.deliveryMode || 'group', program: named(session?.programId), level: named(session?.levelId), group: deliveryGroup(session), sessionDate: iso(session?.deliveredAt || session?.scheduledAt),
         overallStatus: row.overallStatus || null, objectiveResults: (row.objectiveResults || []).map(objective), parameterResults: (row.parameterResults || []).map(parameter),
         revisionNumber: row.revisionNumber || 1, recordedBy: person(row.createdBy), lastUpdatedBy: person(row.updatedBy), recordedAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
         revisions: (row.revisions || []).map(revision => ({ revisionNumber: revision.revisionNumber, objectiveResults: (revision.objectiveResults || []).map(objective), parameterResults: (revision.parameterResults || []).map(parameter),

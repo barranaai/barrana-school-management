@@ -16,6 +16,9 @@ const router = express.Router();
 const validId = value => mongoose.Types.ObjectId.isValid(value);
 const id = value => value ? String(value._id || value) : null;
 const named = value => value ? { id: id(value), name: value.name || null } : null;
+const deliveryGroup = session => (session?.deliveryMode || 'group') === 'individual'
+  ? { id: null, name: 'Individual Lesson' }
+  : named(session?.classId);
 const dated = value => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toISOString() : null;
 
 const event = (type, date, title, description, details = {}) => ({
@@ -138,7 +141,8 @@ router.get('/:childId', protect, authorize('school_admin', 'super_admin', 'teach
       } : null;
       events.push(event('session', session.deliveredAt || session.scheduledAt, 'Delivered session', session.title, {
         deliveredSessionId: id(session), participationId: id(participation),
-        program: named(session.programId), level: named(session.levelId), group: named(session.classId),
+        program: named(session.programId), level: named(session.levelId), group: deliveryGroup(session),
+        deliveryMode: session.deliveryMode || 'group',
         instructor, sessionStatus: session.status, participationStatus: participation?.status || null,
         scheduledAt: dated(session.scheduledAt), deliveredAt: dated(session.deliveredAt)
       }));

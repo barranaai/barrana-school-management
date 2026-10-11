@@ -18,7 +18,7 @@ export const nextDeliveryStatuses: Record<DeliveryStatus, DeliveryStatus[]> = {
   scheduled: ['in_progress', 'cancelled'], in_progress: ['completed', 'cancelled'], completed: [], cancelled: []
 };
 export interface IndividualDeliveryTarget { enrollmentId: string; childId: string; }
-export function deliveredSessionService(token: string, context: Roadmap, plannedId: string, individualTarget?: IndividualDeliveryTarget) {
+export function deliveredSessionService(token: string, context: Roadmap, plannedId: string, individualTarget?: IndividualDeliveryTarget, includeIndividual = false) {
   async function request<T>(path: string, method = 'GET', body?: object): Promise<T> {
     if (!token || !context.schoolId || !context._id || !context.programId || !context.levelId || !plannedId) throw new Error(deliveredSessionFailure);
     try {
@@ -47,7 +47,7 @@ export function deliveredSessionService(token: string, context: Roadmap, planned
       ]);
       const rows = allRows.filter(row => individualTarget
         ? row.deliveryMode === 'individual' && row.individualEnrollmentId === individualTarget.enrollmentId && row.individualChildId === individualTarget.childId
-        : !row.deliveryMode || row.deliveryMode === 'group');
+        : includeIndividual || !row.deliveryMode || row.deliveryMode === 'group');
       rows.forEach(check);
       if (!classes.every(c => c.schoolId === context.schoolId)) throw new Error(deliveredSessionFailure);
       return { planned, rows, classes };

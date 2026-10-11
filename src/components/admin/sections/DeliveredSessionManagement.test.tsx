@@ -72,6 +72,14 @@ test('teacher creates an individual lesson without selecting or sending a class'
   expect(JSON.parse(writes()[0][1].body)).toEqual({schoolId:'s',plannedSessionId:'ps',deliveryMode:'individual',individualEnrollmentId:'enrollment',individualChildId:'child',scheduledAt:'2026-09-19T09:00:00.000Z',deliveryNotes:'',methodologyAdjustments:''});
   expect(JSON.parse(writes()[0][1].body)).not.toHaveProperty('classId');
 });
+test('admin safely displays and opens individual lesson history without a classId',async()=>{
+  rows=[{...occurrence,classId:undefined,deliveryMode:'individual',individualEnrollmentId:'enrollment',individualChildId:'child'}];
+  await render();
+  expect(document.body).toHaveTextContent('Delivery: Individual Lesson');
+  expect(document.body).not.toHaveTextContent('Class ID:');
+  await click('Manage Participants');
+  expect(document.body).toHaveTextContent('Historical title → Participants');
+});
 test.each(['parent','student'])('%s cannot access',async role=>{
   (useAuth as jest.Mock).mockReturnValue({user:{role,schoolId:'s'},token:'t'});await render();expect(fetch).not.toHaveBeenCalled();
 });

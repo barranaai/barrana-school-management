@@ -16,7 +16,7 @@ function loadService() {
   const participationA = { _id: id(7), deliveredSessionId: id(8), status: 'active' }, participationB = { _id: id(9), deliveredSessionId: id(10), status: 'active' }, legacyParticipation = { _id: id(15), deliveredSessionId: id(16), status: 'active' };
   const staff = { _id: id(11), firstName: 'Morgan', lastName: 'Coach', email: 'private@example.com' };
   const sessions = [
-    { _id: id(8), title: 'Floating', programId: programA, levelId: levelA, scheduledAt: new Date('2026-02-01'), status: 'completed', deliveredBy: staff },
+    { _id: id(8), title: 'Floating', deliveryMode: 'individual', individualChildId: child._id, programId: programA, levelId: levelA, scheduledAt: new Date('2026-02-01'), status: 'completed', deliveredBy: staff },
     { _id: id(10), title: 'Posture', programId: programB, levelId: levelB, scheduledAt: new Date('2026-07-01'), status: 'completed', deliveredBy: staff }
   ];
   const progress = { _id: id(12), childParticipationId: participationA._id, overallStatus: 'partially_achieved', revisionNumber: 2,
@@ -43,6 +43,10 @@ test('curated export preserves structured history and omits private/security fie
   assert.deepEqual(result.sessions.filter(row => row.session).map(row => row.session.program.name), ['Swimming', 'Piano']);
   assert.equal(result.progress.length, 1);
   assert.equal(result.progress[0].revisions.length, 1);
+  assert.equal(result.sessions[0].session.deliveryMode, 'individual');
+  assert.equal(result.sessions[0].session.group.name, 'Individual Lesson');
+  assert.equal(result.sessions[0].session.group.id, null);
+  assert.equal(result.progress[0].group.name, 'Individual Lesson');
   assert.equal(result.finalizedReports[0].parentVisibleContent, 'Parent-visible progress');
   assert.equal(result.finalizedReports[0].program.name, 'Swimming');
   assert.equal(result.finalizedReports[0].level.name, 'Water Confidence');
@@ -54,5 +58,5 @@ test('legacy or missing session context is represented as null rather than inven
   const { service, child } = loadService();
   const result = await service.buildParticipantHistoryExport(child, id(20), { _id: id(20), name: 'Kidsible Academy' });
   assert.equal(result.sessions.some(row => row.session === null), true);
-  assert.equal(result.progress[0].group, undefined);
+  assert.equal(result.progress[0].group.name, 'Individual Lesson');
 });

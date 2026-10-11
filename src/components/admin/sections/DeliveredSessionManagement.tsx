@@ -30,7 +30,7 @@ export default function DeliveredSessionManagement(props: Context) {
 
 type Loaded = Awaited<ReturnType<ReturnType<typeof deliveredSessionService>['load']>>;
 function Occurrences({ program, level, roadmap, plannedSession, onBack, token, userId, role, individualTarget, initialScheduledAt }: Context & { token: string; userId: string; role: string }) {
-  const api = useMemo(() => deliveredSessionService(token, roadmap, plannedSession._id, individualTarget), [token, roadmap, plannedSession._id, individualTarget]);
+  const api = useMemo(() => deliveredSessionService(token, roadmap, plannedSession._id, individualTarget, role !== 'teacher'), [token, roadmap, plannedSession._id, individualTarget, role]);
   const [data, setData] = useState<Loaded>();
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(true);

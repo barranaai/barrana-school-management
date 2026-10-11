@@ -13,6 +13,14 @@ test('loads scoped occurrences and read-only class options, never legacy classes
   expect(urls.every(u=>u.includes('schoolId=s'))).toBe(true);
   expect(urls.some(u=>/\/classes\?/.test(u))).toBe(false);
 });
+test('administrative loading may include individual history while teacher group loading excludes it',async()=>{
+  const group={...row,deliveryMode:'group' as const,classId:'c'};
+  const individual={...row,_id:'individual',deliveryMode:'individual' as const,individualEnrollmentId:'enrollment',individualChildId:'child'};
+  (fetch as jest.Mock).mockImplementation((url:string)=>Promise.resolve(reply(url.includes('/planned-sessions/')?planned:url.includes('/classes/options')?[]:[group,individual])));
+  await expect(api.load()).resolves.toMatchObject({rows:[group]});
+  const adminApi=deliveredSessionService('synthetic-token',context,'ps',undefined,true);
+  await expect(adminApi.load()).resolves.toMatchObject({rows:[group,individual]});
+});
 test('create sends only permitted fields and authoritative school/planned identity',async()=>{
   await api.create('c',{...input, plannedSessionSnapshot:{}, deliveredBy:'other', title:'override', status:'completed'} as any);
   const [url, options]=(fetch as jest.Mock).mock.calls[0];
