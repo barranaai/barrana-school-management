@@ -754,6 +754,7 @@ export interface Class {
   name: string;
   schoolId: string;
   programId?: string | { _id: string; name: string } | null;
+  levelIds?: Array<string | { _id: string; name: string; programId: string }>;
   grade?: string;
   description?: string;
   status: 'active' | 'inactive' | 'archived';
@@ -795,6 +796,7 @@ export interface Class {
 export interface CreateClassData {
   name: string;
   programId?: string | null;
+  levelIds?: string[];
   grade?: string;
   description?: string;
   capacity?: number;

@@ -13,6 +13,8 @@ const adminId = '333333333333333333333333';
 const teacherId = '444444444444444444444444';
 const programId = '555555555555555555555555';
 const otherProgramId = '666666666666666666666666';
+const levelId = '888888888888888888888888';
+const otherLevelId = '999999999999999999999999';
 
 function query(value) {
   const result = {
@@ -32,7 +34,7 @@ function validator() {
   return chain;
 }
 
-function loadHarness({ organizationType = 'school', validProgram = programId, teacherExists = true } = {}) {
+function loadHarness({ organizationType = 'school', validProgram = programId, validLevels = [levelId], teacherExists = true, ongoingEnrollments = [] } = {}) {
   const routes = [];
   const router = {
     use() {},
@@ -43,6 +45,11 @@ function loadHarness({ organizationType = 'school', validProgram = programId, te
   };
 
   let created;
+  const updates = [];
+  const existingClass = {
+    _id: '777777777777777777777777', name: 'Existing Group', schoolId,
+    programId, levelIds: [levelId], grade: undefined, schedule: {}, assignedTeachers: []
+  };
   function Class(data) {
     Object.assign(this, data);
     this._id = '777777777777777777777777';
@@ -50,8 +57,9 @@ function loadHarness({ organizationType = 'school', validProgram = programId, te
   }
   Class.findById = () => query(created);
   Class.find = () => query([]);
-  Class.findOne = () => query(null);
-  Class.findByIdAndUpdate = () => query(null);
+  Class.findOne = criteria => query(String(criteria?._id) === existingClass._id ? existingClass : null);
+  Class.findByIdAndUpdate = (_id, update) => { updates.push(update); return query({ ...existingClass, ...update }); };
+  const Enrollment = { find: criteria => query(ongoingEnrollments.filter(row => !criteria.status?.$in || criteria.status.$in.includes(row.status))) };
 
   const School = {
     findOne(criteria) {
@@ -68,6 +76,14 @@ function loadHarness({ organizationType = 'school', validProgram = programId, te
     findOne(criteria) {
       const found = criteria._id === validProgram && String(criteria.schoolId) === schoolId
         ? { _id: validProgram, schoolId, name: 'Learn to Swim', isActive: true }
+        : null;
+      return query(found);
+    }
+  };
+  const Level = {
+    findOne(criteria) {
+      const found = validLevels.includes(criteria._id) && criteria.programId === validProgram && String(criteria.schoolId) === schoolId
+        ? { _id: criteria._id, schoolId, programId: validProgram, isActive: true }
         : null;
       return query(found);
     }
@@ -95,8 +111,13 @@ function loadHarness({ organizationType = 'school', validProgram = programId, te
         '../models/User': User,
         '../models/School': School,
         '../models/Program': Program,
+        '../models/Level': Level,
+        '../models/Enrollment': Enrollment,
         '../domain/workspaceProfile': workspaceProfile,
         '../middleware/auth': { protect(req, res, next) { next(); }, authorize() { return (req, res, next) => next(); } },
+        '../middleware/lifecycleAuthorization': { requireActiveOrganization(req, res, next) { next(); } },
+        '../services/deliveryGroupCompatibility': require('../services/deliveryGroupCompatibility'),
+        '../services/enrollmentLifecycleService': require('../services/enrollmentLifecycleService'),
         '../utils/logger': { logger: { info() {}, error() {} } },
         './classOptions': {}
       };
@@ -118,7 +139,16 @@ function loadHarness({ organizationType = 'school', validProgram = programId, te
     return { res, created };
   }
 
-  return { routes, create };
+  async function update(body) {
+    const route = routes.find(item => item.method === 'put' && item.path === '/:id');
+    const handler = route.handlers.at(-1);
+    const req = { params: { id: existingClass._id }, body, user: { id: adminId, _id: adminId, role: 'school_admin', schoolId } };
+    const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(payload) { this.body = payload; return this; } };
+    await handler(req, res);
+    return { res, updates };
+  }
+
+  return { routes, create, update, updates };
 }
 
 test('legacy Class validates without Program or Level and keeps existing identifiers', async () => {
@@ -131,7 +161,7 @@ test('legacy Class validates without Program or Level and keeps existing identif
   });
   await legacy.validate();
   assert.equal(legacy.programId, null);
-  assert.equal(legacy.get('levelId'), undefined);
+  assert.deepEqual(legacy.levelIds, []);
 });
 
 test('Class model supports a non-school delivery group without academic fields', async () => {
@@ -184,6 +214,89 @@ test('same-tenant active Program is accepted', async () => {
   });
   assert.equal(res.statusCode, 201);
   assert.equal(created.programId, programId);
+});
+
+test('same-tenant Level belonging to the selected Program is accepted', async () => {
+  const { res, created } = await loadHarness({ organizationType: 'sports_club' }).create({
+    name: 'Water Confidence Group', programId, levelIds: [levelId]
+  });
+  assert.equal(res.statusCode, 201);
+  assert.deepEqual(Array.from(created.levelIds), [levelId]);
+});
+
+test('Program-wide group is accepted without a Level', async () => {
+  const { res, created } = await loadHarness({ organizationType: 'sports_club' }).create({
+    name: 'All Levels Group', programId
+  });
+  assert.equal(res.statusCode, 201);
+  assert.deepEqual(Array.from(created.levelIds), []);
+});
+
+test('Level from another Program or tenant is rejected', async () => {
+  for (const suppliedLevel of [otherLevelId, 'aaaaaaaaaaaaaaaaaaaaaaaa']) {
+    const { res, created } = await loadHarness({ organizationType: 'sports_club' }).create({
+      name: 'Invalid Group', programId, levelIds: [suppliedLevel]
+    });
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /Level not found/);
+    assert.equal(created, undefined);
+  }
+});
+
+test('Levels cannot be selected without a Program', async () => {
+  const { res, created } = await loadHarness({ organizationType: 'sports_club' }).create({
+    name: 'Invalid Group', levelIds: [levelId]
+  });
+  assert.equal(res.statusCode, 400);
+  assert.match(res.body.message, /Select a Program/);
+  assert.equal(created, undefined);
+});
+
+test('changing a group Program is rejected when an ongoing Enrollment would become incompatible', async () => {
+  const enrollment = { _id: 'aaaaaaaaaaaaaaaaaaaaaaaa', programId, currentLevelId: levelId, status: 'active' };
+  const harness = loadHarness({ organizationType: 'sports_club', validProgram: otherProgramId, validLevels: [], ongoingEnrollments: [enrollment] });
+  const { res, updates } = await harness.update({ programId: otherProgramId, levelIds: [] });
+  assert.equal(res.statusCode, 409);
+  assert.match(res.body.message, /ongoing Enrollments/);
+  assert.equal(updates.length, 0);
+});
+
+test('removing a Level used by an ongoing Enrollment is rejected without writes', async () => {
+  const enrollment = { _id: 'aaaaaaaaaaaaaaaaaaaaaaaa', programId, currentLevelId: levelId, status: 'paused' };
+  const harness = loadHarness({ organizationType: 'sports_club', validLevels: [levelId, otherLevelId], ongoingEnrollments: [enrollment] });
+  const { res, updates } = await harness.update({ levelIds: [otherLevelId] });
+  assert.equal(res.statusCode, 409);
+  assert.match(res.body.message, /Reassign or end/);
+  assert.equal(updates.length, 0);
+});
+
+test('compatible context changes succeed and terminal Enrollments do not block them', async () => {
+  const rows = [
+    { _id: 'aaaaaaaaaaaaaaaaaaaaaaaa', programId, currentLevelId: levelId, status: 'active' },
+    { _id: 'bbbbbbbbbbbbbbbbbbbbbbbb', programId: otherProgramId, currentLevelId: otherLevelId, status: 'completed' }
+  ];
+  const compatible = loadHarness({ organizationType: 'sports_club', validLevels: [levelId, otherLevelId], ongoingEnrollments: rows });
+  let result = await compatible.update({ levelIds: [levelId, otherLevelId] });
+  assert.equal(result.res.statusCode, 200);
+  assert.equal(result.updates.length, 1);
+
+  const terminalOnly = loadHarness({ organizationType: 'sports_club', validProgram: otherProgramId, validLevels: [], ongoingEnrollments: rows.slice(1) });
+  result = await terminalOnly.update({ programId: otherProgramId, levelIds: [] });
+  assert.equal(result.res.statusCode, 200);
+  assert.equal(result.updates.length, 1);
+});
+
+test('unrelated group updates and legacy unrestricted context remain compatible', async () => {
+  const enrollment = { _id: 'aaaaaaaaaaaaaaaaaaaaaaaa', programId, currentLevelId: levelId, status: 'active' };
+  const unchanged = loadHarness({ organizationType: 'sports_club', ongoingEnrollments: [enrollment] });
+  let result = await unchanged.update({ description: 'Updated description' });
+  assert.equal(result.res.statusCode, 200);
+  assert.equal(result.updates.length, 1);
+
+  const legacy = loadHarness({ organizationType: 'sports_club', ongoingEnrollments: [enrollment] });
+  result = await legacy.update({ programId: null, levelIds: [] });
+  assert.equal(result.res.statusCode, 200);
+  assert.equal(result.updates.length, 1);
 });
 
 for (const [name, suppliedProgram] of [

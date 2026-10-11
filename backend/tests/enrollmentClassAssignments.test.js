@@ -18,7 +18,8 @@ function fixture(change = () => {}) {
   const state = {
     schoolId, enrollmentId, currentClassId, nextClassId, row, enrollmentExists: true,
     activeClasses: new Set([currentClassId, nextClassId]),
-    classSchools: new Map([[currentClassId, schoolId], [nextClassId, schoolId]])
+    classSchools: new Map([[currentClassId, schoolId], [nextClassId, schoolId]]),
+    classContexts: new Map()
   };
   change(state);
   const routes = [];
@@ -27,7 +28,7 @@ function fixture(change = () => {}) {
   const Class = { findOne: async query => {
     const classId = String(query._id);
     return state.activeClasses.has(classId) && state.classSchools.get(classId) === String(query.schoolId) && query.isActive === true && query.status === 'active'
-      ? { _id: query._id, schoolId: query.schoolId, isActive: true, status: 'active' }
+      ? { _id: query._id, schoolId: query.schoolId, isActive: true, status: 'active', ...(state.classContexts.get(classId) || {}) }
       : null;
   } };
   const Enrollment = { findOne: async query => state.enrollmentExists && String(query._id) === enrollmentId && String(query.schoolId) === schoolId ? row : null };
@@ -36,8 +37,10 @@ function fixture(change = () => {}) {
     express: { Router: () => router }, mongoose,
     '../middleware/auth': { protect() {}, authorize: () => (_req, _res, next) => next() },
     '../middleware/resourceAuthorization': { scopeSchoolId: user => user.schoolId, canAccessStudent: async () => true },
+    '../middleware/lifecycleAuthorization': { requireActiveOrganization: (_req, _res, next) => next() },
     '../models/Enrollment': Enrollment, '../models/User': always, '../models/Program': always,
     '../models/Level': always, '../models/Class': Class,
+    '../services/deliveryGroupCompatibility': require('../services/deliveryGroupCompatibility'),
     '../services/enrollmentLifecycleService': require('../services/enrollmentLifecycleService')
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../routes/enrollments.js'), 'utf8'), { module: { exports: {} }, require: name => { assert.ok(deps[name], name); return deps[name]; } });
@@ -123,4 +126,14 @@ test('generic enrollment update cannot bypass the class-assignment lifecycle', a
   assert.equal(response.statusCode, 400);
   assert.match(response.body.message, /class-assignment operation/);
   assert.equal(f.state.row.saves, 0);
+});
+
+test('rejects a class configured for another Program or Level with zero writes', async () => {
+  for (const context of [{ programId: id(99), levelIds: [] }, { programId: id(6), levelIds: [id(99)] }]) {
+    const f = fixture(state => { state.classContexts.set(state.nextClassId, context); });
+    const response = await f.call();
+    assert.equal(response.statusCode, 400);
+    assert.match(response.body.message, /not compatible/);
+    assert.equal(f.state.row.saves, 0);
+  }
 });

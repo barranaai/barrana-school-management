@@ -46,6 +46,7 @@ import {
 import { useData } from '../../../contexts/DataContext';
 import { apiService, CreateClassData } from '../../../services/apiService';
 import { Program, programService } from '../../../services/programService';
+import { Level, levelService } from '../../../services/levelService';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import {
@@ -65,6 +66,7 @@ interface Class {
   name: string;
   schoolId: string;
   programId?: string | Program | null;
+  levelIds?: Array<string | Level>;
   grade?: string;
   description?: string;
   status: 'active' | 'inactive' | 'archived';
@@ -125,6 +127,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
   const [classes, setClasses] = useState<Class[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<{
@@ -141,6 +144,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
   const [classForm, setClassForm] = useState({
     name: '',
     programId: '',
+    levelIds: [] as string[],
     grade: '',
     description: '',
     capacity: 25,
@@ -223,6 +227,18 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    let active = true;
+    if (!school.id || !classForm.programId) {
+      setLevels([]);
+      return () => { active = false; };
+    }
+    levelService(apiService.getToken() || '', school.id, classForm.programId).list()
+      .then(items => { if (active) setLevels(items.filter(level => level.isActive !== false)); })
+      .catch(() => { if (active) setLevels([]); });
+    return () => { active = false; };
+  }, [school.id, classForm.programId]);
+
   // Filter classes based on search and filters
   const filteredClasses = classes.filter(classItem => {
     const matchesSearch = searchTerm === '' ||
@@ -270,6 +286,14 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     if (!classItem.programId) return 'Not assigned';
     if (typeof classItem.programId !== 'string') return classItem.programId.name;
     return programs.find(program => program._id === classItem.programId)?.name || 'Program unavailable';
+  };
+
+  const getLevelNames = (classItem: Class) => {
+    const configured = classItem.levelIds || [];
+    if (configured.length === 0) return classItem.programId ? 'All Program levels' : 'Legacy / unrestricted';
+    return configured.map(level => typeof level === 'string'
+      ? levels.find(item => item._id === level)?.name || 'Level unavailable'
+      : level.name).join(', ');
   };
 
   const getStatusColor = (status: string) => {
@@ -333,6 +357,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
       setClassForm({
         name: '',
         programId: '',
+        levelIds: [],
         grade: '',
         description: '',
         capacity: 25,
@@ -350,6 +375,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
         setClassForm({
           name: classItem.name,
           programId: typeof classItem.programId === 'string' ? classItem.programId : classItem.programId?._id || '',
+          levelIds: (classItem.levelIds || []).map(level => typeof level === 'string' ? level : level._id),
           grade: classItem.grade ? normalizeGradeForDisplay(classItem.grade) : '',
           description: classItem.description || '',
           capacity: classItem.capacity,
@@ -373,6 +399,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     setClassForm({
       name: '',
       programId: '',
+      levelIds: [],
       grade: '',
       description: '',
       capacity: 25,
@@ -389,6 +416,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     setClassForm(prev => ({
       ...prev,
       [field]: value,
+      ...(field === 'programId' ? { levelIds: [] } : {}),
     }));
   };
 
@@ -420,6 +448,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
         const classData: CreateClassData = {
           name: classForm.name,
           programId: classForm.programId || undefined,
+          levelIds: classForm.levelIds,
           ...(requiresAcademicFields ? { grade: formatGradeForDatabase(classForm.grade) } : {}),
           description: classForm.description,
           capacity: classForm.capacity,
@@ -443,6 +472,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
         const classData: Partial<CreateClassData> = {
           name: classForm.name,
           programId: classForm.programId || null,
+          levelIds: classForm.levelIds,
           ...(requiresAcademicFields ? {
             grade: formatGradeForDatabase(classForm.grade),
             academicYear: classForm.academicYear,
@@ -921,6 +951,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                     <TableRow>
                       <TableCell>{groupLabel}</TableCell>
                       <TableCell>Program</TableCell>
+                      <TableCell>Levels</TableCell>
                       {requiresAcademicFields && <TableCell>Grade</TableCell>}
                       <TableCell>{trainerLabel}s</TableCell>
                       <TableCell>Enrollment</TableCell>
@@ -948,6 +979,7 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                           </Box>
                         </TableCell>
                         <TableCell>{getProgramName(classItem)}</TableCell>
+                        <TableCell>{getLevelNames(classItem)}</TableCell>
                         {requiresAcademicFields && (
                           <TableCell>
                             <Chip label={formatGradeDisplay(classItem.grade || '')} color="primary" size="small" />
@@ -1165,6 +1197,22 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
                   </Select>
                 </FormControl>
               </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth disabled={!classForm.programId}>
+                  <InputLabel>Levels (optional)</InputLabel>
+                  <Select
+                    multiple
+                    label="Levels (optional)"
+                    value={classForm.levelIds}
+                    onChange={(e) => handleFormChange('levelIds', typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+                    renderValue={(selected) => selected.length === 0 ? 'All levels in this Program' : selected.map(id => levels.find(level => level._id === id)?.name || id).join(', ')}
+                  >
+                    {levels.map(level => (
+                      <MenuItem key={level._id} value={level._id}>{level.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
               {requiresAcademicFields && (
                 <Grid item xs={12} md={6}>
                   <FormControl fullWidth required>
@@ -1360,4 +1408,4 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
   );
 };
 
-export default ClassManagement; 
+export default ClassManagement;

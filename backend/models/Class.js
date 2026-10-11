@@ -23,6 +23,13 @@ const classSchema = new mongoose.Schema({
     default: null
   },
 
+  // Optional supported progression stages. An empty list means the group is
+  // available across the selected Program; legacy groups may omit both fields.
+  levelIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Level'
+  }],
+
   // Class Details
   grade: {
     type: String,
@@ -168,4 +175,4 @@ classSchema.methods.removeTeacher = function(teacherId) {
   return this.save();
 };
 
-module.exports = mongoose.model('Class', classSchema); 
+module.exports = mongoose.model('Class', classSchema);

@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Program = require('../models/Program');
 const Level = require('../models/Level');
 const Class = require('../models/Class');
+const { supportsProgramAndLevel } = require('../services/deliveryGroupCompatibility');
 const { terminalStatuses: lifecycleTerminalStatuses, canTransition, closeOpenHistory, findConflictingEnrollment } = require('../services/enrollmentLifecycleService');
 const router = express.Router();
 const management = ['school_admin','super_admin'];
@@ -26,6 +27,7 @@ async function prepareClassAssignment(row, { classId, effectiveDate, reason, ass
   if (!oid(classId)) return assignmentFailure('A valid class is required');
   const cls = await Class.findOne({_id:classId, schoolId, isActive:true, status:'active'});
   if (!cls) return assignmentFailure('Class not found or unavailable in this school');
+  if (!supportsProgramAndLevel(cls, row.programId, row.currentLevelId)) return assignmentFailure('Class is not compatible with the enrollment Program and Level');
 
   const at = validDate(effectiveDate);
   if (!at) return assignmentFailure('Effective date must be a valid date');
@@ -68,7 +70,7 @@ async function refs(body, schoolId) {
   const [child, program] = await Promise.all([User.findOne({_id:body.childId, schoolId, role:'student'}), Program.findOne({_id:body.programId, schoolId, isActive:true})]);
   if (!child) return 'Child not found in this school'; if (!program) return 'Program not found in this school';
   if (body.currentLevelId) { const level = await Level.findOne({_id:body.currentLevelId, schoolId, programId:body.programId, isActive:true}); if (!level) return 'Level does not belong to the selected program and school'; }
-  if (body.currentClassId) { const cls = await Class.findOne({_id:body.currentClassId, schoolId}); if (!cls) return 'Class not found in this school'; }
+  if (body.currentClassId) { const cls = await Class.findOne({_id:body.currentClassId, schoolId, isActive:true, status:'active'}); if (!cls) return 'Class not found or unavailable in this school'; if (!supportsProgramAndLevel(cls, body.programId, body.currentLevelId)) return 'Class is not compatible with the enrollment Program and Level'; }
   if (Array.isArray(body.staffAssignments)) for (const a of body.staffAssignments) { if (!oid(a.staffId) || !await User.exists({_id:a.staffId, schoolId, role:'teacher', isActive:true})) return 'Staff assignment is not valid for this school'; }
   return null;
 }

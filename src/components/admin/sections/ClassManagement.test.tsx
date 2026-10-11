@@ -5,6 +5,7 @@ import ClassManagement from './ClassManagement';
 import { useData } from '../../../contexts/DataContext';
 import { apiService } from '../../../services/apiService';
 import { programService } from '../../../services/programService';
+import { levelService } from '../../../services/levelService';
 
 jest.mock('../../../contexts/DataContext', () => ({ useData: jest.fn() }));
 jest.mock('../../../services/apiService', () => ({
@@ -18,6 +19,7 @@ jest.mock('../../../services/apiService', () => ({
   }
 }));
 jest.mock('../../../services/programService', () => ({ programService: jest.fn() }));
+jest.mock('../../../services/levelService', () => ({ levelService: jest.fn() }));
 jest.mock('../../common/NotificationIcon', () => () => null);
 
 const program = {
@@ -32,6 +34,7 @@ const program = {
 let root: Root;
 let host: HTMLDivElement;
 const listPrograms = jest.fn();
+const listLevels = jest.fn();
 
 const schoolProfile = {
   id: 'school-1',
@@ -82,6 +85,8 @@ beforeEach(() => {
   (apiService.createClass as jest.Mock).mockResolvedValue({ success: true, data: {} });
   listPrograms.mockResolvedValue([program]);
   (programService as jest.Mock).mockReturnValue({ list: listPrograms });
+  listLevels.mockResolvedValue([{ _id: 'level-1', schoolId: 'school-1', programId: 'program-1', name: 'Water Confidence', sequence: 1, isActive: true }]);
+  (levelService as jest.Mock).mockReturnValue({ list: listLevels });
 });
 
 afterEach(() => {
@@ -114,6 +119,7 @@ test('school workspace keeps academic Class fields required', async () => {
   expect(document.body).toHaveTextContent('Academic Year');
   expect(document.body).toHaveTextContent('Semester');
   expect(document.body).toHaveTextContent('Program (optional)');
+  expect(document.body).toHaveTextContent('Levels (optional)');
 
   await step(() => Simulate.change(input('Class Name'), { target: { value: 'Grade One' } } as any));
   expect(button('Add Class')).toBeDisabled();
@@ -145,12 +151,18 @@ test('non-school Program selection submits Program without academic placeholders
   await step(() => Simulate.mouseDown(programSelect, { button: 0 }));
   const option = Array.from(document.querySelectorAll('[role="option"]')).find(element => element.textContent === 'Learn to Swim')!;
   await step(() => Simulate.click(option));
+  const levelLabel = Array.from(document.querySelectorAll('label')).find(element => element.textContent?.startsWith('Levels (optional)'))!;
+  const levelSelect = levelLabel.closest('.MuiFormControl-root')!.querySelector('[role="button"], [role="combobox"]')!;
+  await step(() => Simulate.mouseDown(levelSelect, { button: 0 }));
+  const levelOption = Array.from(document.querySelectorAll('[role="option"]')).find(element => element.textContent === 'Water Confidence')!;
+  await step(() => Simulate.click(levelOption));
   await step(() => Simulate.click(button('Add Group')));
 
   expect(programService).toHaveBeenCalledWith('test-token', 'school-1');
   expect(apiService.createClass).toHaveBeenCalledWith(expect.objectContaining({
     name: 'Saturday Swimmers',
-    programId: 'program-1'
+    programId: 'program-1',
+    levelIds: ['level-1']
   }));
   const payload = (apiService.createClass as jest.Mock).mock.calls[0][0];
   expect(payload).not.toHaveProperty('grade');

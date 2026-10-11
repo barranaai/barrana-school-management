@@ -4,10 +4,14 @@ const Class = require('../models/Class');
 const User = require('../models/User');
 const School = require('../models/School');
 const Program = require('../models/Program');
+const Level = require('../models/Level');
+const Enrollment = require('../models/Enrollment');
 const { resolveWorkspaceProfile } = require('../domain/workspaceProfile');
 const { protect, authorize } = require('../middleware/auth');
 const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const { logger } = require('../utils/logger');
+const { supportsProgramAndLevel } = require('../services/deliveryGroupCompatibility');
+const { ongoingStatuses } = require('../services/enrollmentLifecycleService');
 
 const router = express.Router();
 router.use('/options', require('./classOptions'));
@@ -31,6 +35,26 @@ const academicFieldErrors = (profile, { grade, academicYear }) => {
   return errors;
 };
 
+const validateDeliveryContext = async (programId, levelIds = [], schoolId) => {
+  const uniqueLevelIds = [...new Set((levelIds || []).map(String))];
+  if (!programId && uniqueLevelIds.length) return 'Select a Program before selecting Levels';
+  if (programId && !(await validateProgramAssociation(programId, schoolId))) {
+    return 'Program not found or not available for this organization';
+  }
+  for (const levelId of uniqueLevelIds) {
+    const level = await Level.findOne({ _id: levelId, schoolId, programId, isActive: true }).select('_id');
+    if (!level) return 'Level not found or not available for the selected Program and organization';
+  }
+  return null;
+};
+
+const sameId = (left, right) => String(left?._id || left || '') === String(right?._id || right || '');
+const sameIds = (left = [], right = []) => {
+  const first = [...new Set(left.map(value => String(value?._id || value)))].sort();
+  const second = [...new Set(right.map(value => String(value?._id || value)))].sort();
+  return first.length === second.length && first.every((value, index) => value === second[index]);
+};
+
 // @desc    Get all classes for a school
 // @route   GET /api/classes
 // @access  Private (School Admin, Super Admin)
@@ -46,6 +70,7 @@ router.get('/', protect, authorize('school_admin', 'super_admin'), async (req, r
     const classes = await Class.find(query)
       .populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
       .populate('programId', 'name')
+      .populate('levelIds', 'name programId')
       .populate('createdBy', 'firstName lastName')
       .sort({ createdAt: -1 });
 
@@ -108,6 +133,7 @@ router.get('/teacher/assigned', protect, authorize('teacher'), async (req, res) 
     })
     .populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
     .populate('programId', 'name')
+    .populate('levelIds', 'name programId')
     .populate('createdBy', 'firstName lastName')
     .sort({ createdAt: -1 });
 
@@ -141,6 +167,7 @@ router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req
     const classData = await Class.findOne(query)
       .populate('assignedTeachers.teacherId', 'firstName lastName email avatar grade specialization')
       .populate('programId', 'name')
+      .populate('levelIds', 'name programId')
       .populate('createdBy', 'firstName lastName');
 
     if (!classData) {
@@ -173,6 +200,8 @@ router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req
 router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, [
   body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Class name must be between 2 and 100 characters'),
   body('programId').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Valid Program ID is required'),
+  body('levelIds').optional().isArray().withMessage('Levels must be an array'),
+  body('levelIds.*').optional().isMongoId().withMessage('Valid Level ID is required'),
   body('grade').optional({ checkFalsy: true }).trim(),
   body('description').optional({ checkFalsy: true }).trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
   body('capacity').optional({ checkFalsy: true }).isInt({ min: 1, max: 1000 }).withMessage('Capacity must be between 1 and 1000'),
@@ -195,6 +224,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
     const {
       name,
       programId,
+      levelIds,
       grade,
       description,
       capacity,
@@ -229,9 +259,8 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
       return res.status(400).json({ success: false, message: 'Validation errors', errors: conditionalErrors });
     }
 
-    if (programId && !(await validateProgramAssociation(programId, schoolId))) {
-      return res.status(400).json({ success: false, message: 'Program not found or not available for this organization' });
-    }
+    const contextError = await validateDeliveryContext(programId, levelIds, schoolId);
+    if (contextError) return res.status(400).json({ success: false, message: contextError });
 
 
     // Validate assigned teachers if provided
@@ -262,6 +291,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
       name,
       schoolId,
       programId: programId || null,
+      levelIds: levelIds || [],
       grade: grade || undefined,
       description,
       capacity,
@@ -277,6 +307,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
     const populatedClass = await Class.findById(classData._id)
       .populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
       .populate('programId', 'name')
+      .populate('levelIds', 'name programId')
       .populate('createdBy', 'firstName lastName');
 
     logger.info(`Class created: ${name} at school ${schoolId}`);
@@ -300,6 +331,8 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
 // @access  Private (School Admin, Super Admin)
 router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, [
   body('programId').optional({ nullable: true, checkFalsy: true }).isMongoId().withMessage('Valid Program ID is required'),
+  body('levelIds').optional().isArray().withMessage('Levels must be an array'),
+  body('levelIds.*').optional().isMongoId().withMessage('Valid Level ID is required'),
   body('name').optional({ checkFalsy: true }).trim().isLength({ min: 2, max: 100 }).withMessage('Class name must be between 2 and 100 characters'),
   body('grade').optional({ checkFalsy: true }).trim().notEmpty().withMessage('Grade cannot be empty'),
   body('description').optional({ checkFalsy: true }).trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
@@ -338,6 +371,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireAct
     const {
       name,
       programId,
+      levelIds,
       grade,
       description,
       status,
@@ -360,8 +394,25 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireAct
       return res.status(400).json({ success: false, message: 'Validation errors', errors: conditionalErrors });
     }
 
-    if (programId && !(await validateProgramAssociation(programId, classData.schoolId))) {
-      return res.status(400).json({ success: false, message: 'Program not found or not available for this organization' });
+    const nextProgramId = programId !== undefined ? programId || null : classData.programId;
+    const nextLevelIds = levelIds !== undefined ? levelIds : classData.levelIds;
+    const contextError = await validateDeliveryContext(nextProgramId, nextLevelIds, classData.schoolId);
+    if (contextError) return res.status(400).json({ success: false, message: contextError });
+
+    const deliveryContextChanged = !sameId(nextProgramId, classData.programId) || !sameIds(nextLevelIds, classData.levelIds);
+    if (deliveryContextChanged) {
+      const ongoingEnrollments = await Enrollment.find({
+        schoolId: classData.schoolId,
+        currentClassId: classData._id,
+        status: { $in: ongoingStatuses }
+      }).select('_id programId currentLevelId');
+      const proposedGroup = { programId: nextProgramId, levelIds: nextLevelIds };
+      if (ongoingEnrollments.some(enrollment => !supportsProgramAndLevel(proposedGroup, enrollment.programId, enrollment.currentLevelId))) {
+        return res.status(409).json({
+          success: false,
+          message: 'This change is incompatible with ongoing Enrollments. Reassign or end those Enrollments first.'
+        });
+      }
     }
 
     // Validate assigned teachers if provided
@@ -387,6 +438,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireAct
     const updateFields = {};
     if (name) updateFields.name = name;
     if (programId !== undefined) updateFields.programId = programId || null;
+    if (levelIds !== undefined) updateFields.levelIds = levelIds;
     if (grade !== undefined) updateFields.grade = grade || undefined;
     if (description !== undefined) updateFields.description = description;
     if (status) updateFields.status = status;
@@ -402,6 +454,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireAct
       { new: true, runValidators: true }
     ).populate('assignedTeachers.teacherId', 'firstName lastName email avatar')
      .populate('programId', 'name')
+     .populate('levelIds', 'name programId')
      .populate('createdBy', 'firstName lastName');
 
     logger.info(`Class updated: ${updatedClass.name}`);

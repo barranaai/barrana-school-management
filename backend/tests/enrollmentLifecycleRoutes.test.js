@@ -18,7 +18,7 @@ function harness(options = {}) {
     staffAssignments: [{ staffId: id(7), role: 'trainer', effectiveFrom: new Date('2026-01-01'), status: 'active' }],
     async save() { this.saves = (this.saves || 0) + 1; }
   };
-  const state = { conflict: options.conflict || null, created: [], row };
+  const state = { conflict: options.conflict || null, created: [], row, classQueries: [] };
   const routes = [];
   const router = { use() {} };
   for (const method of ['get', 'post', 'put', 'delete']) router[method] = (url, ...handlers) => routes.push({ method, url, handlers });
@@ -31,13 +31,22 @@ function harness(options = {}) {
     async create(body) { const created = { _id: id(20), ...body }; state.created.push(created); return created; }
   };
   const available = { findOne: async () => ({ _id: id(30), isActive: true }), exists: async () => true };
+  const Class = {
+    findOne: async query => {
+      state.classQueries.push(query);
+      if (String(query._id) !== id(6) || String(query.schoolId) !== schoolId) return null;
+      if (query.isActive === true && options.classActive === false) return null;
+      if (query.status === 'active' && options.classStatus === 'archived') return null;
+      return { _id: id(6), schoolId, isActive: options.classActive !== false, status: options.classStatus || 'active' };
+    }
+  };
   const dependencies = {
     express: { Router: () => router }, mongoose,
     '../middleware/auth': { protect: (_req, _res, next) => next(), authorize },
     '../middleware/resourceAuthorization': { scopeSchoolId: user => user.schoolId, canAccessStudent: async () => true },
     '../middleware/lifecycleAuthorization': { requireActiveOrganization: (_req, _res, next) => next() },
     '../models/Enrollment': Enrollment, '../models/User': available, '../models/Program': available,
-    '../models/Level': available, '../models/Class': available,
+    '../models/Level': available, '../models/Class': Class,
     '../services/deliveryGroupCompatibility': { supportsProgramAndLevel: () => true },
     '../services/enrollmentLifecycleService': require('../services/enrollmentLifecycleService')
   };
@@ -60,6 +69,33 @@ function harness(options = {}) {
   }
   return { schoolId, childId, programId, enrollmentId, state, request };
 }
+
+test('initial Enrollment requires an active Delivery Group before writing', async () => {
+  for (const options of [{ classActive: false }, { classStatus: 'archived' }]) {
+    const h = harness(options);
+    const response = await h.request('post', '/', { body: {
+      schoolId: h.schoolId, childId: h.childId, programId: h.programId,
+      currentLevelId: id(5), currentClassId: id(6), startDate: '2026-09-01', status: 'active'
+    } });
+    assert.equal(response.statusCode, 400);
+    assert.match(response.body.message, /unavailable/);
+    assert.equal(h.state.created.length, 0);
+    assert.equal(h.state.row.saves || 0, 0);
+    assert.equal(h.state.classQueries[0].isActive, true);
+    assert.equal(h.state.classQueries[0].status, 'active');
+  }
+});
+
+test('initial Enrollment with a compatible active Delivery Group still succeeds', async () => {
+  const h = harness();
+  const response = await h.request('post', '/', { body: {
+    schoolId: h.schoolId, childId: h.childId, programId: h.programId,
+    currentLevelId: id(5), currentClassId: id(6), startDate: '2026-09-01', status: 'active'
+  } });
+  assert.equal(response.statusCode, 201);
+  assert.equal(h.state.created.length, 1);
+  assert.equal(String(h.state.created[0].currentClassId), id(6));
+});
 
 test('organization admin may pause and resume the same enrollment while preserving history', async () => {
   const h = harness();
