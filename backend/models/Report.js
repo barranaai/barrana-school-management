@@ -148,6 +148,16 @@ const reportSchema = new mongoose.Schema({
         default: 'email'
       }
     }],
+    deliveries: [{
+      guardianId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      email: { type: String, required: true, trim: true, lowercase: true },
+      eligibleAt: { type: Date, required: true },
+      attemptedAt: Date,
+      acceptedAt: Date,
+      failedAt: Date,
+      status: { type: String, enum: ['pending', 'accepted', 'failed'], default: 'pending' },
+      errorCode: { type: String, trim: true, maxlength: 100 }
+    }],
     isRead: {
       type: Boolean,
       default: false

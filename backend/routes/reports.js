@@ -1356,53 +1356,125 @@ function deliveryData(report) {
   };
 }
 const reportQuery = (id, schoolId) => Report.findOne({ _id: id, schoolId })
-  .populate('studentId', 'firstName lastName parentEmail')
+  .populate('studentId', 'firstName lastName parentEmail parentId schoolId role')
   .populate('teacherId', 'firstName lastName')
   .populate('schoolId', 'name branding logo');
 async function publishReport(req, res) {
   const key = String(req.params.id).toLowerCase();
   if (publishing.has(key)) return res.status(409).json({ success: false, outcome: 'publication_blocked', message: 'Publication is in progress or requires reconciliation; do not resend automatically' });
   publishing.add(key);
-  let accepted = false;
+  let unreconciledTransport = false;
   try {
     const schoolId = reportSchoolId(req, req.body);
     if (!schoolId) return res.status(400).json({ success: false, outcome: 'not_authorized', message: 'Organization context is required' });
     const report = await reportQuery(req.params.id, schoolId);
     if (!report || !canAccessReport(req.user, report)) return res.status(404).json({ success: false, outcome: 'not_authorized', message: 'Report not found' });
     if (report.status === 'sent') return res.status(409).json({ success: false, outcome: 'already_sent', message: 'Report was already sent; no email was sent again' });
-    if (report.status === 'archived' || (report.progressId && (report.status !== 'approved' || !canExposeProgressReport(report)))) return res.status(409).json({ success: false, outcome: 'not_finalized', message: 'Report must be approved with a valid finalized snapshot' });
-    const recipients = req.body.parentEmails || [req.body.parentEmail];
-    const expected = report.studentId?.parentEmail?.trim().toLowerCase();
-    if (!Array.isArray(recipients) || !recipients.length || !expected || recipients.some(email => typeof email !== 'string' || email.trim().toLowerCase() !== expected)) return res.status(403).json({ success: false, outcome: 'not_authorized', message: 'Recipient is not authorized for this report' });
-    // The current child model has one parent email. Deduplicate aliases/array entries.
-    const data = { ...deliveryData(report), parentEmail: expected };
-    const parentUser = await User.findOne({ schoolId: report.schoolId._id, role: 'parent', email: expected }).select('phoneNumber phone preferences fcmTokens');
-    data.parentPhoneNumber = parentUser?.phoneNumber || parentUser?.phone;
-    data.whatsappEnabled = parentUser?.preferences?.notifications?.whatsapp || false;
-    data.parentId = parentUser?._id;
-    data.preparePdf = options => createReportPdf(report, { ...data, ...options });
-    const result = await sendReportEmail(data);
-    if (result.simulated) return res.json({ success: false, outcome: 'simulated', message: 'Development simulation only; report was not sent', data: { reportId: report._id, simulated: true, transportAccepted: false } });
-    if (!result.transportAccepted) throw Object.assign(new Error('Email transport did not accept the message'), { code: 'delivery_failure' });
-    accepted = true;
+    if (report.status !== 'approved' || (report.progressId && !canExposeProgressReport(report))) return res.status(409).json({ success: false, outcome: 'not_finalized', message: 'Report must be approved with a valid finalized snapshot' });
+    const { eligibleGuardians, relationshipState } = require('../services/guardianAccessService');
+    const communicationGuardians = await eligibleGuardians(report.studentId._id, 'communication');
+    const eligible = [];
+    for (const guardian of communicationGuardians) if ((await relationshipState(guardian, report.studentId, 'reports')).allowed) eligible.push(guardian);
+    const eligibleByEmail = new Map();
+    for (const guardian of eligible.filter(user => user.email)) {
+      const address = guardian.email.trim().toLowerCase();
+      if (!eligibleByEmail.has(address)) eligibleByEmail.set(address, []);
+      eligibleByEmail.get(address).push(guardian);
+    }
+    const requested = (req.body.parentEmails || (req.body.parentEmail ? [req.body.parentEmail] : [...eligibleByEmail.keys()]))
+      .map(value => typeof value === 'string' ? value.trim().toLowerCase() : '');
+    const recipients = [...new Set(requested)];
+    if (!recipients.length || recipients.some(value => !eligibleByEmail.has(value))) return res.status(403).json({ success: false, outcome: 'not_authorized', message: 'Recipient is not authorized for this report' });
+    const communication = report.parentCommunication?.toObject?.() || report.parentCommunication || {};
+    const deliveries = Array.isArray(communication.deliveries) ? communication.deliveries.map(item => item.toObject?.() || { ...item }) : [];
+    const legacySentTo = Array.isArray(communication.sentTo) ? communication.sentTo : [];
+    for (const [address, guardians] of eligibleByEmail) for (const guardian of guardians) {
+      const guardianId = String(guardian._id);
+      if (deliveries.some(item => String(item.guardianId) === guardianId && String(item.email).toLowerCase() === address)) continue;
+      const historical = legacySentTo.find(item => String(item.email || '').trim().toLowerCase() === address
+        && (!item.parentId || String(item.parentId) === guardianId));
+      if (historical) deliveries.push({ guardianId: guardian._id, email: address, eligibleAt: communication.sentAt || new Date(), attemptedAt: communication.sentAt, acceptedAt: communication.sentAt || new Date(), status: 'accepted' });
+    }
+    const delivered = [];
+    const failures = [];
+    let result;
+    for (const recipient of recipients) {
+      const guardians = eligibleByEmail.get(recipient);
+      const recipientDeliveries = guardians.map(parentUser => {
+        const guardianId = String(parentUser._id);
+        let delivery = deliveries.find(item => String(item.guardianId) === guardianId && String(item.email).toLowerCase() === recipient);
+        if (!delivery) {
+          delivery = { guardianId: parentUser._id, email: recipient, eligibleAt: new Date(), status: 'pending' };
+          deliveries.push(delivery);
+        }
+        return { parentUser, delivery };
+      });
+      const pending = recipientDeliveries.filter(item => item.delivery.status !== 'accepted');
+      if (!pending.length) continue;
+      const attemptedAt = new Date();
+      for (const item of pending) item.delivery.attemptedAt = attemptedAt;
+      const parentUser = pending[0].parentUser;
+      const data = { ...deliveryData(report), parentEmail: recipient,
+        parentPhoneNumber: parentUser.phoneNumber || parentUser.phone,
+        whatsappEnabled: parentUser.preferences?.notifications?.whatsapp || false,
+        parentId: parentUser._id };
+      data.preparePdf = options => createReportPdf(report, { ...data, ...options });
+      try {
+        result = await sendReportEmail(data);
+        if (result.simulated) return res.json({ success: false, outcome: 'simulated', message: 'Development simulation only; report was not sent', data: { reportId: report._id, simulated: true, transportAccepted: false } });
+        if (!result.transportAccepted) throw Object.assign(new Error('Email transport did not accept the message'), { code: 'delivery_failure' });
+      }
+      catch (error) {
+        for (const item of pending) {
+          item.delivery.status = 'failed'; item.delivery.failedAt = new Date(); item.delivery.errorCode = String(error.code || 'delivery_failure').slice(0, 100);
+        }
+        report.parentCommunication = { ...communication, deliveries };
+        await report.save();
+        failures.push({ recipient, code: error.code || 'delivery_failure' });
+        continue;
+      }
+      for (const item of pending) {
+        item.delivery.status = 'accepted'; item.delivery.acceptedAt = result.acceptedAt; item.delivery.failedAt = undefined; item.delivery.errorCode = undefined;
+      }
+      if (result.pdfArtifact) report.pdfArtifact = result.pdfArtifact;
+      report.parentCommunication = { ...communication, deliveries };
+      unreconciledTransport = true;
+      await report.save();
+      unreconciledTransport = false;
+      delivered.push(...pending.map(item => ({ parentUser: item.parentUser, recipient, result })));
+    }
+    const allEligible = [...eligibleByEmail.values()].flat();
+    const unresolved = allEligible.some(parentUser => !deliveries.some(item => String(item.guardianId) === String(parentUser._id) && item.status === 'accepted'));
+    if (unresolved) {
+      const acceptedCount = allEligible.filter(parentUser => deliveries.some(item => String(item.guardianId) === String(parentUser._id) && item.status === 'accepted')).length;
+      const partial = acceptedCount > 0;
+      const commonFailure = failures.length > 0 && failures.every(item => item.code === failures[0].code) ? failures[0].code : 'delivery_failure';
+      const failureOutcome = ['pdf_failure', 'configuration_failure'].includes(commonFailure) ? commonFailure : 'delivery_failure';
+      return res.status(partial ? 202 : (failureOutcome === 'configuration_failure' ? 503 : 502)).json({
+        success: false, outcome: partial ? 'partial' : failureOutcome,
+        message: partial ? 'Some authorized recipients still require delivery' : 'Report delivery failed for every attempted recipient',
+        data: { reportId: report._id, transportAccepted: partial, acceptedCount, failedCount: failures.length }
+      });
+    }
     report.status = 'sent';
-    report.parentCommunication = { ...(report.parentCommunication?.toObject?.() || report.parentCommunication || {}), isSent: true, sentAt: result.acceptedAt, sentTo: [{ email: expected, method: 'email' }] };
-    report.pdfArtifact = result.pdfArtifact;
+    const acceptedDeliveries = deliveries.filter(item => item.status === 'accepted');
+    report.parentCommunication = { ...communication, deliveries, isSent: true, sentAt: acceptedDeliveries.reduce((latest, item) => !latest || item.acceptedAt > latest ? item.acceptedAt : latest, null), sentTo: acceptedDeliveries.map(item => ({ parentId: item.guardianId, email: item.email, method: 'email' })) };
+    if (result?.pdfArtifact) report.pdfArtifact = result.pdfArtifact;
     try { await report.save(); } catch (_) {
       // Keep the local guard until reconciliation/restart; never automatically resend.
       return res.status(500).json({ success: false, outcome: 'persistence_failure', message: 'Transport accepted the email, but report persistence failed. Reconcile before any retry.', data: { reportId: report._id, transportAccepted: true, messageId: result.messageId } });
     }
     publishing.delete(key);
     setImmediate(async () => {
-      try { if (parentUser?.fcmTokens?.length) await firebaseService.sendNotificationToUser(parentUser, { title: 'Report sent', body: data.reportTitle + ' was accepted by the email transport.', type: 'report_sent' }, { reportId: String(report._id) }); }
+      try { for (const item of delivered) if (item.parentUser?.fcmTokens?.length) await firebaseService.sendNotificationToUser(item.parentUser, { title: 'Report sent', body: deliveryData(report).reportTitle + ' was accepted by the email transport.', type: 'report_sent' }, { reportId: String(report._id) }); }
       catch (_) { logger.warn('Report push notification failed'); }
     });
-    return res.json({ success: true, outcome: 'sent', message: 'Email transport accepted the report; inbox delivery is not confirmed', data: { reportId: report._id, transportAccepted: true, simulated: false, messageId: result.messageId, sentAt: result.acceptedAt, pdfUrl: '/api/parents/me/reports/' + report._id + '/pdf' } });
+    return res.json({ success: true, outcome: 'sent', message: 'Email transport accepted the report; inbox delivery is not confirmed', data: { reportId: report._id, transportAccepted: true, simulated: false, messageId: result?.messageId || null, sentAt: report.parentCommunication.sentAt, pdfUrl: '/api/parents/me/reports/' + report._id + '/pdf' } });
   } catch (error) {
-    accepted = accepted || error.transportAccepted === true;
-    const outcome = accepted ? 'persistence_failure' : (['pdf_failure', 'configuration_failure'].includes(error.code) ? error.code : 'delivery_failure');
-    return res.status(outcome === 'configuration_failure' ? 503 : 502).json({ success: false, outcome, message: accepted ? 'Transport accepted; completion failed. Reconcile before retry.' : outcome === 'pdf_failure' ? 'PDF generation failed; no email was sent' : 'Email publication failed; report remains unsent', data: { transportAccepted: accepted } });
-  } finally { if (!accepted) publishing.delete(key); }
+    unreconciledTransport = unreconciledTransport || error.transportAccepted === true;
+    const outcome = unreconciledTransport ? 'persistence_failure' : (['pdf_failure', 'configuration_failure'].includes(error.code) ? error.code : 'delivery_failure');
+    return res.status(outcome === 'configuration_failure' ? 503 : 502).json({ success: false, outcome, message: unreconciledTransport ? 'Transport accepted; completion failed. Reconcile before retry.' : outcome === 'pdf_failure' ? 'PDF generation failed; no email was sent' : 'Email publication failed; report remains unsent', data: { transportAccepted: unreconciledTransport } });
+  } finally { if (!unreconciledTransport) publishing.delete(key); }
 }
 router.patch('/:id/send', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, publishReport);
 router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, publishReport);

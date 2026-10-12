@@ -88,6 +88,21 @@ test('canonical artifact survives Mongoose BSON serialization and hydration with
   assert.deepEqual(await h.api.readReportPdf(reloaded), bytes);
   assert.equal(Report.schema.path('pdfArtifact').schema.path('key').isRequired, true);
 });
+test('per-guardian delivery outcomes survive Mongoose BSON serialization and hydration', () => {
+  const Report = require('../models/Report'); const { BSON } = require('mongodb');
+  const guardianA = new (require('mongoose').Types.ObjectId)(); const guardianB = new (require('mongoose').Types.ObjectId)();
+  const doc = new Report({ studentId: guardianA, teacherId: guardianA, schoolId: guardianA, templateId: guardianA,
+    reportPeriod: { startDate: new Date('2026-01-01'), endDate: new Date('2026-01-31') },
+    parentCommunication: { deliveries: [
+      { guardianId: guardianA, email: 'first@test.local', eligibleAt: new Date('2026-02-01'), acceptedAt: new Date('2026-02-02'), status: 'accepted' },
+      { guardianId: guardianB, email: 'second@test.local', eligibleAt: new Date('2026-02-01'), failedAt: new Date('2026-02-02'), status: 'failed', errorCode: 'delivery_failure' }
+    ] } });
+  const reloaded = Report.hydrate(BSON.deserialize(BSON.serialize(doc.toObject({ virtuals: false }))));
+  assert.equal(reloaded.parentCommunication.deliveries.length, 2);
+  assert.deepEqual(reloaded.parentCommunication.deliveries.map(item => item.status), ['accepted', 'failed']);
+  assert.deepEqual(reloaded.parentCommunication.deliveries.map(item => String(item.guardianId)), [String(guardianA), String(guardianB)]);
+  assert.equal(reloaded.parentCommunication.deliveries[1].errorCode, 'delivery_failure');
+});
 test('temporary cleanup keeps retained PDF directory while cleaning old temporary files', async () => {
   const deleted = [];
   const api = load('../services/pdfService.js', { puppeteer: {}, path, '../utils/logger': { logger: log }, fs: {

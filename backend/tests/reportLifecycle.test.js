@@ -55,8 +55,12 @@ function harness(reportRow = report(), reportOverrides = {}) {
     const routes = [], middleware = [];
     const router = { use: (...handlers) => middleware.push(...handlers) };
     for (const method of ['get', 'post', 'put', 'patch', 'delete']) router[method] = (url, ...handlers) => routes.push({ method, url, handlers: [...middleware, ...handlers] });
-    const guardianCanRead = (guardian, report) => report.status === 'sent' && (!report.progressId || publication.canExposeProgressReport(report)) && state.guardians.some(item => String(item._id) === String(guardian._id) || item.email === guardian.email);
-    const dependencies = { express: { Router: () => router }, mongoose, '../middleware/auth': auth, '../middleware/resourceAuthorization': access, '../middleware/lifecycleAuthorization': { requireActiveOrganization: (_req, _res, next) => next() }, '../utils/reportPublication': publication, '../utils/logger': { logger }, '../utils/dateUtils': {}, '../utils/gradeUtils': require('../utils/gradeUtils'), '../services/reportTemplateContext': require('../services/reportTemplateContext'), '../services/reportParticipantAuthorization': { canTeacherAccessParticipantReporting: async () => true }, '../domain/workspaceProfile': require('../domain/workspaceProfile'), '../middleware/environment': { developmentOnly() {} }, multer, path, fs: { promises: {}, existsSync() { throw Error('Filesystem access forbidden in route test'); } }, 'moment-timezone': () => { throw Error('Unexpected date helper'); }, '../services/guardianAccessService': { async authorizedParticipants(guardian) { return guardian.email === 'parent@test.local' ? [{ _id: id(21) }] : []; } }, '../services/guardianReportAccessService': { isDeliveredParentReport: report => guardianCanRead(state.actor, report), canGuardianReadReport: async (guardian, report) => guardianCanRead(guardian, report) }, '../services/reportPdf': { async createReportPdf(report, data) { calls.pdfCreates.push(data); return { artifact: { key: 'test.pdf' }, bytes: Buffer.from('%PDF-test') }; }, async readReportPdf(report) { calls.pdfReads++; if (!report.pdfArtifact || state.missingPdf) throw Error('unavailable'); return Buffer.from('%PDF-test'); } }, '../services/firebaseService': {}, '../services/emailService': { async sendReportEmail(data) { if (state.emailError) throw Object.assign(Error('failure'), { code: state.emailError }); if (state.simulated) return { simulated: true }; calls.email.push(data); const pdf = await data.preparePdf(); return { success: true, transportAccepted: true, acceptedAt: new Date(), messageId: 'accepted', pdfArtifact: pdf.artifact }; } } };
+    const guardianCanRead = (guardian, report) => report.status === 'sent' && (!report.progressId || publication.canExposeProgressReport(report)) && state.guardians.some(item=>String(item._id)===String(guardian._id)||item.email===guardian.email);
+    const dependencies = { express: { Router: () => router }, mongoose, '../middleware/auth': auth, '../middleware/resourceAuthorization': access, '../middleware/lifecycleAuthorization': { requireActiveOrganization: (_req, _res, next) => next() }, '../utils/reportPublication': publication, '../utils/logger': { logger }, '../utils/dateUtils': {}, '../utils/gradeUtils': require('../utils/gradeUtils'), '../services/reportTemplateContext':require('../services/reportTemplateContext'), '../services/reportParticipantAuthorization': { canTeacherAccessParticipantReporting: async () => true },'../domain/workspaceProfile':require('../domain/workspaceProfile'), '../middleware/environment': { developmentOnly() {} }, multer, path, fs: { promises: {}, existsSync() { throw Error('Filesystem access forbidden in route test'); } }, 'moment-timezone': () => { throw Error('Unexpected date helper'); }, '../services/guardianAccessService': {
+      async eligibleGuardians() { return state.guardians.filter(item => item.isActive !== false && item.relationshipStatus !== 'pending' && item.relationshipStatus !== 'revoked' && item.communication !== false && (!item.schoolId || String(item.schoolId) === String(school))); },
+      async relationshipState(guardian) { return { allowed: guardian.reports !== false && guardian.relationshipStatus !== 'pending' && guardian.relationshipStatus !== 'revoked' && guardian.isActive !== false && (!guardian.schoolId || String(guardian.schoolId) === String(school)) }; },
+      async authorizedParticipants(guardian) { return guardian.email === 'parent@test.local' ? [{ _id: id(21) }] : []; }
+    }, '../services/guardianReportAccessService': { isDeliveredParentReport: report => guardianCanRead(state.actor, report), canGuardianReadReport: async (guardian, report) => guardianCanRead(guardian, report) }, '../services/reportPdf': { async createReportPdf(report, data) { calls.pdfCreates.push(data); return { artifact: { key: 'test.pdf' }, bytes: Buffer.from('%PDF-test') }; }, async readReportPdf(report) { calls.pdfReads++; if (!report.pdfArtifact || state.missingPdf) throw Error('unavailable'); return Buffer.from('%PDF-test'); } }, '../services/firebaseService': {}, '../services/emailService': { async sendReportEmail(data) { if (state.emailError || state.failRecipient===data.parentEmail) throw Object.assign(Error('failure'), { code: state.emailError || 'delivery_failure' }); if (state.simulated) return { simulated: true }; calls.email.push(data); const pdf = await data.preparePdf(); return { success: true, transportAccepted: !state.transportRejected, acceptedAt: new Date(), messageId: 'accepted', pdfArtifact: pdf.artifact }; } } };
     for (const [key, value] of Object.entries(models)) dependencies['../models/' + key] = value;
     evaluate(path.join(__dirname, '../routes/' + name + '.js'), dependencies);
     routers[name] = routes;
@@ -112,9 +116,27 @@ test('Progress-backed drafts and incomplete snapshots cannot be emailed', async 
 test('authorized finalized delivery uses only snapshot content and attachments', async () => {
   for (const status of ['approved']) { const h = harness(report(status)); const r = await h.request('reports', 'post', '/:id/send-email', { body: { parentEmail: 'parent@test.local' } }); assert.equal(r.statusCode, 200); assert.equal(h.calls.email.length, 1); const data = h.calls.email[0]; assert.equal(data.reportContent, 'Approved content'); assert.equal(data.reportTitle, 'Approved title'); assert.equal(data.attachments[0].url, 'approved attachment'); assert.ok(!JSON.stringify(data).includes('INTERNAL')); }
 });
-test('legacy email compatibility is preserved', async () => { const h = harness(report('draft')); delete h.state.report.progressId; assert.equal((await h.request('reports', 'post', '/:id/send-email', { body: { parentEmail: 'parent@test.local' } })).statusCode, 200); });
+test('legacy email compatibility requires approval before delivery', async () => {
+  for (const status of ['draft', 'approved']) {
+    const h = harness(report(status)); delete h.state.report.progressId;
+    const response = await h.request('reports', 'post', '/:id/send-email', { body: { parentEmail: 'parent@test.local' } });
+    assert.equal(response.statusCode, status === 'approved' ? 200 : 409);
+    assert.equal(h.calls.email.length, status === 'approved' ? 1 : 0);
+  }
+});
 test('wrong tenant, teacher or recipient cannot send', async () => {
   for (const kind of ['tenant', 'teacher', 'recipient']) { const h = harness(); if (kind === 'tenant') h.state.actor.schoolId = id(90); if (kind === 'teacher') h.state.actor._id = id(91); const r = await h.request('reports', 'post', '/:id/send-email', { body: { parentEmail: kind === 'recipient' ? 'other@test.local' : 'parent@test.local' } }); assert.ok([403,404].includes(r.statusCode)); assert.equal(h.calls.email.length, 0); }
+});
+test('inactive, revoked, pending, permission-denied and cross-tenant guardians cannot receive reports', async () => {
+  const blocked = [
+    { isActive:false }, { relationshipStatus:'revoked' }, { relationshipStatus:'pending' },
+    { communication:false }, { reports:false }, { schoolId:id(90) }
+  ];
+  for (const attributes of blocked) {
+    const h=harness();h.state.guardians=[{_id:parent,email:'parent@test.local',preferences:{},fcmTokens:[],...attributes}];
+    const response=await h.request('reports','post','/:id/send-email',{body:{parentEmail:'parent@test.local'}});
+    assert.equal(response.statusCode,403);assert.equal(h.calls.email.length,0);assert.equal(h.calls.reportSaves,0);
+  }
 });
 test('parent detail, list and PDF reject unfinalized Progress-backed reports', async () => {
   const h = harness(report('draft')); h.state.actor.email = 'parent@test.local';
@@ -171,11 +193,11 @@ for (const [method, url] of [['patch','/:id/send'], ['post','/:id/send-email']])
     assert.equal(again.body.outcome,'already_sent');assert.equal(h.calls.email.length,1);assert.equal(JSON.stringify(h.state.report.finalizedSnapshot),snapshot);
   });
 }
-test('publication failures and simulation do not persist sent state',async()=>{
+test('publication failures persist retry-safe recipient state without marking the report sent',async()=>{
   for(const outcome of ['delivery_failure','pdf_failure','configuration_failure','simulated']) {
     const h=harness();if(outcome==='simulated')h.state.simulated=true;else h.state.emailError=outcome;
     const r=await h.request('reports','post','/:id/send-email',{body:{parentEmail:'parent@test.local'}});
-    assert.equal(r.body.success,false);assert.equal(r.body.outcome,outcome);assert.equal(h.state.report.status,'approved');assert.equal(h.calls.reportSaves,0);
+    assert.equal(r.body.success,false);assert.equal(r.body.outcome,outcome);assert.equal(h.state.report.status,'approved');assert.notEqual(h.state.report.parentCommunication?.isSent,true);assert.equal(h.calls.reportSaves,outcome==='simulated'?0:1);
   }
 });
 test('accepted transport plus persistence failure is explicit and never automatically resent',async()=>{
@@ -184,6 +206,29 @@ test('accepted transport plus persistence failure is explicit and never automati
   assert.equal(r.body.outcome,'persistence_failure');assert.equal(r.body.data.transportAccepted,true);assert.equal(h.calls.reportSaves,0);
   const retry=await h.request('reports','post','/:id/send-email',{body:{parentEmail:'parent@test.local'}});
   assert.equal(retry.body.outcome,'publication_blocked');assert.equal(h.calls.email.length,1);
+});
+test('partial multi-guardian delivery is durable and retry does not duplicate accepted recipients',async()=>{
+  const h=harness();h.state.guardians=[{_id:parent,email:'parent@test.local',preferences:{},fcmTokens:[]},{_id:id(32),email:'second@test.local',preferences:{},fcmTokens:[]}];h.state.failRecipient='second@test.local';
+  const first=await h.request('reports','post','/:id/send-email',{body:{}});assert.equal(first.body.outcome,'partial');assert.equal(first.body.data.acceptedCount,1);assert.equal(first.body.data.failedCount,1);assert.equal(h.calls.email.length,1);assert.equal(h.state.report.status,'approved');assert.equal(h.state.report.parentCommunication.deliveries.find(x=>x.email==='parent@test.local').status,'accepted');assert.equal(h.state.report.parentCommunication.deliveries.find(x=>x.email==='second@test.local').status,'failed');
+  h.state.failRecipient=null;const retry=await h.request('reports','post','/:id/send-email',{body:{}});assert.equal(retry.body.outcome,'sent');assert.equal(h.calls.email.length,2);assert.deepEqual(h.calls.email.map(x=>x.parentEmail),['parent@test.local','second@test.local']);assert.equal(h.state.report.status,'sent');
+});
+test('shared guardian email sends once and records a separate accepted outcome for each guardian',async()=>{
+  const h=harness();h.state.guardians=[{_id:parent,email:'shared@test.local',preferences:{},fcmTokens:[]},{_id:id(32),email:'SHARED@test.local',preferences:{},fcmTokens:[]}];
+  const response=await h.request('reports','post','/:id/send-email',{body:{}});
+  assert.equal(response.body.outcome,'sent');assert.equal(h.calls.email.length,1);assert.equal(h.calls.email[0].parentEmail,'shared@test.local');
+  assert.equal(h.state.report.parentCommunication.deliveries.length,2);assert.ok(h.state.report.parentCommunication.deliveries.every(item=>item.status==='accepted'));
+  assert.equal(h.state.report.parentCommunication.sentTo.length,2);
+});
+test('transport rejection persists failure and reports zero accepted recipients',async()=>{
+  const h=harness();h.state.transportRejected=true;
+  const response=await h.request('reports','post','/:id/send-email',{body:{}});
+  assert.equal(response.statusCode,502);assert.equal(response.body.outcome,'delivery_failure');assert.equal(response.body.data.acceptedCount,0);
+  assert.equal(h.state.report.parentCommunication.deliveries[0].status,'failed');assert.equal(h.state.report.status,'approved');
+});
+test('legacy sentTo state is reconciled without resending an already accepted guardian',async()=>{
+  const h=harness();h.state.report.parentCommunication={isSent:true,sentAt:new Date(),sentTo:[{parentId:parent,email:'parent@test.local',method:'email'}]};
+  const response=await h.request('reports','post','/:id/send-email',{body:{}});
+  assert.equal(response.body.outcome,'sent');assert.equal(h.calls.email.length,0);assert.equal(h.state.report.parentCommunication.deliveries.length,1);assert.equal(h.state.report.parentCommunication.deliveries[0].status,'accepted');
 });
 test('parent PDF uses verified bytes and denies another parent or missing artifact',async()=>{
   const h=harness(report('sent'));h.state.report.pdfArtifact={key:'test.pdf'};h.state.actor.email='parent@test.local';
