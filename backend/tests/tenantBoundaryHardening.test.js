@@ -162,7 +162,9 @@ function messagesHarness({ crossTenantRecipient = false, crossTenantStudent = fa
   const router = loadRoute('messages.js', {
     '../models/Message': Message, '../models/Conversation': Conversation, '../models/User': User,
     '../middleware/auth': auth, '../utils/logger': { logger },
-    '../services/firebaseService': { async sendNotificationToUser() {} }
+    '../middleware/lifecycleAuthorization': { requireActiveOrganization: (_req, _res, next) => next() },
+    '../services/firebaseService': { async sendNotificationToUser() {} },
+    '../services/guardianAccessService': { async authorizeGuardianParticipant() { return { allowed: true }; } }
   });
   return { app: appFor(router), writes: () => ({ conversationWrites, messageWrites }) };
 }

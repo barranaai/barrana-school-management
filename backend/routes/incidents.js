@@ -9,8 +9,8 @@
  */
 
 const express = require('express');
-const mongoose = require('mongoose');
 const router = express.Router();
+const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -131,8 +131,8 @@ function ensureNotLocked(incident, res) {
   return true;
 }
 
-/** Resolve and authorize an incident before notification side effects run. */
-async function authorizeIncidentNotification(req, res, next) {
+/** Resolve and authorize an incident before any mutation or upload runs. */
+async function authorizeIncidentMutation(req, res, next) {
   try {
     const schoolId = scopeSchoolId(req.user, req.body?.schoolId || req.query?.schoolId);
     if (!schoolId) {
@@ -151,6 +151,17 @@ async function authorizeIncidentNotification(req, res, next) {
   } catch (_error) {
     return res.status(404).json({ success: false, error: 'Incident not found' });
   }
+}
+
+/** Validate every involved child before an incident is created or changed. */
+async function validateIncidentParticipants(studentsInvolved, schoolId) {
+  if (!Array.isArray(studentsInvolved) || studentsInvolved.length === 0) return false;
+  const ids = [...new Set(studentsInvolved.map(item => String(item?.studentId || '')))];
+  if (ids.some(id => !id || !mongoose.isValidObjectId(id))) return false;
+  const participants = await User.find({
+    _id: { $in: ids }, schoolId, role: 'student', isActive: true,
+  }).select('_id').lean();
+  return participants.length === ids.length;
 }
 
 /** Resolve an organization for historical incident reads, including inactive organizations. */
@@ -324,18 +335,7 @@ router.get('/:id', protect, async (req, res) => {
         (s.studentId?._id || s.studentId)?.toString()
       );
       let allowed = false;
-      for (const childId of involvedStudentIds) {
-        const access = await authorizeGuardianParticipant(
-          req.user,
-          childId,
-          'incidents',
-          { allowInactiveParticipant: true }
-        );
-        if (access.allowed) {
-          allowed = true;
-          break;
-        }
-      }
+      for (const childId of involvedStudentIds) if ((await authorizeGuardianParticipant(req.user, childId, 'incidents', { allowInactiveParticipant: true })).allowed) { allowed = true; break; }
       if (!allowed) return res.status(404).json({ success: false, error: 'Incident not found' });
     }
 
@@ -354,6 +354,7 @@ router.post(
   '/',
   protect,
   authorize('teacher', 'school_admin', 'super_admin'),
+  requireActiveOrganization,
   [
     body('occurredAt').isISO8601().withMessage('occurredAt must be ISO 8601'),
     body('incidentType').isIn(IncidentReport.INCIDENT_TYPES).withMessage('Invalid incident type'),
@@ -374,9 +375,12 @@ router.post(
         return res.status(400).json({ success: false, error: 'Validation failed', errors: errors.array() });
       }
 
-      const requesterSchoolId = normalizeSchoolId(req.user.schoolId);
+      const requesterSchoolId = normalizeSchoolId(scopeSchoolId(req.user, req.body?.schoolId || req.query?.schoolId));
       if (!requesterSchoolId) {
         return res.status(400).json({ success: false, error: 'No school context found for requester.' });
+      }
+      if (!await validateIncidentParticipants(req.body.studentsInvolved, requesterSchoolId)) {
+        return res.status(400).json({ success: false, error: 'Every involved participant must be active and belong to the selected organization.' });
       }
 
       const incident = new IncidentReport({
@@ -457,21 +461,14 @@ router.put(
   '/:id',
   protect,
   authorize('teacher', 'school_admin', 'super_admin'),
+  requireActiveOrganization,
+  authorizeIncidentMutation,
   async (req, res) => {
     try {
-      const incident = await IncidentReport.findById(req.params.id);
-      if (!incident) {
-        return res.status(404).json({ success: false, error: 'Incident not found' });
-      }
+      const incident = req.incident;
       if (!ensureNotLocked(incident, res)) return;
-
-      const requesterSchoolId = normalizeSchoolId(req.user.schoolId);
-      const incidentSchoolId = normalizeSchoolId(incident.schoolId);
-      if (req.user.role !== 'super_admin' && requesterSchoolId !== incidentSchoolId) {
-        return res.status(403).json({ success: false, error: 'Forbidden' });
-      }
-      if (req.user.role === 'teacher' && incident.reportedBy.toString() !== req.user._id.toString()) {
-        return res.status(403).json({ success: false, error: 'Teachers can only edit incidents they reported.' });
+      if (req.body.studentsInvolved !== undefined && !await validateIncidentParticipants(req.body.studentsInvolved, incident.schoolId)) {
+        return res.status(400).json({ success: false, error: 'Every involved participant must be active and belong to the selected organization.' });
       }
 
       // Whitelist of mutable fields to prevent privileged field tampering.
@@ -513,7 +510,7 @@ router.post(
   protect,
   authorize('teacher', 'school_admin', 'super_admin'),
   requireActiveOrganization,
-  authorizeIncidentNotification,
+  authorizeIncidentMutation,
   async (req, res) => {
     try {
       const incident = req.incident;
@@ -662,10 +659,11 @@ router.post(
   '/:id/resolve',
   protect,
   authorize('school_admin', 'super_admin', 'teacher'),
+  requireActiveOrganization,
+  authorizeIncidentMutation,
   async (req, res) => {
     try {
-      const incident = await IncidentReport.findById(req.params.id);
-      if (!incident) return res.status(404).json({ success: false, error: 'Incident not found' });
+      const incident = req.incident;
       if (!ensureNotLocked(incident, res)) return;
 
       incident.status = 'resolved';
@@ -691,10 +689,11 @@ router.post(
   '/:id/review',
   protect,
   authorize('school_admin', 'super_admin'),
+  requireActiveOrganization,
+  authorizeIncidentMutation,
   async (req, res) => {
     try {
-      const incident = await IncidentReport.findById(req.params.id);
-      if (!incident) return res.status(404).json({ success: false, error: 'Incident not found' });
+      const incident = req.incident;
       if (!ensureNotLocked(incident, res)) return;
 
       incident.reviewedBy = req.user._id;
@@ -723,10 +722,11 @@ router.post(
   '/:id/lock',
   protect,
   authorize('school_admin', 'super_admin'),
+  requireActiveOrganization,
+  authorizeIncidentMutation,
   async (req, res) => {
     try {
-      const incident = await IncidentReport.findById(req.params.id);
-      if (!incident) return res.status(404).json({ success: false, error: 'Incident not found' });
+      const incident = req.incident;
       const lock = req.body.lock !== false;
       incident.isLocked = lock;
       incident.lockedAt = lock ? new Date() : undefined;
@@ -751,17 +751,12 @@ router.post(
   '/:id/media',
   protect,
   authorize('teacher', 'school_admin', 'super_admin'),
+  requireActiveOrganization,
+  authorizeIncidentMutation,
   upload.array('media', MAX_INCIDENT_ATTACHMENTS),
   async (req, res) => {
     try {
-      const incident = await IncidentReport.findById(req.params.id);
-      if (!incident) {
-        // Clean up uploaded files since we're rejecting.
-        for (const f of req.files || []) {
-          try { fs.existsSync(f.path) && fs.unlinkSync(f.path); } catch { /* noop */ }
-        }
-        return res.status(404).json({ success: false, error: 'Incident not found' });
-      }
+      const incident = req.incident;
       if (!ensureNotLocked(incident, res)) {
         for (const f of req.files || []) {
           try { fs.existsSync(f.path) && fs.unlinkSync(f.path); } catch { /* noop */ }
@@ -813,10 +808,11 @@ router.delete(
   '/:id',
   protect,
   authorize('school_admin', 'super_admin'),
+  requireActiveOrganization,
+  authorizeIncidentMutation,
   async (req, res) => {
     try {
-      const incident = await IncidentReport.findById(req.params.id);
-      if (!incident) return res.status(404).json({ success: false, error: 'Incident not found' });
+      const incident = req.incident;
       if (incident.isLocked) {
         return res.status(423).json({
           success: false,

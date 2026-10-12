@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { protect, authorize } = require('../middleware/auth');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const { scopeSchoolId } = require('../middleware/resourceAuthorization');
 const PlannedSession = require('../models/PlannedSession');
 const Roadmap = require('../models/Roadmap');
@@ -43,10 +44,10 @@ router.get('/:roadmapId/sessions', authorize(...readers), async (req, res) => {
 router.get('/:id', authorize(...readers), async (req, res) => {
   try { const schoolId = tenant(req, req.query.schoolId); if (!validId(schoolId) || !validId(req.params.id)) return res.status(404).json({ success: false, message: 'Planned session not found' }); const data = await PlannedSession.findOne({ _id: req.params.id, schoolId }); if (!data) return res.status(404).json({ success: false, message: 'Planned session not found' }); res.json({ success: true, data }); } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
-router.post('/:roadmapId/sessions', authorize(...admins), async (req, res) => {
+router.post('/:roadmapId/sessions', authorize(...admins), requireActiveOrganization, async (req, res) => {
   try { const schoolId = tenant(req, req.body.schoolId); const roadmap = await roadmapFor(req, req.params.roadmapId, schoolId); if (!roadmap || roadmap.status !== 'active') return res.status(400).json({ success: false, message: 'An active roadmap is required' }); const err = await validateObjectives(req.body.objectives || [], roadmap); if (err) return res.status(400).json({ success: false, message: err }); const data = await PlannedSession.create({ ...req.body, schoolId, roadmapId: roadmap._id, roadmapVersion: roadmap.version, createdBy: req.user._id, updatedBy: req.user._id, status: 'draft' }); res.status(201).json({ success: true, data }); } catch (e) { res.status(400).json({ success: false, message: e.code === 11000 ? 'Session sequence already exists for this roadmap' : e.message }); }
 });
-router.patch('/:id/activate', authorize(...admins), async (req, res) => {
+router.patch('/:id/activate', authorize(...admins), requireActiveOrganization, async (req, res) => {
   try {
     const schoolId = tenant(req, req.body?.schoolId || req.query.schoolId);
     if (!validId(schoolId) || !validId(req.params.id)) return res.status(404).json({ success: false, message: 'Planned session not found' });
@@ -65,10 +66,10 @@ router.patch('/:id/activate', authorize(...admins), async (req, res) => {
     res.json({ success: true, data });
   } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
-router.put('/:id', authorize(...admins), async (req, res) => {
+router.put('/:id', authorize(...admins), requireActiveOrganization, async (req, res) => {
   try { const schoolId = tenant(req, req.body.schoolId || req.query.schoolId); if (!validId(schoolId) || !validId(req.params.id)) return res.status(404).json({ success: false, message: 'Planned session not found' }); const current = await PlannedSession.findOne({ _id: req.params.id, schoolId }); if (!current) return res.status(404).json({ success: false, message: 'Planned session not found' }); if (current.status !== 'draft') return res.status(409).json({ success: false, message: 'Only draft planned sessions are editable' }); const roadmap = await roadmapFor(req, current.roadmapId, schoolId); if (!roadmap || roadmap.version !== current.roadmapVersion) return res.status(409).json({ success: false, message: 'Roadmap version is no longer available' }); const body = { ...req.body }; delete body.schoolId; delete body.roadmapId; delete body.roadmapVersion; delete body.sequence; delete body.status; delete body.createdBy; delete body.updatedBy; delete body._id; delete body.__v; if (body.objectives) { const err = await validateObjectives(body.objectives, roadmap); if (err) return res.status(400).json({ success: false, message: err }); } Object.assign(current, body, { updatedBy: req.user._id }); await current.save(); res.json({ success: true, data: current }); } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
-router.delete('/:id', authorize(...admins), async (req, res) => {
+router.delete('/:id', authorize(...admins), requireActiveOrganization, async (req, res) => {
   try { const schoolId = tenant(req, req.body?.schoolId || req.query.schoolId); if (!validId(schoolId) || !validId(req.params.id)) return res.status(404).json({ success: false, message: 'Planned session not found' }); const data = await PlannedSession.findOneAndUpdate({ _id: req.params.id, schoolId, status: { $ne: 'archived' } }, { $set: { status: 'archived', updatedBy: req.user._id } }, { new: true }); if (!data) return res.status(404).json({ success: false, message: 'Planned session not found' }); res.json({ success: true, data }); } catch (e) { res.status(400).json({ success: false, message: e.message }); }
 });
 module.exports = router;

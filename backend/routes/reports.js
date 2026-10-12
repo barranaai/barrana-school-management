@@ -41,6 +41,31 @@ const MAX_REPORT_ATTACHMENTS = 10;
 
 const reportSchoolId = (req, source = req.query) => scopeSchoolId(req.user, source?.schoolId);
 
+const reportMediaUploadDir = () => process.env.REPORT_MEDIA_UPLOAD_DIR || 'uploads/media';
+
+async function cleanupRequestUploads(req) {
+  const files = Array.isArray(req.files) ? req.files : (req.file ? [req.file] : []);
+  await Promise.all(files.map(async file => {
+    if (!file?.path) return;
+    try { await fs.promises.unlink(file.path); }
+    catch (error) { if (error.code !== 'ENOENT') logger.warn('Failed to clean up rejected report upload', { service: 'reports', code: error.code || 'UPLOAD_CLEANUP_FAILED' }); }
+  }));
+}
+
+async function authorizeReportMediaUpload(req, res, next) {
+  try {
+    const schoolId = scopeSchoolId(req.user, req.query?.schoolId);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    const report = await Report.findOne({ _id: req.params.reportId, schoolId });
+    if (!report || !canAccessReport(req.user, report)) return res.status(404).json({ success: false, message: 'Report not found' });
+    if (report.progressId && ['approved', 'sent', 'archived'].includes(report.status)) return res.status(409).json({ success: false, message: 'Finalized reports cannot have media changed' });
+    req.report = report;
+    next();
+  } catch (_error) {
+    return res.status(404).json({ success: false, message: 'Report not found' });
+  }
+}
+
 async function progressReportContext(progressId, schoolId) {
   const progress = await Progress.findOne({ _id: progressId, schoolId });
   if (!progress) return null;
@@ -154,7 +179,7 @@ try {
 // Configure multer for file uploads with report ID
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = 'uploads/media';
+    const uploadDir = reportMediaUploadDir();
     // Create directory if it doesn't exist
     try {
       if (!fs.existsSync(uploadDir)) {
@@ -178,7 +203,7 @@ const storage = multer.diskStorage({
 // Configure multer for temporary file uploads (no report ID)
 const tempStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = 'uploads/media';
+    const uploadDir = reportMediaUploadDir();
     console.log('Temp storage destination:', uploadDir);
     // Create directory if it doesn't exist
     try {
@@ -237,19 +262,23 @@ const tempUpload = multer({
 const tempUploadWithErrorHandling = (req, res, next) => {
   tempUpload(req, res, (err) => {
     if (err instanceof multer.MulterError) {
-      console.error('Multer error:', err);
-      return res.status(400).json({
-        success: false,
-        message: `File upload error: ${err.message}`
-      });
+      logger.warn('Temporary report media upload rejected', { service: 'reports', code: err.code || 'UPLOAD_LIMIT' });
+      return cleanupRequestUploads(req).then(() => res.status(400).json({ success: false, message: `File upload error: ${err.message}` }));
     } else if (err) {
-      console.error('Other upload error:', err);
-      return res.status(500).json({
-        success: false,
-        message: `Upload error: ${err.message}`
-      });
+      logger.error('Temporary report media upload failed', { service: 'reports', code: err.code || 'UPLOAD_FAILED' });
+      return cleanupRequestUploads(req).then(() => res.status(500).json({ success: false, message: `Upload error: ${err.message}` }));
     }
     next();
+  });
+};
+
+const reportUploadWithErrorHandling = (req, res, next) => {
+  upload.array('media', 10)(req, res, err => {
+    if (!err) return next();
+    cleanupRequestUploads(req).then(() => res.status(err instanceof multer.MulterError ? 400 : 500).json({
+      success: false,
+      message: err instanceof multer.MulterError ? `File upload error: ${err.message}` : `Upload error: ${err.message}`
+    }));
   });
 };
 
@@ -432,17 +461,8 @@ const shouldOptimize = (filePath, fileSize) => {
 // @desc    Temporary media upload endpoint (before report creation)
 // @route   POST /api/reports/temp-media
 // @access  Private (authenticated users)
-router.post('/temp-media', protect, tempUploadWithErrorHandling, async (req, res) => {
+router.post('/temp-media', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, tempUploadWithErrorHandling, async (req, res) => {
   try {
-    console.log('=== TEMP MEDIA UPLOAD STARTED ===');
-    console.log('Temp media upload request:', {
-      user: req.user?._id || 'no-auth',
-      filesCount: req.files ? req.files.length : 0,
-      files: req.files ? req.files.map(f => ({ name: f.originalname, size: f.size, type: f.mimetype })) : []
-    });
-    console.log('Request headers:', req.headers);
-    console.log('Request body keys:', Object.keys(req.body || {}));
-
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
         success: false,
@@ -453,13 +473,6 @@ router.post('/temp-media', protect, tempUploadWithErrorHandling, async (req, res
     const uploadedMedia = [];
 
     for (const file of req.files) {
-      console.log('Processing temp file:', {
-        filename: file.filename,
-        originalName: file.originalname,
-        size: file.size,
-        path: file.path
-      });
-
       const mediaData = {
         id: Math.random().toString(36).substr(2, 9), // Generate temporary ID
         filename: file.filename,
@@ -472,12 +485,9 @@ router.post('/temp-media', protect, tempUploadWithErrorHandling, async (req, res
       };
 
       uploadedMedia.push(mediaData);
-      console.log('Temp file processed successfully:', mediaData);
     }
 
-    console.log('Temp upload completed:', {
-      uploadedCount: uploadedMedia.length
-    });
+    logger.info('Temporary report media upload completed', { service: 'reports', fileCount: uploadedMedia.length });
 
     res.status(201).json({
       success: true,
@@ -486,11 +496,8 @@ router.post('/temp-media', protect, tempUploadWithErrorHandling, async (req, res
     });
 
   } catch (error) {
-    console.error('Temp media upload error:', {
-      error: error.message,
-      stack: error.stack,
-      user: req.user?._id || 'no-auth'
-    });
+    await cleanupRequestUploads(req);
+    logger.error('Temporary report media upload failed', { service: 'reports', code: error.code || 'UPLOAD_FAILED' });
 
     res.status(500).json({
       success: false,
@@ -1461,7 +1468,7 @@ router.get('/test-media/:filename', developmentOnly, protect, async (req, res) =
 // @desc    Test temp-media endpoint (without auth)
 // @route   POST /api/reports/test-temp-media
 // @access  Public (for testing)
-router.post('/test-temp-media', developmentOnly, protect, tempUploadWithErrorHandling, async (req, res) => {
+router.post('/test-temp-media', developmentOnly, protect, requireActiveOrganization, tempUploadWithErrorHandling, async (req, res) => {
   try {
     console.log('=== TEST TEMP MEDIA UPLOAD ===');
     console.log('Files received:', req.files ? req.files.length : 0);
@@ -1500,7 +1507,7 @@ router.post('/test-temp-media', developmentOnly, protect, tempUploadWithErrorHan
 // @desc    Test upload endpoint
 // @route   POST /api/reports/test-upload
 // @access  Public (for testing)
-router.post('/test-upload', developmentOnly, protect, upload.array('media', 1), async (req, res) => {
+router.post('/test-upload', developmentOnly, protect, requireActiveOrganization, upload.array('media', 1), async (req, res) => {
   try {
     console.log('Test upload request:', {
       filesCount: req.files ? req.files.length : 0,
@@ -1541,45 +1548,22 @@ router.post('/test-upload', developmentOnly, protect, upload.array('media', 1), 
 // @desc    Upload media files for a report
 // @route   POST /api/reports/:reportId/media
 // @access  Private (teacher who created the report, school_admin, super_admin)
-router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 'super_admin'), upload.array('media', 10), async (req, res) => {
+router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, authorizeReportMediaUpload, reportUploadWithErrorHandling, async (req, res) => {
   try {
     const { reportId } = req.params;
-    
-    console.log('Media upload request:', {
-      reportId,
-      user: req.user._id,
-      filesCount: req.files ? req.files.length : 0,
-      files: req.files ? req.files.map(f => ({ name: f.originalname, size: f.size, type: f.mimetype })) : []
-    });
-    
-    // Find the report
-    const report = await Report.findById(reportId);
-    if (!report) {
-      console.log('Report not found:', reportId);
-      return res.status(404).json({
-        success: false,
-        message: 'Report not found'
-      });
-    }
 
-    if (!canAccessReport(req.user, report))
-      return res.status(404).json({ success: false, message: 'Report not found' });
-    if (report.progressId && ['approved', 'sent', 'archived'].includes(report.status)) return res.status(409).json({ success: false, message: 'Finalized reports cannot have media changed' });
-    // Check if user has permission to upload media for this report
-    if (req.user.role === 'teacher' && report.teacherId.toString() !== req.user._id.toString()) {
-      console.log('Permission denied for user:', req.user._id, 'report teacher:', report.teacherId);
-      return res.status(403).json({
-        success: false,
-        message: 'You can only upload media for reports you created'
-      });
-    }
+    const report = req.report;
 
     if (!req.files || req.files.length === 0) {
-      console.log('No files uploaded');
       return res.status(400).json({
         success: false,
         message: 'No files uploaded'
       });
+    }
+
+    if (req.files.some(file => !file.path || !file.filename || !file.originalname || !file.mimetype || !Number.isFinite(file.size))) {
+      await cleanupRequestUploads(req);
+      return res.status(400).json({ success: false, message: 'Invalid attachment metadata' });
     }
 
     // Enforce max attachment cap before persisting any new files.
@@ -1587,15 +1571,7 @@ router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 's
     const currentCount = report.attachments?.length || 0;
     const incomingCount = req.files.length;
     if (currentCount + incomingCount > MAX_REPORT_ATTACHMENTS) {
-      for (const f of req.files) {
-        try {
-          if (f && f.path && fs.existsSync(f.path)) {
-            fs.unlinkSync(f.path);
-          }
-        } catch (cleanupErr) {
-          console.warn('Failed to clean up rejected upload:', f?.path, cleanupErr.message);
-        }
-      }
+      await cleanupRequestUploads(req);
       return res.status(400).json({
         success: false,
         message: `A report cannot have more than ${MAX_REPORT_ATTACHMENTS} media attachments. This report already has ${currentCount}; ${incomingCount} more would exceed the limit.`,
@@ -1611,13 +1587,6 @@ router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 's
     const uploadedMedia = [];
 
     for (const file of req.files) {
-      console.log('Processing file:', {
-        filename: file.filename,
-        originalName: file.originalname,
-        size: file.size,
-        path: file.path
-      });
-
       const mediaData = {
         id: Math.random().toString(36).substr(2, 9), // Generate a unique ID
         filename: file.filename,
@@ -1631,19 +1600,9 @@ router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 's
       // Add to report attachments
       report.attachments.push(mediaData);
       uploadedMedia.push(mediaData);
-      
-      console.log('File processed successfully:', mediaData);
     }
 
-    console.log('Saving report with attachments:', {
-      reportId,
-      attachmentsCount: report.attachments.length,
-      uploadedMediaCount: uploadedMedia.length
-    });
-
     await report.save();
-
-    console.log('Report saved successfully');
 
     logger.info(`Media uploaded for report ${reportId}`, {
       service: 'reports',
@@ -1659,17 +1618,10 @@ router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 's
     });
 
   } catch (error) {
-    console.error('Error uploading media:', {
-      error: error.message,
-      stack: error.stack,
-      user: req.user._id,
-      reportId: req.params.reportId
-    });
-
+    await cleanupRequestUploads(req);
     logger.error('Error uploading media', {
       service: 'reports',
-      error: error.message,
-      user: req.user._id,
+      code: error.code || 'UPLOAD_FAILED',
       reportId: req.params.reportId
     });
 
@@ -1733,12 +1685,13 @@ router.get('/:reportId/media', protect, authorize('teacher', 'school_admin', 'su
 // @desc    Delete a media file from a report
 // @route   DELETE /api/reports/:reportId/media/:mediaId
 // @access  Private (teacher who created the report, school_admin, super_admin)
-router.delete('/:reportId/media/:mediaId', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+router.delete('/:reportId/media/:mediaId', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
     const { reportId, mediaId } = req.params;
-    
-    // Find the report
-    const report = await Report.findById(reportId);
+
+    const schoolId = scopeSchoolId(req.user, req.query?.schoolId || req.body?.schoolId);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    const report = await Report.findOne({ _id: reportId, schoolId });
     if (!report) {
       return res.status(404).json({
         success: false,

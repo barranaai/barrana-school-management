@@ -9,15 +9,99 @@ const OpenAI = require('openai');
 const User = require('../models/User');
 const Report = require('../models/Report');
 const ReportTemplate = require('../models/ReportTemplate');
-const { canAccessStudent, canAccessReport } = require('../middleware/resourceAuthorization');
+const { canAccessStudent, canAccessReport, sameId, scopeSchoolId } = require('../middleware/resourceAuthorization');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
+const { canTeacherAccessParticipantReporting } = require('../services/reportParticipantAuthorization');
 
 router.use(protect, authorize('teacher', 'school_admin', 'super_admin'));
+
+const temporaryAudioDirectory = () => process.env.AI_AUDIO_UPLOAD_DIR || path.join(__dirname, '../uploads');
+const publicAudioDirectory = () => process.env.AI_AUDIO_PUBLIC_DIR || path.join(__dirname, '../uploads/audio');
+
+const removeFile = filePath => {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (_error) {
+    logger.warn('Unable to remove an AI audio request file', { service: 'ai-audio' });
+  }
+};
+
+const cleanupRequestAudio = (req, extraPaths = []) => {
+  const requestPaths = [req.file?.path, ...(req.aiAudioCreatedPaths || []), ...extraPaths];
+  [...new Set(requestPaths.filter(Boolean))].forEach(removeFile);
+};
+
+const normalizeName = value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const participantName = participant => [participant?.firstName, participant?.lastName].filter(Boolean).join(' ').trim();
+
+const requireAiProvider = (_req, res, next) => {
+  if (!openai) {
+    return res.status(503).json({
+      success: false,
+      message: 'AI service is not available. Please configure OpenAI API key.'
+    });
+  }
+  next();
+};
+
+const authorizeAudioContext = async (req, res, next) => {
+  try {
+    const schoolId = scopeSchoolId(req.user, req.query.schoolId);
+    if (!schoolId) {
+      return res.status(400).json({ success: false, message: 'Organization context is required' });
+    }
+
+    const requestedStudentId = req.query.studentId;
+    const requestedReportId = req.query.reportId;
+    if (!requestedStudentId && !requestedReportId) {
+      return res.status(400).json({ success: false, message: 'Participant or report context is required' });
+    }
+
+    let report = null;
+    if (requestedReportId) {
+      report = await Report.findOne({ _id: requestedReportId, schoolId });
+      if (!report || !canAccessReport(req.user, report)) {
+        return res.status(404).json({ success: false, message: 'Report context not found' });
+      }
+    }
+
+    const authoritativeStudentId = report?.studentId || requestedStudentId;
+    if (requestedStudentId && report && !sameId(requestedStudentId, report.studentId)) {
+      return res.status(404).json({ success: false, message: 'Report context not found' });
+    }
+
+    const participant = await User.findOne({
+      _id: authoritativeStudentId,
+      schoolId,
+      role: 'student',
+      isActive: { $ne: false }
+    });
+    if (!participant) {
+      return res.status(404).json({ success: false, message: 'Participant context not found' });
+    }
+
+    if (req.user.role === 'teacher' && !await canTeacherAccessParticipantReporting(req.user, participant)) {
+      return res.status(404).json({ success: false, message: 'Participant context not found' });
+    }
+
+    const authoritativeName = participantName(participant);
+    if (req.query.studentName && normalizeName(req.query.studentName) !== normalizeName(authoritativeName)) {
+      return res.status(400).json({ success: false, message: 'Participant context does not match' });
+    }
+
+    req.aiAudioContext = { schoolId, participant, report, studentName: authoritativeName };
+    next();
+  } catch (_error) {
+    return res.status(404).json({ success: false, message: 'Audio context not found' });
+  }
+};
 
 // Configure multer for file uploads
 const upload = multer({
   storage: multer.diskStorage({
     destination: function (req, file, cb) {
-      const uploadDir = path.join(__dirname, '../uploads');
+      const uploadDir = temporaryAudioDirectory();
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
@@ -40,6 +124,27 @@ const upload = multer({
     }
   }
 });
+
+const receiveAudio = (req, res, next) => {
+  upload.single('audio')(req, res, error => {
+    if (!error) return next();
+    cleanupRequestAudio(req);
+    const isLimitError = error instanceof multer.MulterError;
+    return res.status(400).json({
+      success: false,
+      message: isLimitError ? 'Audio upload limit exceeded' : 'Only supported audio files are allowed'
+    });
+  });
+};
+
+const validateUploadedAudioContext = (req, res, next) => {
+  const suppliedName = req.body?.studentName;
+  if (suppliedName && normalizeName(suppliedName) !== normalizeName(req.aiAudioContext?.studentName)) {
+    cleanupRequestAudio(req);
+    return res.status(400).json({ success: false, message: 'Participant context does not match' });
+  }
+  next();
+};
 
 // Initialize OpenAI (gracefully handle missing API key)
 let openai = null;
@@ -129,17 +234,8 @@ router.post('/generate-report', async (req, res) => {
 });
 
 // Audio Upload Endpoint
-router.post('/upload-audio', upload.single('audio'), async (req, res) => {
+router.post('/upload-audio', requireActiveOrganization, authorizeAudioContext, requireAiProvider, receiveAudio, validateUploadedAudioContext, async (req, res) => {
   try {
-    if (!openai) {
-      return res.status(503).json({
-        success: false,
-        message: 'AI service is not available. Please configure OpenAI API key.'
-      });
-    }
-    
-    console.log('🎤 Audio Upload Request');
-    
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -147,26 +243,23 @@ router.post('/upload-audio', upload.single('audio'), async (req, res) => {
       });
     }
 
-    const { studentName, reportId } = req.body;
+    const { report, participant, studentName } = req.aiAudioContext;
     const audioFilePath = req.file.path;
     const fileName = req.file.filename;
-    
-    console.log('📁 Uploaded audio file:', audioFilePath);
-    console.log('👤 Student name:', studentName);
-    console.log('📄 File name:', fileName);
 
     // In a production environment, you would upload this to a cloud storage service
     // For now, we'll create a public URL that can be accessed by the web app
     const audioUrl = `/uploads/audio/${fileName}`;
     
     // Copy file to a public uploads directory
-    const uploadsDir = path.join(__dirname, '../uploads/audio');
+    const uploadsDir = publicAudioDirectory();
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
     
     const publicPath = path.join(uploadsDir, fileName);
     fs.copyFileSync(audioFilePath, publicPath);
+    req.aiAudioCreatedPaths = [publicPath];
     
     // Clean up the temporary file
     fs.unlinkSync(audioFilePath);
@@ -179,7 +272,8 @@ router.post('/upload-audio', upload.single('audio'), async (req, res) => {
       mimeType: req.file.mimetype,
       uploadedAt: new Date().toISOString(),
       studentName,
-      reportId
+      studentId: String(participant._id),
+      reportId: report ? String(report._id) : undefined
     };
 
     res.status(200).json({
@@ -188,12 +282,8 @@ router.post('/upload-audio', upload.single('audio'), async (req, res) => {
       data: audioData
     });
   } catch (error) {
-    console.error('Error uploading audio:', error);
-    
-    // Clean up uploaded file if it exists
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
+    logger.error('AI audio upload failed', { service: 'ai-audio', code: error.code || 'UPLOAD_FAILED' });
+    cleanupRequestAudio(req);
     
     res.status(500).json({
       success: false,
@@ -203,17 +293,8 @@ router.post('/upload-audio', upload.single('audio'), async (req, res) => {
 });
 
 // Voice Processing with actual transcription
-router.post('/process-voice', upload.single('audio'), async (req, res) => {
+router.post('/process-voice', requireActiveOrganization, authorizeAudioContext, requireAiProvider, receiveAudio, validateUploadedAudioContext, async (req, res) => {
   try {
-    if (!openai) {
-      return res.status(503).json({
-        success: false,
-        message: 'AI service is not available. Please configure OpenAI API key.'
-      });
-    }
-    
-    console.log('🎤 Voice Processing Request');
-    
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -221,20 +302,9 @@ router.post('/process-voice', upload.single('audio'), async (req, res) => {
       });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('OpenAI API key not configured');
-      return res.status(500).json({
-        success: false,
-        message: 'Transcription service not configured'
-      });
-    }
-
-    const { studentName, language = 'en' } = req.body;
+    const { language = 'en' } = req.body;
+    const { studentName } = req.aiAudioContext;
     const audioFilePath = req.file.path;
-    
-    console.log('📁 Processing audio file:', audioFilePath);
-    console.log('👤 Student name:', studentName);
-    console.log('🌐 Language:', language);
 
     try {
       // Transcribe using OpenAI Whisper
@@ -247,8 +317,7 @@ router.post('/process-voice', upload.single('audio'), async (req, res) => {
         timestamp_granularities: ['segment']
       });
 
-      console.log('✅ Transcription successful');
-      console.log('📝 Transcription text:', transcription.text);
+      logger.info('AI audio transcription completed', { service: 'ai-audio' });
 
       // Clean up the uploaded file
       fs.unlinkSync(audioFilePath);
@@ -269,27 +338,18 @@ router.post('/process-voice', upload.single('audio'), async (req, res) => {
         data: voiceData
       });
     } catch (transcriptionError) {
-      console.error('❌ Transcription error:', transcriptionError);
-      
-      // Clean up the uploaded file even if transcription fails
-      if (fs.existsSync(audioFilePath)) {
-        fs.unlinkSync(audioFilePath);
-      }
+      logger.error('AI audio transcription failed', { service: 'ai-audio', code: transcriptionError.code || 'TRANSCRIPTION_FAILED' });
+      cleanupRequestAudio(req);
 
       // Return a more helpful error message
       res.status(500).json({
         success: false,
-        message: 'Failed to transcribe audio. Please check your audio file and try again.',
-        error: transcriptionError.message
+        message: 'Failed to transcribe audio. Please check your audio file and try again.'
       });
     }
   } catch (error) {
-    console.error('Error processing voice:', error);
-    
-    // Clean up uploaded file if it exists
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
+    logger.error('AI voice processing failed', { service: 'ai-audio', code: error.code || 'PROCESSING_FAILED' });
+    cleanupRequestAudio(req);
     
     res.status(500).json({
       success: false,

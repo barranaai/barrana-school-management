@@ -1,28 +1,66 @@
 const express = require('express');
 const router = express.Router();
-const { protect, authorize, authorizeSchool } = require('../middleware/auth');
+const mongoose = require('mongoose');
+const { protect, authorize } = require('../middleware/auth');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const User = require('../models/User');
 const Report = require('../models/Report');
 const { logger } = require('../utils/logger');
 const firebaseService = require('../services/firebaseService');
+const { canAccessReport, sameId, scopeSchoolId } = require('../middleware/resourceAuthorization');
+
+const approvalNotificationStatuses = new Set(['draft', 'review']);
+const fullName = user => [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
 
 // @desc    Send report approval notification to school admins
 // @route   POST /api/communication/report-approval-notification
-// @access  Private (Teachers, School Admins)
-router.post('/report-approval-notification', protect, authorize('teacher', 'school_admin'), authorizeSchool, async (req, res) => {
+// @access  Private (Teachers, School Admins, explicitly scoped Super Admins)
+router.post('/report-approval-notification', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
-    const { schoolId, reportData } = req.body;
-    
-    if (!schoolId || !reportData) {
+    const reportId = req.body.reportId || req.body.reportData?.reportId;
+    const schoolId = scopeSchoolId(req.user, req.query.schoolId || req.body.schoolId);
+
+    if (!schoolId) {
       return res.status(400).json({
         success: false,
-        message: 'School ID and report data are required'
+        message: 'Organization context is required'
       });
     }
+    if (!reportId) {
+      return res.status(400).json({ success: false, message: 'Report ID is required' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(reportId)) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    const report = await Report.findOne({ _id: reportId, schoolId })
+      .populate('studentId', 'firstName lastName schoolId role')
+      .populate('teacherId', 'firstName lastName schoolId role')
+      .populate('templateId', 'name');
+    if (!report || !canAccessReport(req.user, report)) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+    if (!approvalNotificationStatuses.has(report.status)) {
+      return res.status(409).json({ success: false, message: 'Report is not awaiting approval' });
+    }
+    if (!report.studentId || !report.teacherId ||
+      report.studentId.role !== 'student' ||
+      !sameId(report.studentId.schoolId, schoolId) ||
+      !sameId(report.teacherId.schoolId, schoolId)) {
+      return res.status(409).json({ success: false, message: 'Report approval context is incomplete' });
+    }
+
+    const reportData = {
+      reportId: String(report._id),
+      studentName: fullName(report.studentId),
+      teacherName: fullName(report.teacherId),
+      reportTitle: report.title || report.templateId?.name || 'Report',
+      createdAt: report.createdAt
+    };
 
     // Find all school admins for the given school
     const schoolAdmins = await User.find({
-      schoolId: schoolId,
+      schoolId,
       role: 'school_admin',
       isActive: true
     }).select('_id firstName lastName email');

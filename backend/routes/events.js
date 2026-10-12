@@ -7,13 +7,44 @@ const Event = require('../models/Event');
 const ParentGroup = require('../models/ParentGroup');
 const EventReminder = require('../models/EventReminder');
 const User = require('../models/User');
+const { eligibleGuardians } = require('../services/guardianAccessService');
+
+async function guardianRecipients(students, schoolId) {
+  const guardians = (await Promise.all(students.map(student => eligibleGuardians(student._id, 'communication')))).flat();
+  const scoped = guardians.filter(parent => parent.role === 'parent' && parent.isActive !== false && String(parent.schoolId) === String(schoolId));
+  return [...new Map(scoped.map(parent => [String(parent._id), parent])).values()];
+}
 const Class = require('../models/Class');
 const { protect, authorize } = require('../middleware/auth');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
+const { scopeSchoolId } = require('../middleware/resourceAuthorization');
 const { logger } = require('../utils/logger');
 const { sendEventReminder } = require('../services/notificationService');
 const notificationService = require('../services/notificationService');
 const recurringEventService = require('../services/recurringEventService');
 const firebaseService = require('../services/firebaseService');
+
+const EVENT_UPDATE_FIELDS = [
+  'title', 'description', 'startDate', 'endDate', 'reminderTime', 'category', 'location',
+  'targetType', 'targetGrade', 'targetClass', 'targetGroup', 'attachments', 'isRecurring',
+  'recurrencePattern', 'recurrenceInterval', 'recurrenceDays', 'recurrenceEndDate', 'recurrenceCount'
+];
+
+const requestedSchoolId = req => scopeSchoolId(req.user, req.body?.schoolId || req.query?.schoolId);
+
+async function validateEventTarget(event, schoolId) {
+  if (event.targetType === 'class') {
+    if (!event.targetClass || !await Class.findOne({ _id: event.targetClass, schoolId, isActive: true, status: 'active' })) {
+      return 'Target class was not found in this organization';
+    }
+  }
+  if (event.targetType === 'group') {
+    if (!event.targetGroup || !await ParentGroup.findOne({ _id: event.targetGroup, schoolId, isActive: true })) {
+      return 'Target group was not found in this organization';
+    }
+  }
+  return null;
+}
 
 // Configure multer for event attachments
 const storage = multer.diskStorage({
@@ -53,7 +84,7 @@ const upload = multer({
 // @desc    Upload event attachment
 // @route   POST /api/events/upload-attachment
 // @access  Private (school_admin, super_admin)
-router.post('/upload-attachment', protect, authorize('school_admin', 'super_admin'), upload.single('file'), async (req, res) => {
+router.post('/upload-attachment', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -131,7 +162,9 @@ router.get('/', protect, authorize('school_admin', 'teacher', 'super_admin'), as
 // @access  Private
 router.get('/:id', protect, async (req, res) => {
   try {
-    const event = await Event.findById(req.params.id)
+    const schoolId = requestedSchoolId(req);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    const event = await Event.findOne({ _id: req.params.id, schoolId })
       .populate('createdBy', 'firstName lastName email')
       .populate('targetClass', 'name grade')
       .populate('targetGroup', 'name');
@@ -160,8 +193,10 @@ router.get('/:id', protect, async (req, res) => {
 // @desc    Create new event
 // @route   POST /api/events
 // @access  Private (school_admin)
-router.post('/', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
+    const schoolId = requestedSchoolId(req);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
     const {
       title,
       description,
@@ -194,8 +229,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), async (req, 
     // Check if multi-day event
     const isMultiDay = new Date(startDate).toDateString() !== new Date(endDate).toDateString();
 
-    // Create event
-    const event = await Event.create({
+    const eventData = {
       title,
       description,
       startDate,
@@ -208,7 +242,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), async (req, 
       targetGrade,
       targetClass,
       targetGroup,
-      schoolId: req.user.schoolId,
+      schoolId,
       createdBy: req.user._id,
       attachments: attachments || [],
       isRecurring: isRecurring || false,
@@ -217,7 +251,16 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), async (req, 
       recurrenceDays: recurrenceDays || [],
       recurrenceEndDate: recurrenceEndDate || null,
       recurrenceCount: recurrenceCount || null
-    });
+    };
+
+    const targetError = await validateEventTarget(eventData, schoolId);
+    if (targetError) return res.status(400).json({ success: false, message: targetError });
+
+    // Resolve recipients before persisting so a lookup failure cannot be reported as successful delivery.
+    const recipients = await getEventRecipients(eventData);
+
+    // Create event
+    const event = await Event.create(eventData);
 
     logger.info(`Event created: ${event._id} by user ${req.user._id}`);
 
@@ -234,8 +277,6 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), async (req, 
       }
     }
 
-    // Get recipients based on target type
-    const recipients = await getEventRecipients(event);
     logger.info(`Found ${recipients.length} recipients for event ${event._id}`);
 
     // Send immediate reminders and push notifications
@@ -380,22 +421,16 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), async (req, 
 // @desc    Update event
 // @route   PUT /api/events/:id
 // @access  Private (school_admin)
-router.put('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
-    let event = await Event.findById(req.params.id);
+    const schoolId = requestedSchoolId(req);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    let event = await Event.findOne({ _id: req.params.id, schoolId });
 
     if (!event) {
       return res.status(404).json({
         success: false,
         message: 'Event not found'
-      });
-    }
-
-    // Check authorization
-    if (req.user.role !== 'super_admin' && event.schoolId.toString() !== req.user.schoolId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update this event'
       });
     }
 
@@ -426,14 +461,16 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), async (req
       event.isMultiDay;
 
     // Prepare update data
-    const updateData = {
-      ...req.body,
-      isMultiDay
-    };
+    const updateData = { isMultiDay };
+    for (const field of EVENT_UPDATE_FIELDS) if (Object.hasOwn(req.body, field)) updateData[field] = req.body[field];
+    const proposedEvent = { ...(event.toObject ? event.toObject() : event), ...updateData, schoolId };
+    const targetError = await validateEventTarget(proposedEvent, schoolId);
+    if (targetError) return res.status(400).json({ success: false, message: targetError });
+    const recipients = await getEventRecipients(proposedEvent);
 
     // Update event
-    const updatedEvent = await Event.findByIdAndUpdate(
-      req.params.id,
+    const updatedEvent = await Event.findOneAndUpdate(
+      { _id: req.params.id, schoolId },
       updateData,
       { new: true, runValidators: true }
     );
@@ -467,9 +504,6 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), async (req
     // Send update notifications based on changes
     if (changes.titleChanged || changes.dateChanged || changes.timeChanged || changes.recipientsChanged) {
       try {
-        // Get recipients for the updated event
-        const recipients = await getEventRecipients(updatedEvent);
-        
         if (recipients.length > 0) {
           // Send immediate update notification
           await notificationService.sendEventUpdateNotification(updatedEvent, recipients, changes);
@@ -515,9 +549,11 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), async (req
 // @desc    Delete event
 // @route   DELETE /api/events/:id
 // @access  Private (school_admin)
-router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
-    const event = await Event.findById(req.params.id);
+    const schoolId = requestedSchoolId(req);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    const event = await Event.findOne({ _id: req.params.id, schoolId });
 
     if (!event) {
       return res.status(404).json({
@@ -526,19 +562,9 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (
       });
     }
 
-    // Check authorization
-    if (req.user.role !== 'super_admin' && event.schoolId.toString() !== req.user.schoolId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to delete this event'
-      });
-    }
-
+    const recipients = await getEventRecipients(event);
     // Send deletion notifications before deleting
     try {
-      // Get recipients for the event
-      const recipients = await getEventRecipients(event);
-      
       if (recipients.length > 0) {
         // Send deletion notification
         await notificationService.sendEventDeletionNotification(event, recipients);
@@ -587,7 +613,11 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (
 // @access  Private (school_admin)
 router.get('/:id/reminders', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
   try {
-    const reminders = await EventReminder.find({ eventId: req.params.id })
+    const schoolId = requestedSchoolId(req);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    const event = await Event.findOne({ _id: req.params.id, schoolId }).select('_id');
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
+    const reminders = await EventReminder.find({ eventId: event._id })
       .populate('recipientId', 'firstName lastName')
       .sort({ createdAt: -1 });
 
@@ -638,20 +668,9 @@ async function getEventRecipients(event) {
           studentGrade: event.targetGrade,
           schoolId: event.schoolId,
           isActive: true
-        }).select('parentEmail');
-        
-        // Get unique parent emails
-        const gradeParentEmails = [...new Set(studentsInGrade.map(s => s.parentEmail).filter(Boolean))];
-        
-        // Fetch actual parent accounts
-        if (gradeParentEmails.length > 0) {
-          const gradeParents = await User.find({
-            role: 'parent',
-            email: { $in: gradeParentEmails },
-            schoolId: event.schoolId,
-            isActive: true
-          }).select('firstName lastName email phone phoneNumber preferences');
-          
+        }).select('_id');
+        const gradeParents = await guardianRecipients(studentsInGrade, event.schoolId);
+        if (gradeParents.length > 0) {
           recipients = gradeParents.map(parent => ({
             id: parent._id,
             _id: parent._id,
@@ -670,20 +689,9 @@ async function getEventRecipients(event) {
           classId: event.targetClass,
           schoolId: event.schoolId,
           isActive: true
-        }).select('parentEmail');
-        
-        // Get unique parent emails
-        const classParentEmails = [...new Set(studentsInClass.map(s => s.parentEmail).filter(Boolean))];
-        
-        // Fetch actual parent accounts
-        if (classParentEmails.length > 0) {
-          const classParents = await User.find({
-            role: 'parent',
-            email: { $in: classParentEmails },
-            schoolId: event.schoolId,
-            isActive: true
-          }).select('firstName lastName email phone phoneNumber preferences');
-          
+        }).select('_id');
+        const classParents = await guardianRecipients(studentsInClass, event.schoolId);
+        if (classParents.length > 0) {
           recipients = classParents.map(parent => ({
             id: parent._id,
             _id: parent._id,
@@ -697,9 +705,10 @@ async function getEventRecipients(event) {
 
       case 'group':
         // Get group members
-        const group = await ParentGroup.findById(event.targetGroup).populate('members.parentId', 'firstName lastName email phone phoneNumber preferences');
+        const group = await ParentGroup.findOne({ _id: event.targetGroup, schoolId: event.schoolId, isActive: true })
+          .populate('members.parentId', 'firstName lastName email phone phoneNumber preferences schoolId role isActive');
         if (group) {
-          recipients = group.members.map(m => ({
+          recipients = group.members.filter(m => m.parentId && m.parentId.role === 'parent' && m.parentId.isActive !== false && String(m.parentId.schoolId) === String(event.schoolId)).map(m => ({
             id: m.parentId._id,
             _id: m.parentId._id,
             name: `${m.parentId.firstName} ${m.parentId.lastName}`,
@@ -719,7 +728,7 @@ async function getEventRecipients(event) {
     return uniqueRecipients;
   } catch (error) {
     logger.error('Error getting event recipients:', error);
-    return [];
+    throw error;
   }
 }
 

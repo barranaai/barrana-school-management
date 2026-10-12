@@ -10,10 +10,14 @@
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { body, validationResult } = require('express-validator');
 const { protect, authorize } = require('../middleware/auth');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
+const { scopeSchoolId } = require('../middleware/resourceAuthorization');
 const AvailabilitySlot = require('../models/AvailabilitySlot');
 const User = require('../models/User');
+const { authorizedParticipants } = require('../services/guardianAccessService');
 const loggerUtils = require('../utils/logger');
 const logger = loggerUtils.logger;
 
@@ -28,13 +32,10 @@ function normalizeSchoolId(schoolId) {
 
 const POPULATE = [{ path: 'teacherId', select: 'firstName lastName email role' }];
 
-/** Teachers of all children whose parentEmail matches the parent's email. */
+/** Teachers of participants the guardian is currently allowed to access. */
 async function getTeacherIdsForParent(parentUser) {
-  const parentEmail = (parentUser.email || '').toLowerCase();
-  if (!parentEmail) return [];
-  const children = await User.find({ role: 'student', parentEmail })
-    .select('classId')
-    .lean();
+  const permitted = await authorizedParticipants(parentUser, 'meetings');
+  const children = await User.find({ _id: { $in: permitted.map(child => child._id) } }).select('classId').lean();
   if (children.length === 0) return [];
   const Class = require('../models/Class');
   const classIds = children.map((c) => c.classId).filter(Boolean);
@@ -61,11 +62,17 @@ router.post(
   '/',
   protect,
   authorize('teacher', 'school_admin', 'super_admin'),
+  requireActiveOrganization,
   async (req, res) => {
     try {
       const items = Array.isArray(req.body.slots) ? req.body.slots : [req.body];
-      const requesterSchoolId = normalizeSchoolId(req.user.schoolId);
-      const teacherId = req.user.role === 'teacher' ? req.user._id : req.body.teacherId || req.user._id;
+      const requesterSchoolId = scopeSchoolId(req.user, req.body.schoolId || req.query.schoolId);
+      if (!requesterSchoolId) return res.status(400).json({ success: false, error: 'Organization context is required' });
+      const teacherId = req.user.role === 'teacher' ? req.user._id : req.body.teacherId;
+      if (!teacherId) return res.status(400).json({ success: false, error: 'teacherId is required.' });
+      if (!mongoose.isValidObjectId(teacherId)) return res.status(400).json({ success: false, error: 'Invalid teacherId.' });
+      const teacher = await User.findOne({ _id: teacherId, schoolId: requesterSchoolId, role: 'teacher', isActive: true }).select('_id');
+      if (!teacher) return res.status(400).json({ success: false, error: 'Active teacher not found in this organization.' });
 
       // Basic validation per item
       const cleaned = [];
@@ -99,6 +106,7 @@ router.post(
       // Conflict check: reject if any new slot overlaps an existing
       // published or booked slot for the same teacher.
       const anyExisting = await AvailabilitySlot.find({
+        schoolId: requesterSchoolId,
         teacherId,
         status: { $in: ['published', 'booked'] },
         $or: cleaned.map((c) => ({
@@ -184,9 +192,12 @@ router.delete(
   '/:id',
   protect,
   authorize('teacher', 'school_admin', 'super_admin'),
+  requireActiveOrganization,
   async (req, res) => {
     try {
-      const slot = await AvailabilitySlot.findById(req.params.id);
+      const requesterSchoolId = scopeSchoolId(req.user, req.body.schoolId || req.query.schoolId);
+      if (!requesterSchoolId) return res.status(400).json({ success: false, error: 'Organization context is required' });
+      const slot = await AvailabilitySlot.findOne({ _id: req.params.id, schoolId: requesterSchoolId });
       if (!slot) return res.status(404).json({ success: false, error: 'Slot not found' });
 
       if (req.user.role === 'teacher' && slot.teacherId.toString() !== req.user._id.toString()) {

@@ -15,10 +15,14 @@
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { protect, authorize } = require('../middleware/auth');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
+const { scopeSchoolId } = require('../middleware/resourceAuthorization');
 const Meeting = require('../models/Meeting');
 const AvailabilitySlot = require('../models/AvailabilitySlot');
 const User = require('../models/User');
+const { authorizeGuardianParticipant } = require('../services/guardianAccessService');
 const firebaseService = require('../services/firebaseService');
 const loggerUtils = require('../utils/logger');
 const logger = loggerUtils.logger;
@@ -57,6 +61,20 @@ function isAtLeastBookingLeadTime(startsAt) {
 function userLabel(u) {
   if (!u) return '';
   return `${u.firstName || ''} ${u.lastName || ''}`.trim();
+}
+
+/** Load a meeting only from the organization the requester may operate in. */
+async function authorizeMeetingMutation(req, res, next) {
+  try {
+    const schoolId = scopeSchoolId(req.user, req.body?.schoolId || req.query?.schoolId);
+    if (!schoolId) return res.status(400).json({ success: false, error: 'Organization context is required' });
+    const meeting = await Meeting.findOne({ _id: req.params.id, schoolId });
+    if (!meeting) return res.status(404).json({ success: false, error: 'Not found' });
+    req.meeting = meeting;
+    next();
+  } catch (_error) {
+    return res.status(404).json({ success: false, error: 'Not found' });
+  }
 }
 
 /**
@@ -142,11 +160,16 @@ router.get('/', protect, async (req, res) => {
       if (req.query.to) query.startsAt.$lte = new Date(req.query.to);
     }
 
-    const meetings = await Meeting.find(query)
+    let meetings = await Meeting.find(query)
       .populate(POPULATE)
       .sort({ startsAt: req.query.upcoming === 'true' ? 1 : -1 })
       .limit(500)
       .lean();
+    if (req.user.role === 'parent') {
+      const visible = [];
+      for (const meeting of meetings) if ((await authorizeGuardianParticipant(req.user, meeting.studentId?._id || meeting.studentId, 'meetings', { allowInactiveParticipant: true })).allowed) visible.push(meeting);
+      meetings = visible;
+    }
     res.json({ success: true, data: meetings });
   } catch (err) {
     logger.error('List meetings error:', err);
@@ -207,6 +230,7 @@ router.get('/:id', protect, async (req, res) => {
     if (req.user.role === 'parent' && meeting.parentId._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, error: 'Forbidden' });
     }
+    if (req.user.role === 'parent' && !(await authorizeGuardianParticipant(req.user, meeting.studentId?._id || meeting.studentId, 'meetings', { allowInactiveParticipant: true })).allowed) return res.status(404).json({ success: false, error: 'Not found' });
     res.json({ success: true, data: meeting });
   } catch (err) {
     logger.error('Get meeting error:', err);
@@ -220,7 +244,7 @@ router.get('/:id', protect, async (req, res) => {
  * Atomically books the slot. Idempotent within a slot — once booked, future
  * attempts return 409.
  */
-router.post('/', protect, authorize('parent'), async (req, res) => {
+router.post('/', protect, authorize('parent'), requireActiveOrganization, async (req, res) => {
   try {
     const { slotId, studentId, bookingMessage } = req.body;
     if (!slotId || !studentId) {
@@ -241,17 +265,9 @@ router.post('/', protect, authorize('parent'), async (req, res) => {
       });
     }
 
-    // Verify the student exists, belongs to the parent (parentEmail match)
-    // and is in the same school as the slot.
-    const student = await User.findById(studentId).select(
-      'role parentEmail schoolId firstName lastName'
-    );
-    if (!student || student.role !== 'student') {
-      return res.status(404).json({ success: false, error: 'Student not found' });
-    }
-    if ((student.parentEmail || '').toLowerCase() !== (req.user.email || '').toLowerCase()) {
-      return res.status(403).json({ success: false, error: 'Student is not yours.' });
-    }
+    const access = await authorizeGuardianParticipant(req.user, studentId, 'meetings');
+    const student = access.participant;
+    if (!access.allowed || !student) return res.status(404).json({ success: false, error: 'Student not found' });
     if (normalizeSchoolId(student.schoolId) !== normalizeSchoolId(slot.schoolId)) {
       return res.status(400).json({ success: false, error: 'Student and slot are in different schools.' });
     }
@@ -333,10 +349,9 @@ router.post('/', protect, authorize('parent'), async (req, res) => {
  * Body: { reason? }
  * Either teacher or parent can cancel ≥ 1 hour before start.
  */
-router.post('/:id/cancel', protect, async (req, res) => {
+router.post('/:id/cancel', protect, requireActiveOrganization, authorizeMeetingMutation, async (req, res) => {
   try {
-    const meeting = await Meeting.findById(req.params.id);
-    if (!meeting) return res.status(404).json({ success: false, error: 'Not found' });
+    const meeting = req.meeting;
 
     const requesterId = req.user._id.toString();
     const isTeacher = meeting.teacherId.toString() === requesterId;
@@ -345,6 +360,7 @@ router.post('/:id/cancel', protect, async (req, res) => {
     if (!isTeacher && !isParent && !isAdmin) {
       return res.status(403).json({ success: false, error: 'Forbidden' });
     }
+    if (isParent && !(await authorizeGuardianParticipant(req.user, meeting.studentId, 'meetings', { allowInactiveParticipant: true })).allowed) return res.status(404).json({ success: false, error: 'Not found' });
     if (meeting.status !== 'confirmed') {
       return res.status(409).json({ success: false, error: 'Meeting is not in a cancellable state.' });
     }
@@ -408,13 +424,13 @@ router.post('/:id/cancel', protect, async (req, res) => {
  *   - books the new slot
  *   - links rescheduledFromMeetingId / rescheduledToMeetingId
  */
-router.post('/:id/reschedule', protect, async (req, res) => {
+router.post('/:id/reschedule', protect, requireActiveOrganization, authorizeMeetingMutation, async (req, res) => {
   try {
     const { newSlotId } = req.body;
     if (!newSlotId) return res.status(400).json({ success: false, error: 'newSlotId is required.' });
+    if (!mongoose.isValidObjectId(newSlotId)) return res.status(400).json({ success: false, error: 'Invalid newSlotId.' });
 
-    const meeting = await Meeting.findById(req.params.id);
-    if (!meeting) return res.status(404).json({ success: false, error: 'Not found' });
+    const meeting = req.meeting;
 
     const requesterId = req.user._id.toString();
     const isTeacher = meeting.teacherId.toString() === requesterId;
@@ -423,6 +439,7 @@ router.post('/:id/reschedule', protect, async (req, res) => {
     if (!isTeacher && !isParent && !isAdmin) {
       return res.status(403).json({ success: false, error: 'Forbidden' });
     }
+    if (isParent && !(await authorizeGuardianParticipant(req.user, meeting.studentId, 'meetings', { allowInactiveParticipant: true })).allowed) return res.status(404).json({ success: false, error: 'Not found' });
     if (meeting.status !== 'confirmed') {
       return res.status(409).json({ success: false, error: 'Meeting is not in a reschedulable state.' });
     }
@@ -436,20 +453,18 @@ router.post('/:id/reschedule', protect, async (req, res) => {
 
     // Atomic flip on new slot
     const lockedSlot = await AvailabilitySlot.findOneAndUpdate(
-      { _id: newSlotId, status: 'published' },
+      {
+        _id: newSlotId,
+        schoolId: meeting.schoolId,
+        teacherId: meeting.teacherId,
+        status: 'published'
+      },
       { $set: { status: 'booked' } },
       { new: true }
     );
     if (!lockedSlot) {
       return res.status(409).json({ success: false, error: 'New slot is not available.' });
     }
-    if (normalizeSchoolId(lockedSlot.schoolId) !== normalizeSchoolId(meeting.schoolId)) {
-      // unwind
-      lockedSlot.status = 'published';
-      await lockedSlot.save();
-      return res.status(400).json({ success: false, error: 'New slot is in a different school.' });
-    }
-
     // Free the old slot
     await AvailabilitySlot.updateOne(
       { _id: meeting.slotId, meetingId: meeting._id },
@@ -514,10 +529,9 @@ router.post('/:id/reschedule', protect, async (req, res) => {
  * POST /api/meetings/:id/complete
  * Body: { teacherNotes? }
  */
-router.post('/:id/complete', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+router.post('/:id/complete', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, authorizeMeetingMutation, async (req, res) => {
   try {
-    const meeting = await Meeting.findById(req.params.id);
-    if (!meeting) return res.status(404).json({ success: false, error: 'Not found' });
+    const meeting = req.meeting;
     if (meeting.status !== 'confirmed') {
       return res.status(409).json({ success: false, error: 'Meeting is not in a completable state.' });
     }
@@ -540,10 +554,9 @@ router.post('/:id/complete', protect, authorize('teacher', 'school_admin', 'supe
  * POST /api/meetings/:id/no-show
  * Body: { reason? }
  */
-router.post('/:id/no-show', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+router.post('/:id/no-show', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, authorizeMeetingMutation, async (req, res) => {
   try {
-    const meeting = await Meeting.findById(req.params.id);
-    if (!meeting) return res.status(404).json({ success: false, error: 'Not found' });
+    const meeting = req.meeting;
     if (meeting.status !== 'confirmed') {
       return res.status(409).json({ success: false, error: 'Meeting is not in a no-show state.' });
     }

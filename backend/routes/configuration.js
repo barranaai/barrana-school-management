@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const { protect, authorize } = require('../middleware/auth');
 const { scopeSchoolId } = require('../middleware/resourceAuthorization');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const Program = require('../models/Program');
 const Level = require('../models/Level');
 const Requirement = require('../models/Requirement');
@@ -39,7 +40,7 @@ router.get('/:kind', authorize('school_admin', 'super_admin', 'teacher'), async 
     res.json({ success: true, data });
   } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 });
-router.post('/:kind', authorize(...admins), async (req, res) => {
+router.post('/:kind', authorize(...admins), requireActiveOrganization, async (req, res) => {
   try {
     const Model = models[req.params.kind];
     if (!Model) return res.status(404).json({ success: false, message: 'Unknown configuration type' });
@@ -66,7 +67,7 @@ router.post('/:kind', authorize(...admins), async (req, res) => {
     res.status(201).json({ success: true, data });
   } catch (error) { res.status(400).json({ success: false, message: error.message }); }
 });
-router.put('/:kind/:id', authorize(...admins), async (req, res) => {
+router.put('/:kind/:id', authorize(...admins), requireActiveOrganization, async (req, res) => {
   try {
     const Model = models[req.params.kind];
     const schoolId = resolveTenant(req, req.body.schoolId || req.query.schoolId);
@@ -82,7 +83,7 @@ router.put('/:kind/:id', authorize(...admins), async (req, res) => {
     res.json({ success: true, data });
   } catch (error) { res.status(400).json({ success: false, message: error.message }); }
 });
-router.delete('/:kind/:id', authorize(...admins), async (req, res) => {
+router.delete('/:kind/:id', authorize(...admins), requireActiveOrganization, async (req, res) => {
   try {
     const Model = models[req.params.kind];
     const schoolId = resolveTenant(req, req.body?.schoolId || req.query.schoolId);
