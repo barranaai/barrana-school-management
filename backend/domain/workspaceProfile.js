@@ -107,7 +107,8 @@ const resolveWorkspaceProfile = workspace => {
     terminologyProfile,
     terminology: TERMINOLOGY[terminologyProfile],
     capabilities: {
-      requiresAcademicGroupFields: organizationTypeRequiresSchoolDetails(organizationType)
+      requiresAcademicGroupFields: organizationTypeRequiresSchoolDetails(organizationType),
+      requiresAcademicReportGrade: organizationTypeRequiresSchoolDetails(organizationType)
     }
   };
 };

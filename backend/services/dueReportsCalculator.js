@@ -17,8 +17,10 @@ const Report = require('../models/Report');
 const ReportTemplate = require('../models/ReportTemplate');
 const User = require('../models/User');
 const School = require('../models/School');
+const Enrollment = require('../models/Enrollment');
 const { logger } = require('../utils/logger');
-const { gradesMatch } = require('../utils/gradeUtils');
+const { compatibleTemplates } = require('./reportTemplateContext');
+const { resolveWorkspaceProfile } = require('../domain/workspaceProfile');
 const { calculateDueDate: dateUtilsCalculateDueDate } = require('../utils/dateUtils');
 
 /**
@@ -163,7 +165,7 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
     }
 
     // Get school and settings
-    const school = await School.findById(schoolId).select('settings name');
+    const school = await School.findById(schoolId).select('settings name accountType organizationType terminologyProfile');
     if (!school) {
       throw new Error('School not found for this teacher');
     }
@@ -179,8 +181,9 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
     const Class = require('../models/Class');
     const teacherClasses = await Class.find({
       'assignedTeachers.teacherId': teacherId,
+      schoolId: teacher.schoolId,
       isActive: true
-    }).select('name');
+    }).select('_id name');
     
     if (teacherClasses.length === 0) {
       logger.info('No classes assigned to teacher');
@@ -203,7 +206,7 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
     const templates = await ReportTemplate.find({
       schoolId: teacher.schoolId,
       isActive: true
-    }).select('_id name reportFrequency grade').lean();
+    }).select('_id name reportFrequency grade programId levelId isActive').lean();
     
     if (templates.length === 0) {
       logger.info('No active templates found');
@@ -212,16 +215,16 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
     
     const dueReports = [];
     
-    // Check each student x template combination
+    const enrollments = await Enrollment.find({ schoolId: teacher.schoolId, childId: { $in: students.map(s => s._id) }, status: { $in: ['active','pending'] }, currentClassId: { $in: teacherClasses.map(c => c._id) } }).select('_id childId programId currentLevelId currentClassId status').lean();
+    const academic = resolveWorkspaceProfile(school).capabilities.requiresAcademicReportGrade;
+    // Check each qualifying Enrollment x compatible-template combination. This
+    // keeps separate Programs separate for children with multiple enrollments.
     for (const student of students) {
-      // Find templates matching student's grade
-      const gradeTemplates = templates.filter(t => 
-        gradesMatch(t.grade, student.studentGrade)
-      );
-      
-      logger.info(`📋 Student: ${student.firstName} ${student.lastName} | Grade: ${student.studentGrade} | Matching templates: ${gradeTemplates.length}`);
-      
-      for (const template of gradeTemplates) {
+      const studentEnrollments = enrollments.filter(e => String(e.childId) === String(student._id));
+      for (const enrollment of studentEnrollments) {
+       const applicableTemplates = compatibleTemplates(templates,{schoolId:teacher.schoolId,programId:enrollment.programId,levelId:enrollment.currentLevelId,grade:student.studentGrade,allowLegacyGrade:academic});
+       logger.info(`📋 Participant: ${student.firstName} ${student.lastName} | Enrollment: ${enrollment._id} | Matching templates: ${applicableTemplates.length}`);
+       for (const template of applicableTemplates) {
         try {
           logger.info(`🔍 Checking template: ${template.name} (${template.reportFrequency}) for student: ${student.firstName} ${student.lastName}`);
           
@@ -310,6 +313,9 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
             studentName: `${student.firstName} ${student.lastName}`,
             studentGrade: student.studentGrade,
             studentClass: student.studentClass,
+            enrollmentId: enrollment._id.toString(),
+            programId: String(enrollment.programId),
+            levelId: enrollment.currentLevelId ? String(enrollment.currentLevelId) : null,
             templateId: template._id.toString(),
             templateName: template.name,
             frequency: template.reportFrequency,
@@ -325,6 +331,7 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
         } catch (error) {
           logger.error(`Error processing student ${student._id} template ${template._id}:`, error);
         }
+      }
       }
     }
     

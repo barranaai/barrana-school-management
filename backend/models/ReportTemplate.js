@@ -15,12 +15,18 @@ const reportTemplateSchema = new mongoose.Schema({
     ref: 'School',
     required: [true, 'School ID is required']
   },
+
+  // New templates use the neutral Program / optional Level context. These
+  // remain optional in the schema so existing grade-only templates continue
+  // to load without a migration; the API requires programId for new records.
+  programId: { type: mongoose.Schema.Types.ObjectId, ref: 'Program', default: null, index: true },
+  levelId: { type: mongoose.Schema.Types.ObjectId, ref: 'Level', default: null, index: true },
   
   // Grade Level
   grade: {
     type: String,
-    required: [true, 'Grade is required'],
-    trim: true
+    trim: true,
+    default: null
   },
   
 
@@ -137,11 +143,12 @@ const reportTemplateSchema = new mongoose.Schema({
 
 // Index for efficient queries
 reportTemplateSchema.index({ schoolId: 1, grade: 1, isActive: 1 });
+reportTemplateSchema.index({ schoolId: 1, programId: 1, levelId: 1, isActive: 1 });
 reportTemplateSchema.index({ schoolId: 1, reportFrequency: 1 });
 
 // Virtual for full template name
 reportTemplateSchema.virtual('fullName').get(function() {
-  return `${this.name} - ${this.grade}`;
+  return this.grade ? `${this.name} - ${this.grade}` : this.name;
 });
 
 // Pre-save middleware to update lastModified
@@ -169,4 +176,4 @@ reportTemplateSchema.methods.incrementUsage = function() {
 
 const ReportTemplate = mongoose.model('ReportTemplate', reportTemplateSchema);
 
-module.exports = ReportTemplate; 
+module.exports = ReportTemplate;

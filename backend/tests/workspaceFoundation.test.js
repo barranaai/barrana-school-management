@@ -93,7 +93,8 @@ test('plain legacy data resolves safely without a database migration', () => {
     terminologyProfile: 'education',
     terminology: TERMINOLOGY.education,
     capabilities: {
-      requiresAcademicGroupFields: true
+      requiresAcademicGroupFields: true,
+      requiresAcademicReportGrade: true
     }
   });
 });

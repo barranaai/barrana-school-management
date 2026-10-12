@@ -5,6 +5,8 @@ import { REPORT_FREQUENCIES } from '../../../constants/reportFrequencies';
 import { reportTemplateService, type ReportTemplate, type CreateReportTemplateData } from '../../../services/reportTemplateService';
 import apiService from '../../../services/apiService';
 import { schoolService } from '../../../services/schoolService';
+import { programService, type Program } from '../../../services/programService';
+import { levelService, type Level } from '../../../services/levelService';
 import { useNavigate } from 'react-router-dom';
 import FrequencyConfiguration from './FrequencyConfiguration';
 import ProgramManagement from './ProgramManagement';
@@ -167,7 +169,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
   const [success, setSuccess] = useState<string | null>(null);
   const [formData, setFormData] = useState<CreateReportTemplateData>({
     name: '',
-    grade: '',
+    programId: '', levelId: '', grade: '',
     reportFrequency: 'Monthly',
     content: '',
     isActive: true
@@ -179,13 +181,15 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>('');
   const [selectedSchoolGrades, setSelectedSchoolGrades] = useState<string[]>([]);
   const [localSchoolSettings, setLocalSchoolSettings] = useState<any>({});
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [selectedSchoolRequiresGrade, setSelectedSchoolRequiresGrade] = useState(false);
+  const requiresGrade = isSuperAdmin ? selectedSchoolRequiresGrade : !!(school?.workspaceProfile?.capabilities?.requiresAcademicReportGrade ?? school?.workspaceProfile?.capabilities?.requiresAcademicGroupFields);
+  const currentSchoolId = isSuperAdmin ? selectedSchoolId : school?.id || '';
 
   // Helper to get the current school ID (works for both Super Admin and School Admin)
   const getCurrentSchoolId = () => {
-    if (isSuperAdmin) {
-      return selectedSchoolId;
-    }
-    return school?.id || '';
+    return currentSchoolId;
   };
 
   // Helper to display grade labels in Proper Case from various formats (snake_case, kebab-case, camelCase)
@@ -284,7 +288,10 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
     };
 
     loadReportTemplates();
-  }, [isAuthenticated, token, school?.id, selectedSchoolId]);
+  }, [isAuthenticated, token, school?.id, selectedSchoolId, isSuperAdmin]);
+
+  useEffect(() => { let active=true; if(!token||!currentSchoolId){setPrograms([]);return;} programService(token,currentSchoolId).list().then(rows=>{if(active)setPrograms(rows.filter(row=>row.isActive));}).catch(()=>{if(active)setError('Unable to load Programs for report templates.');}); return()=>{active=false;}; }, [token, currentSchoolId]);
+  useEffect(() => { let active=true; if(!token||!currentSchoolId||!formData.programId){setLevels([]);return;} levelService(token,currentSchoolId,formData.programId).list().then(rows=>{if(active)setLevels(rows.filter(row=>row.isActive));}).catch(()=>{if(active)setError('Unable to load Levels for the selected Program.');}); return()=>{active=false;}; }, [token, currentSchoolId, formData.programId]);
 
   // Load schools for super admin
   useEffect(() => {
@@ -323,6 +330,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
         const resp = await apiService.getSchools();
         console.log('🐛 All schools response:', resp.data);
         const school = (resp.data || []).find((s: any) => (s._id || s.id) === selectedSchoolId);
+        setSelectedSchoolRequiresGrade(!!(school?.workspaceProfile?.capabilities?.requiresAcademicReportGrade ?? school?.workspaceProfile?.capabilities?.requiresAcademicGroupFields));
         console.log('🐛 Found selected school:', school);
         if (school && school.gradeLevels) {
           console.log('🐛 Setting school grades:', school.gradeLevels);
@@ -439,6 +447,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
         setError(validation.errors.join(', '));
         return;
       }
+      if (requiresGrade && !formData.grade?.trim()) { setError('Grade is required for this organization.'); return; }
 
       if (isSuperAdmin && !selectedSchoolId) {
         setError('Please select a school before creating a template.');
@@ -481,10 +490,12 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
         setError(validation.errors.join(', '));
         return;
       }
+      if (requiresGrade && !formData.grade?.trim()) { setError('Grade is required for this organization.'); return; }
 
       const response = await reportTemplateService.updateReportTemplate({
         id: selectedTemplate._id,
-        ...formData
+        ...formData,
+        schoolId: getCurrentSchoolId()
       });
       
       if (response.success && response.data) {
@@ -513,7 +524,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
     }
 
     try {
-      const response = await reportTemplateService.deleteReportTemplate(templateId);
+      const response = await reportTemplateService.deleteReportTemplate(templateId, getCurrentSchoolId());
       
       if (response.success) {
         setReportTemplates(prev => prev.filter(template => template._id !== templateId));
@@ -529,7 +540,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
 
   const handleToggleStatus = async (templateId: string) => {
     try {
-      const response = await reportTemplateService.toggleTemplateStatus(templateId);
+      const response = await reportTemplateService.toggleTemplateStatus(templateId, getCurrentSchoolId());
       
       if (response.success && response.data) {
         setReportTemplates(prev => 
@@ -553,7 +564,9 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
     setSelectedTemplate(template);
         setFormData({
           name: template.name,
-          grade: template.grade,
+          programId: typeof template.programId === 'string' ? template.programId : template.programId?._id || '',
+          levelId: typeof template.levelId === 'string' ? template.levelId : template.levelId?._id || '',
+          grade: template.grade || '',
           reportFrequency: template.reportFrequency,
           content: template.content,
           customFields: template.customFields,
@@ -572,7 +585,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
   const resetForm = () => {
     setFormData({
       name: '',
-      grade: '',
+      programId: '', levelId: '', grade: '',
       reportFrequency: 'Monthly',
       content: '',
       isActive: true
@@ -583,7 +596,8 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
   const handleFormChange = (field: keyof CreateReportTemplateData, value: any) => {
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [field]: value,
+      ...(field === 'programId' ? { levelId: '' } : {})
     }));
   };
 
@@ -1127,7 +1141,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                     <TableHead>
                       <TableRow sx={{ background: 'rgba(102, 126, 234, 0.05)' }}>
                       <TableCell>Template Name</TableCell>
-                      <TableCell>Grade</TableCell>
+                      <TableCell>Program</TableCell><TableCell>Level</TableCell>{requiresGrade && <TableCell>Grade</TableCell>}
                       <TableCell>Report Frequency</TableCell>
                       <TableCell>AI Prompt</TableCell>
                       <TableCell>Status</TableCell>
@@ -1170,8 +1184,10 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                             </Typography>
                           </TableCell>
                           <TableCell>
-                          <Chip label={formatGradeForDisplay(template.grade)} color="primary" size="small" />
+                            {template.programId ? (typeof template.programId === 'string' ? programs.find(p=>p._id===template.programId)?.name || 'Program' : template.programId.name) : <Chip label="Legacy Grade template" size="small" color="warning" />}
                           </TableCell>
+                          <TableCell>{template.levelId ? (typeof template.levelId === 'string' ? 'Specific level' : template.levelId.name) : template.programId ? 'All levels' : '—'}</TableCell>
+                          {requiresGrade && <TableCell>{template.grade ? <Chip label={formatGradeForDisplay(template.grade)} color="primary" size="small" /> : '—'}</TableCell>}
                           <TableCell>
                             <Chip
                               label={template.reportFrequency}
@@ -1690,6 +1706,8 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
           )}
           
           <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} md={6}><FormControl fullWidth required><InputLabel>Program</InputLabel><Select label="Program" value={formData.programId} onChange={e=>handleFormChange('programId',e.target.value)}><MenuItem value=""><em>Select Program</em></MenuItem>{programs.map(program=><MenuItem key={program._id} value={program._id}>{program.name}</MenuItem>)}</Select></FormControl></Grid>
+            <Grid item xs={12} md={6}><FormControl fullWidth disabled={!formData.programId}><InputLabel>Level</InputLabel><Select label="Level" value={formData.levelId || ''} onChange={e=>handleFormChange('levelId',e.target.value)}><MenuItem value=""><em>All levels</em></MenuItem>{levels.map(level=><MenuItem key={level._id} value={level._id}>{level.name}</MenuItem>)}</Select></FormControl></Grid>
             <Grid item xs={12}>
               <TextField 
                 fullWidth 
@@ -1699,7 +1717,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                 required
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            {requiresGrade && <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel>Grade</InputLabel>
                 <Select 
@@ -1715,7 +1733,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
+            </Grid>}
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel>Report Frequency</InputLabel>

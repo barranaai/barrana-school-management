@@ -31,11 +31,11 @@ function harness(reportRow = report(), reportOverrides = {}) {
   const calls = { email: [], queries: [], progressCreates: [], progressSaves: 0, progressUpdates: 0, reportCreates: [], pdfCreates: [], pdfReads: 0, reportSaves: 0 };
   const actor = { _id: teacher, schoolId: school, role: 'teacher', isActive: true, async save() {} };
   const objectiveId = id(13);
-  const state = { report: reportRow, actor, guardians: [{ _id: parent, email: 'parent@test.local' }], roadmap: { _id: roadmapId, programId, levelId }, session: { _id: sessionId, schoolId: school, deliveredBy: teacher, plannedSessionId: plannedId, roadmapId, roadmapVersion: 1, status: 'completed', plannedSessionSnapshot: { objectives: [{ objectiveId, requirementId, parameterId, sequence: 1, title: 'Float' }] } }, participation: { _id: participationId, schoolId: school, deliveredSessionId: sessionId, status: 'active' } };
+  const state = { report: reportRow, actor, guardians: [{ _id: parent, email: 'parent@test.local' }], roadmap: { _id: roadmapId, programId, levelId }, session: { _id: sessionId, schoolId: school, programId, levelId, deliveredBy: teacher, plannedSessionId: plannedId, roadmapId, roadmapVersion: 1, status: 'completed', plannedSessionSnapshot: { objectives: [{ objectiveId, requirementId, parameterId, sequence: 1, title: 'Float' }] } }, participation: { _id: participationId, schoolId: school, deliveredSessionId: sessionId, enrollmentId: id(41), childId: id(21), programId, levelId, status: 'active' } };
   reportRow.save = async () => { if (state.saveFailure) throw Error('database unavailable'); calls.reportSaves++; };
   const row = { _id: progressId, schoolId: school, childParticipationId: participationId, objectiveResults: [], parameterResults: [], observations: 'Current observation', recommendations: 'Current recommendation', overallStatus: 'in_progress', metadata: {}, createdBy: teacher, updatedBy: teacher, createdAt: new Date(), updatedAt: new Date(), revisionNumber: 3, revisions: [], __v: 0, async save() { calls.progressSaves++; } };
   const models = {
-    User: { findById: () => chain(state.actor), findOne: () => chain(null), find: () => chain([{ _id: id(21) }]) },
+    User: { findById: () => chain(state.actor), findOne: q => chain(q.role ? null : { _id: id(21), schoolId: school, studentGrade: 'Grade 1' }), find: () => chain([{ _id: id(21) }]) },
     Report: { findById: () => chain(state.report), findOne: q => { calls.queries.push(['Report', q]); return chain(q.schoolId && String(q.schoolId) !== String(school) ? null : state.report); }, find: () => chain([state.report]), create: async payload => { calls.reportCreates.push(payload); return payload; } },
     Progress: { find: q => { calls.queries.push(['Progress', q]); return chain([row, { _id: id(30), childParticipationId: id(31) }]); }, findOne: q => { calls.queries.push(['Progress', q]); return chain(String(q.schoolId) === String(school) ? row : null); }, findOneAndUpdate: (filter, update) => { calls.progressUpdates++; if (String(filter.schoolId) !== String(school) || filter.__v !== row.__v) return chain(null); row.revisions.push(update.$push.revisions); Object.assign(row, update.$set); for (const field of Object.keys(update.$unset || {})) delete row[field]; row.__v += update.$inc.__v; return chain(row); } },
     ChildParticipation: { find: q => { calls.queries.push(['ChildParticipation', q]); return chain([{ _id: participationId }]); }, findOne: q => { calls.queries.push(['ChildParticipation', q]); return chain(state.participation); } },
@@ -44,7 +44,7 @@ function harness(reportRow = report(), reportOverrides = {}) {
     Roadmap: { findOne: q => { calls.queries.push(['Roadmap', q]); return chain(state.roadmap); } },
     Parameter: { find: q => { calls.queries.push(['Parameter', q]); return chain([{ _id: parameterId, requirementId, name: 'Percent', type: 'percentage' }]); } },
     Requirement: { find: q => { calls.queries.push(['Requirement', q]); return chain([{ _id: requirementId, name: 'Float' }]); } },
-    School: {}, Class: {}, Event: {}, ReportTemplate: { findOne: () => chain({ _id: id(40), schoolId: school, name: 'Progress template', customFields: [], settings: {} }) }
+    Enrollment: { findOne: () => chain({ _id: id(41), schoolId: school, childId: id(21), programId, currentLevelId: levelId }) }, School: { findById: () => chain({ accountType: 'organization', organizationType: 'school', terminologyProfile: 'education' }) }, Class: {}, Event: {}, ReportTemplate: { findOne: () => chain({ _id: id(40), schoolId: school, programId, levelId, isActive: true, name: 'Progress template', customFields: [], settings: {} }), find: () => chain([]) }
   };
   Object.assign(models.Report, reportOverrides);
   models.Progress.create = async payload => { calls.progressCreates.push(payload); return { _id: progressId, ...payload }; };
@@ -56,7 +56,7 @@ function harness(reportRow = report(), reportOverrides = {}) {
     const router = { use: (...handlers) => middleware.push(...handlers) };
     for (const method of ['get', 'post', 'put', 'patch', 'delete']) router[method] = (url, ...handlers) => routes.push({ method, url, handlers: [...middleware, ...handlers] });
     const guardianCanRead = (guardian, report) => report.status === 'sent' && (!report.progressId || publication.canExposeProgressReport(report)) && state.guardians.some(item => String(item._id) === String(guardian._id) || item.email === guardian.email);
-    const dependencies = { express: { Router: () => router }, mongoose, '../middleware/auth': auth, '../middleware/resourceAuthorization': access, '../utils/reportPublication': publication, '../utils/logger': { logger }, '../utils/dateUtils': {}, '../utils/gradeUtils': {}, '../middleware/environment': { developmentOnly() {} }, multer, path, fs: { promises: {}, existsSync() { throw Error('Filesystem access forbidden in route test'); } }, 'moment-timezone': () => { throw Error('Unexpected date helper'); }, '../services/guardianAccessService': { async authorizedParticipants(guardian) { return guardian.email === 'parent@test.local' ? [{ _id: id(21) }] : []; } }, '../services/guardianReportAccessService': { isDeliveredParentReport: report => guardianCanRead(state.actor, report), canGuardianReadReport: async (guardian, report) => guardianCanRead(guardian, report) }, '../services/reportPdf': { async createReportPdf(report, data) { calls.pdfCreates.push(data); return { artifact: { key: 'test.pdf' }, bytes: Buffer.from('%PDF-test') }; }, async readReportPdf(report) { calls.pdfReads++; if (!report.pdfArtifact || state.missingPdf) throw Error('unavailable'); return Buffer.from('%PDF-test'); } }, '../services/firebaseService': {}, '../services/emailService': { async sendReportEmail(data) { if (state.emailError) throw Object.assign(Error('failure'), { code: state.emailError }); if (state.simulated) return { simulated: true }; calls.email.push(data); const pdf = await data.preparePdf(); return { success: true, transportAccepted: true, acceptedAt: new Date(), messageId: 'accepted', pdfArtifact: pdf.artifact }; } } };
+    const dependencies = { express: { Router: () => router }, mongoose, '../middleware/auth': auth, '../middleware/resourceAuthorization': access, '../middleware/lifecycleAuthorization': { requireActiveOrganization: (_req, _res, next) => next() }, '../utils/reportPublication': publication, '../utils/logger': { logger }, '../utils/dateUtils': {}, '../utils/gradeUtils': require('../utils/gradeUtils'), '../services/reportTemplateContext': require('../services/reportTemplateContext'), '../services/reportParticipantAuthorization': { canTeacherAccessParticipantReporting: async () => true }, '../domain/workspaceProfile': require('../domain/workspaceProfile'), '../middleware/environment': { developmentOnly() {} }, multer, path, fs: { promises: {}, existsSync() { throw Error('Filesystem access forbidden in route test'); } }, 'moment-timezone': () => { throw Error('Unexpected date helper'); }, '../services/guardianAccessService': { async authorizedParticipants(guardian) { return guardian.email === 'parent@test.local' ? [{ _id: id(21) }] : []; } }, '../services/guardianReportAccessService': { isDeliveredParentReport: report => guardianCanRead(state.actor, report), canGuardianReadReport: async (guardian, report) => guardianCanRead(guardian, report) }, '../services/reportPdf': { async createReportPdf(report, data) { calls.pdfCreates.push(data); return { artifact: { key: 'test.pdf' }, bytes: Buffer.from('%PDF-test') }; }, async readReportPdf(report) { calls.pdfReads++; if (!report.pdfArtifact || state.missingPdf) throw Error('unavailable'); return Buffer.from('%PDF-test'); } }, '../services/firebaseService': {}, '../services/emailService': { async sendReportEmail(data) { if (state.emailError) throw Object.assign(Error('failure'), { code: state.emailError }); if (state.simulated) return { simulated: true }; calls.email.push(data); const pdf = await data.preparePdf(); return { success: true, transportAccepted: true, acceptedAt: new Date(), messageId: 'accepted', pdfArtifact: pdf.artifact }; } } };
     for (const [key, value] of Object.entries(models)) dependencies['../models/' + key] = value;
     evaluate(path.join(__dirname, '../routes/' + name + '.js'), dependencies);
     routers[name] = routes;
@@ -65,7 +65,7 @@ function harness(reportRow = report(), reportOverrides = {}) {
     if (!routers[name]) load(name);
     if (role) state.actor.role = role;
     const route = routers[name].find(r => r.method === method && r.url === url); assert.ok(route, url);
-    const req = { headers: anonymous ? {} : { authorization: 'Bearer ' + jwt.sign({ id: String(state.actor._id) }, process.env.JWT_SECRET) }, params: { id: String(progressId), progressId: String(progressId) }, body, query };
+    const req = { headers: anonymous ? {} : { authorization: 'Bearer ' + jwt.sign({ id: String(state.actor._id) }, process.env.JWT_SECRET) }, params: { id: String(progressId), reportId: String(progressId), mediaId: String(id(99)), progressId: String(progressId) }, body, query };
     const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(data) { this.body = data; return this; }, setHeader() {}, end(bytes) { this.bytes = bytes; } };
     for (const handler of route.handlers) { let next = false; await handler(req, res, () => { next = true; }); if (!next) break; }
     return res;
@@ -211,6 +211,7 @@ function revisionHarness(legacy = false) {
     return doc;
   };
   const h = harness(stored, {
+    findOne: () => chain(snapshot()),
     findById: () => chain(snapshot()),
     findByIdAndUpdate: (_, changes) => { calls.legacyEdits++; Object.assign(stored, copy(changes)); return chain(snapshot()); },
     findOneAndUpdate: (filter, update, options) => ({
@@ -271,4 +272,36 @@ test('missing __v initializes atomically, while an existing snapshot fails close
 test('legacy approval and editing continue through their original write mechanisms',async()=>{
   const x=revisionHarness(true);const edit=await x.h.request('reports','put','/:id',{body:{content:'Legacy edit'}});assert.equal(edit.statusCode,200);assert.equal(x.calls.legacyEdits,1);assert.equal(x.stored.__v,0);
   const approval=await x.h.request('reports','patch','/:id/approve');assert.equal(approval.statusCode,200);assert.equal(x.calls.legacyApprovals,1);assert.equal(x.stored.finalizedSnapshot,null);assert.equal(x.pending.length,0);
+});
+
+test('Super Admin report operations stay within explicit organization scope', async () => {
+  const otherSchool = String(id(90));
+  for (const [method, url] of [
+    ['put', '/:id'], ['patch', '/:id/approve'], ['patch', '/:id/send'],
+    ['post', '/:id/send-email'], ['post', '/:id/regenerate-pdf'], ['get', '/:reportId/media']
+  ]) {
+    const h = harness();
+    h.state.actor.schoolId = otherSchool;
+    const request = method === 'get'
+      ? { role: 'super_admin', query: { schoolId: otherSchool } }
+      : { role: 'super_admin', body: { schoolId: otherSchool } };
+    const response = await h.request('reports', method, url, request);
+    assert.equal(response.statusCode, 404, `${method} ${url}`);
+    assert.equal(h.calls.email.length, 0);
+    assert.equal(h.calls.reportSaves, 0);
+  }
+  const missing = harness();
+  missing.state.actor.role = 'super_admin';
+  missing.state.actor.schoolId = otherSchool;
+  const response = await missing.request('reports', 'get', '/', { role: 'super_admin' });
+  assert.equal(response.statusCode, 400);
+  assert.equal(missing.calls.queries.filter(([model]) => model === 'Report').length, 0);
+
+  const scoped = harness();
+  scoped.state.actor.schoolId = otherSchool;
+  const allowed = await scoped.request('reports', 'get', '/:reportId/media', {
+    role: 'super_admin', query: { schoolId: String(school) }
+  });
+  assert.equal(allowed.statusCode, 200);
+  assert.equal(String(scoped.calls.queries.find(([model]) => model === 'Report')[1].schoolId), String(school));
 });

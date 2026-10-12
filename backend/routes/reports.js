@@ -8,15 +8,16 @@ const ReportTemplate = require('../models/ReportTemplate');
 const Progress = require('../models/Progress');
 const ChildParticipation = require('../models/ChildParticipation');
 const DeliveredSession = require('../models/DeliveredSession');
+const Enrollment = require('../models/Enrollment');
 const User = require('../models/User');
 const School = require('../models/School');
 const { calculateDueDate, isReportDue, getCurrentDateInTimezone, getStartOfFrequencyPeriod } = require('../utils/dateUtils');
-const { gradesMatch } = require('../utils/gradeUtils');
 const loggerUtils = require('../utils/logger');
 const logger = loggerUtils.logger;
 const { protect, authorize } = require('../middleware/auth');
 const { developmentOnly } = require('../middleware/environment');
 const { canAccessReport, canAccessStudent, belongsToSchool, scopeSchoolId } = require('../middleware/resourceAuthorization');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -30,29 +31,87 @@ try {
 const { sendReportEmail } = require('../services/emailService');
 const firebaseService = require('../services/firebaseService');
 const { createReportPdf } = require('../services/reportPdf');
+const { compatibleTemplates, compatibility } = require('../services/reportTemplateContext');
+const { canTeacherAccessParticipantReporting } = require('../services/reportParticipantAuthorization');
+const { resolveWorkspaceProfile } = require('../domain/workspaceProfile');
 
 // Maximum number of media attachments (images + videos combined) per report.
 // Enforced on create and on append-media routes. Mirrored in the Report model.
 const MAX_REPORT_ATTACHMENTS = 10;
 
+const reportSchoolId = (req, source = req.query) => scopeSchoolId(req.user, source?.schoolId);
+
+async function progressReportContext(progressId, schoolId) {
+  const progress = await Progress.findOne({ _id: progressId, schoolId });
+  if (!progress) return null;
+  const participation = await ChildParticipation.findOne({ _id: progress.childParticipationId, schoolId });
+  const session = participation && await DeliveredSession.findOne({ _id: participation.deliveredSessionId, schoolId });
+  const enrollment = participation && await Enrollment.findOne({ _id: participation.enrollmentId, schoolId, childId: participation.childId });
+  if (!participation || !session || !enrollment || String(participation.programId) !== String(session.programId) || String(participation.levelId) !== String(session.levelId) || String(enrollment.programId) !== String(session.programId)) return { conflict: true };
+  const [school, child] = await Promise.all([School.findById(schoolId).select('accountType organizationType terminologyProfile'), User.findOne({ _id: participation.childId, schoolId }).select('studentGrade')]);
+  if (!school || !child) return { conflict: true };
+  return { progress, participation, session, enrollment, context: { schoolId, programId: session.programId, levelId: session.levelId, grade: child.studentGrade, allowLegacyGrade: resolveWorkspaceProfile(school).capabilities.requiresAcademicReportGrade } };
+}
+
+async function legacyReportContext(req, suppliedSchoolId, studentId, templateId, { requireCompatibleEnrollment = false } = {}) {
+  const schoolId = scopeSchoolId(req.user, suppliedSchoolId);
+  if (![schoolId, studentId, templateId].every(value => mongoose.Types.ObjectId.isValid(value))) return { error: 'Reporting context not found', status: 404 };
+  const [template, student, school] = await Promise.all([
+    ReportTemplate.findOne({ _id: templateId, schoolId, isActive: true }),
+    User.findOne({ _id: studentId, schoolId, role: 'student' }).select('studentGrade schoolId role isActive').lean(),
+    School.findById(schoolId).select('settings accountType organizationType terminologyProfile')
+  ]);
+  if (!template || !student || !school) return { error: 'Reporting context not found', status: 404 };
+  if (req.user.role === 'teacher') {
+    const teacher = await User.findById(req.user._id).select('schoolId role isActive');
+    if (!teacher || !await canTeacherAccessParticipantReporting(teacher, student)) return { error: 'Reporting context not found', status: 404 };
+  }
+  if (!requireCompatibleEnrollment) return { schoolId, template, student, school };
+  const enrollments = await Enrollment.find({ schoolId, childId: student._id, status: { $in: ['active', 'pending'] } })
+    .select('_id programId currentLevelId status').lean();
+  const allowLegacyGrade = resolveWorkspaceProfile(school).capabilities.requiresAcademicReportGrade;
+  const compatibleEnrollment = enrollments.find(enrollment => compatibility(template, {
+    schoolId, programId: enrollment.programId, levelId: enrollment.currentLevelId,
+    grade: student.studentGrade, allowLegacyGrade
+  }));
+  if (!compatibleEnrollment) return { error: 'The selected report template is not compatible with an active Enrollment', status: 409 };
+  return { schoolId, template, student, school, enrollment: compatibleEnrollment };
+}
+
+router.get('/from-progress/:progressId/templates', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = scopeSchoolId(req.user, req.query.schoolId);
+    if (!mongoose.Types.ObjectId.isValid(schoolId) || !mongoose.Types.ObjectId.isValid(req.params.progressId)) return res.status(404).json({ success: false, message: 'Progress not found' });
+    const source = await progressReportContext(req.params.progressId, schoolId);
+    if (!source) return res.status(404).json({ success: false, message: 'Progress not found' });
+    if (source.conflict) return res.status(409).json({ success: false, message: 'Progress reporting context is inconsistent' });
+    if (req.user.role === 'teacher' && String(source.session.deliveredBy) !== String(req.user._id)) return res.status(403).json({ success: false, message: 'Not authorized to create a report for this Progress' });
+    const templates = await ReportTemplate.find({ schoolId, isActive: true }).populate('programId', 'name').populate('levelId', 'name');
+    res.json({ success: true, data: compatibleTemplates(templates, source.context), context: { programId: source.session.programId, levelId: source.session.levelId } });
+  } catch (_) { res.status(500).json({ success: false, message: 'Unable to load compatible report templates' }); }
+});
+
+
 // Create a deterministic, Progress-backed draft without introducing AI or changing legacy report creation.
-router.post('/from-progress/:progressId', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+router.post('/from-progress/:progressId', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
     const schoolId = scopeSchoolId(req.user, req.body?.schoolId);
     if (!mongoose.Types.ObjectId.isValid(schoolId) || !mongoose.Types.ObjectId.isValid(req.params.progressId)) return res.status(404).json({ success: false, message: 'Progress not found' });
-    const progress = await Progress.findOne({ _id: req.params.progressId, schoolId });
-    if (!progress) return res.status(404).json({ success: false, message: 'Progress not found' });
-    const participation = await ChildParticipation.findOne({ _id: progress.childParticipationId, schoolId });
-    const session = participation && await DeliveredSession.findOne({ _id: participation.deliveredSessionId, schoolId });
-    if (!participation || !session || String(progress.schoolId) !== String(schoolId)) return res.status(404).json({ success: false, message: 'Progress context not found' });
+    const source = await progressReportContext(req.params.progressId, schoolId);
+    if (!source) return res.status(404).json({ success: false, message: 'Progress not found' });
+    if (source.conflict) return res.status(409).json({ success: false, message: 'Progress reporting context is inconsistent' });
+    const { progress, participation, session } = source;
     if (['cancelled', 'absent', 'excused'].includes(participation.status)) return res.status(409).json({ success: false, message: 'Progress source participation is not valid for a report' });
     if (session.status === 'cancelled') return res.status(409).json({ success: false, message: 'Progress source session is cancelled' });
     if (req.user.role === 'teacher' && String(session.deliveredBy) !== String(req.user._id)) return res.status(403).json({ success: false, message: 'Not authorized to create a report for this Progress' });
     const template = req.body?.templateId && await ReportTemplate.findOne({ _id: req.body.templateId, schoolId, isActive: true });
     if (!template) return res.status(400).json({ success: false, message: 'A valid active templateId is required' });
+    if (!compatibility(template, source.context)) return res.status(400).json({ success: false, message: 'The selected report template is not compatible with this Program and Level' });
     const templateSnapshot = {
       templateId: template._id,
       name: template.name,
+      programId: template.programId,
+      levelId: template.levelId,
       grade: template.grade,
       reportFrequency: template.reportFrequency,
       content: template.content,
@@ -452,7 +511,8 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), as
     const query = {};
 
     const scopedSchoolId = scopeSchoolId(req.user, schoolId);
-    if (scopedSchoolId) query.schoolId = scopedSchoolId;
+    if (!scopedSchoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    query.schoolId = scopedSchoolId;
 
     // Additional filters
     if (teacherId) query.teacherId = teacherId;
@@ -519,42 +579,9 @@ router.get('/due-status', protect, authorize('teacher', 'school_admin', 'super_a
       return res.status(400).json({ success: false, message: 'studentId and templateId are required' });
     }
 
-    const template = await ReportTemplate.findById(templateId);
-    if (!template) {
-      return res.status(404).json({ success: false, message: 'Report template not found' });
-    }
-
-    const school = await School.findById(req.user.schoolId).select('settings');
-    if (!school) {
-      return res.status(400).json({ success: false, message: 'School not found for user' });
-    }
-
-    // For teachers, verify the student belongs to their classes
-    if (req.user.role === 'teacher') {
-      const Class = require('../models/Class');
-      
-      // Get teacher's assigned classes
-      const teacherClasses = await Class.find({
-        'assignedTeachers.teacherId': req.user._id,
-        isActive: true
-      });
-
-      if (teacherClasses.length === 0) {
-        return res.status(403).json({ success: false, message: 'No classes assigned to teacher' });
-      }
-
-      // Check if student is in teacher's classes
-      const student = await User.findOne({
-        _id: studentId,
-        role: 'student', // Students are stored as 'student' role
-        studentClass: { $in: teacherClasses.map(cls => cls.name) },
-        schoolId: req.user.schoolId
-      });
-
-      if (!student) {
-        return res.status(403).json({ success: false, message: 'Student not found in teacher\'s classes' });
-      }
-    }
+    const context = await legacyReportContext(req, req.query.schoolId, studentId, templateId);
+    if (context.error) return res.status(context.status).json({ success: false, message: context.error });
+    const { template, school, schoolId } = context;
 
     const settings = school.settings || {};
     const frequency = template.reportFrequency;
@@ -571,7 +598,7 @@ router.get('/due-status', protect, authorize('teacher', 'school_admin', 'super_a
     });
 
     const lastReport = await Report.findOne({
-      schoolId: req.user.schoolId,
+      schoolId,
       studentId,
       templateId
     }).sort({ createdAt: -1 }).populate('teacherId', 'firstName lastName');
@@ -601,7 +628,7 @@ router.get('/due-status', protect, authorize('teacher', 'school_admin', 'super_a
     // Check if there's already a report for the current period
     const periodStart = getStartOfFrequencyPeriod(frequency, settings, now.toDate());
     const existingReportInPeriod = await Report.findOne({
-      schoolId: req.user.schoolId,
+      schoolId,
       studentId,
       templateId,
       createdAt: {
@@ -658,13 +685,9 @@ router.post('/debug-due-calculations', developmentOnly, protect, authorize('teac
       userId: req.user._id
     });
 
-    // Get the same data the frontend would use
-    const template = await ReportTemplate.findById(templateId);
-    const school = await School.findById(req.user.schoolId).select('settings');
-    
-    if (!template || !school) {
-      return res.status(404).json({ success: false, message: 'Template or school not found' });
-    }
+    const context = await legacyReportContext(req, req.body.schoolId, studentId, templateId);
+    if (context.error) return res.status(context.status).json({ success: false, message: context.error });
+    const { template, school, schoolId } = context;
 
     const settings = school.settings || {};
     const frequency = template.reportFrequency;
@@ -672,7 +695,7 @@ router.post('/debug-due-calculations', developmentOnly, protect, authorize('teac
     const now = getCurrentDateInTimezone(timezone);
 
     const lastReport = await Report.findOne({
-      schoolId: req.user.schoolId,
+      schoolId,
       studentId,
       templateId
     }).sort({ createdAt: -1 });
@@ -765,150 +788,28 @@ router.get('/test-media/:filename', developmentOnly, protect, async (req, res) =
 
 // @desc    Check due reports for current teacher and create notifications
 // @route   POST /api/reports/check-due
-// @access  Private (teacher)
-router.post('/check-due', protect, authorize('teacher'), async (req, res) => {
+router.post('/check-due', protect, authorize('teacher'), requireActiveOrganization, async (req, res) => {
   try {
-    // Load teacher and school settings
-    const teacher = await User.findById(req.user._id).select('schoolId grade notifications');
-    const school = await School.findById(teacher.schoolId).select('settings name');
-    if (!school) {
-      return res.status(400).json({ success: false, message: 'School not found' });
-    }
-
-    const settings = school.settings || {};
-    const timezone = settings.timezone || 'UTC';
-    const now = getCurrentDateInTimezone(timezone);
-
-    // Find students assigned to this teacher through their classes
-    const Class = require('../models/Class');
-    
-    // Get teacher's assigned classes
-    const teacherClasses = await Class.find({
-      'assignedTeachers.teacherId': teacher._id,
-      isActive: true
-    });
-
-    if (teacherClasses.length === 0) {
-      return res.json({ success: true, message: 'No classes assigned to teacher', data: { created: 0 } });
-    }
-
-    // Get students from teacher's assigned classes
-    const students = await User.find({
-      role: 'student', // Students are stored as 'student' role
-      studentClass: { $in: teacherClasses.map(cls => cls.name) },
-      schoolId: teacher.schoolId,
-      isActive: true
-    }).select('firstName lastName studentGrade studentClass');
-
-    if (students.length === 0) {
-      return res.json({ success: true, message: 'No students in teacher\'s classes', data: { created: 0 } });
-    }
-
-    // Find templates for this school possibly matching grade
-    const templates = await ReportTemplate.find({ schoolId: teacher.schoolId, isActive: true })
-      .select('name reportFrequency grade');
-
-    let createdCount = 0;
+    const { calculateDueReportsForTeacher } = require('../services/dueReportsCalculator');
+    const teacher = await User.findById(req.user._id).select('notifications');
+    if (!teacher) return res.status(403).json({ success: false, message: 'Teacher not found' });
+    const dueReports = await calculateDueReportsForTeacher(String(req.user._id));
     const createdNotifications = [];
-
-    // Iterate students x templates
-    for (const student of students) {
-      const studentName = `${student.firstName} ${student.lastName}`;
-      // Filter templates by grade match if template has grade
-      const applicableTemplates = templates.filter(t => !t.grade || !student.studentGrade || gradesMatch(t.grade, student.studentGrade));
-
-      for (const template of applicableTemplates) {
-        const frequency = template.reportFrequency;
-        const freqConfig = settings.reportFrequencies?.[frequency];
-        if (!freqConfig || freqConfig.enabled === false) {
-          continue;
-        }
-
-        const lastReport = await Report.findOne({
-          schoolId: teacher.schoolId,
-          studentId: student._id,
-          templateId: template._id
-        }).sort({ createdAt: -1 });
-
-        const lastReportDate = lastReport ? lastReport.createdAt : null;
-        let isDue = false;
-        let nextDue = null;
-        try {
-          isDue = isReportDue(frequency, settings, lastReportDate, now.toDate());
-          const nextDueResult = calculateDueDate(frequency, settings, now);
-        nextDue = nextDueResult.dueDate;
-        } catch (e) {
-          continue;
-        }
-
-        if (isDue) {
-          // Avoid duplicate notifications: check if an unread notification exists for this student+template and due date day
-          const nextDueDayKey = nextDue ? nextDue.clone().startOf('day').toISOString() : now.clone().startOf('day').toISOString();
-          const dup = (teacher.notifications || []).some(n => {
-            return n.type === 'report' && n.data && n.data.studentId === String(student._id)
-              && n.data.templateId === String(template._id) && n.data.dueDayKey === nextDueDayKey && n.isRead === false;
-          });
-          if (dup) continue;
-
-          const notification = {
-            id: `rep-${student._id}-${template._id}-${Date.now()}`,
-            type: 'report',
-            title: `Report due: ${template.name}`,
-            message: `A ${frequency} report for ${studentName} is due now.`,
-            data: {
-              studentId: String(student._id),
-              studentName,
-              templateId: String(template._id),
-              templateName: template.name,
-              frequency,
-              dueDate: nextDue ? nextDue.toDate() : now.toDate(),
-        dueDateTimezone: timezone,
-              dueDayKey: nextDueDayKey
-            }
-          };
-
-          await User.updateOne(
-            { _id: teacher._id },
-            { $push: { notifications: notification } }
-          );
-          
-          // Send FCM push notification if Firebase is initialized
-          if (firebaseService.isFirebaseInitialized()) {
-            const fcmNotification = {
-              title: notification.title,
-              message: notification.message,
-              type: notification.type
-            };
-            
-            const fcmData = {
-              studentId: notification.data.studentId,
-              studentName: notification.data.studentName,
-              templateId: notification.data.templateId,
-              templateName: notification.data.templateName,
-              frequency: notification.data.frequency,
-              action: 'create_report'
-            };
-            
-            await firebaseService.sendNotificationToUser(teacher, fcmNotification, fcmData);
-          }
-          
-          createdCount += 1;
-          createdNotifications.push(notification);
-        }
-      }
+    for (const item of dueReports) {
+      const dueDayKey = new Date(item.dueDate).toISOString().slice(0, 10);
+      const duplicate = (teacher.notifications || []).some(n => n.type === 'report' && n.data?.enrollmentId === item.enrollmentId && n.data?.templateId === item.templateId && n.data?.dueDayKey === dueDayKey && n.isRead === false);
+      if (duplicate) continue;
+      const notification = { id: `rep-${item.enrollmentId}-${item.templateId}-${Date.now()}`, type: 'report', title: `Report due: ${item.templateName}`, message: `A ${item.frequency} report for ${item.studentName} is due now.`, data: { studentId:item.studentId, studentName:item.studentName, enrollmentId:item.enrollmentId, programId:item.programId, levelId:item.levelId, templateId:item.templateId, templateName:item.templateName, frequency:item.frequency, dueDate:item.dueDate, dueDayKey } };
+      await User.updateOne({ _id: teacher._id }, { $push: { notifications: notification } });
+      createdNotifications.push(notification);
     }
-
-    return res.json({ success: true, data: { created: createdCount, notifications: createdNotifications } });
-  } catch (error) {
-    logger.error('Error checking due reports for teacher', { service: 'reports', error: error.message, user: req.user._id });
-    res.status(500).json({ success: false, message: 'Error checking due reports', error: error.message });
-  }
+    res.json({ success:true, data:{ created:createdNotifications.length, notifications:createdNotifications } });
+  } catch (error) { logger.error('Error checking due reports for teacher', { service:'reports', error:error.message, user:req.user._id }); res.status(500).json({ success:false, message:'Error checking due reports' }); }
 });
-
 // @desc    Create new report
 // @route   POST /api/reports
 // @access  Private (teacher, school_admin, super_admin)
-router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
     const {
       title,
@@ -945,19 +846,15 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
       });
     }
 
-    const [template, student] = await Promise.all([
-      ReportTemplate.findById(templateId), User.findById(studentId)
-    ]);
-    if (!template || !belongsToSchool(req.user, template))
-      return res.status(404).json({ success: false, message: 'Report template not found' });
-    if (!await canAccessStudent(req.user, student))
-      return res.status(404).json({ success: false, message: 'Student not found' });
+    const context = await legacyReportContext(req, req.body.schoolId, studentId, templateId, { requireCompatibleEnrollment: true });
+    if (context.error) return res.status(context.status).json({ success: false, message: context.error });
+    const { template, student, schoolId } = context;
 
     // Enforce due-date rules for teachers based on school settings
     // Super Admin and School Admin can bypass enforcement; only enforce for teachers
     if (req.user.role === 'teacher') {
       try {
-        const school = await School.findById(req.user.schoolId).select('settings name');
+        const school = await School.findById(schoolId).select('settings name');
         if (!school) {
           return res.status(400).json({ success: false, message: 'School not found for user' });
         }
@@ -981,7 +878,7 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
         // This prevents multiple teachers from generating duplicate reports for the same frequency period
         const periodStart = getStartOfFrequencyPeriod(frequency, schoolSettings, now.toDate());
         const existingReportInPeriod = await Report.findOne({
-          schoolId: req.user.schoolId,
+          schoolId,
           studentId,
           templateId,
           createdAt: {
@@ -1019,7 +916,7 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
 
         // Get the last report date for this student and template
         const lastReport = await Report.findOne({
-          schoolId: req.user.schoolId,
+          schoolId,
           studentId,
           templateId
         }).sort({ createdAt: -1 });
@@ -1117,7 +1014,7 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
     // Create report
     const report = await Report.create({
       title,
-      schoolId: req.user.schoolId,
+      schoolId,
       studentId,
       teacherId: req.user._id,
       templateId,
@@ -1189,7 +1086,7 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), a
           const parentUser = await User.findOne({
             email: student.parentEmail,
             role: 'parent',
-            schoolId: req.user.schoolId
+            schoolId
           });
 
           if (parentUser) {
@@ -1296,9 +1193,11 @@ const staleReportResponse = res => res.status(409).json({
   message: 'Report changed or was finalized. Reload before trying again.'
 });
 
-router.put('/:id', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+router.put('/:id', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
-    const report = await Report.findById(req.params.id);
+    const schoolId = reportSchoolId(req, req.body);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    const report = await Report.findOne({ _id: req.params.id, schoolId });
 
     if (!report) {
       return res.status(404).json({
@@ -1372,9 +1271,11 @@ router.put('/:id', protect, authorize('teacher', 'school_admin', 'super_admin'),
 // @desc    Approve report
 // @route   PATCH /api/reports/:id/approve
 // @access  Private (teacher who created it, school_admin, super_admin)
-router.patch('/:id/approve', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+router.patch('/:id/approve', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
-    const report = await Report.findById(req.params.id);
+    const schoolId = reportSchoolId(req, req.body);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    const report = await Report.findOne({ _id: req.params.id, schoolId });
 
     if (!report) {
       return res.status(404).json({
@@ -1447,7 +1348,7 @@ function deliveryData(report) {
     attachments: published ? published.attachments : (report.attachments || [])
   };
 }
-const reportQuery = id => Report.findById(id)
+const reportQuery = (id, schoolId) => Report.findOne({ _id: id, schoolId })
   .populate('studentId', 'firstName lastName parentEmail')
   .populate('teacherId', 'firstName lastName')
   .populate('schoolId', 'name branding logo');
@@ -1457,7 +1358,9 @@ async function publishReport(req, res) {
   publishing.add(key);
   let accepted = false;
   try {
-    const report = await reportQuery(req.params.id);
+    const schoolId = reportSchoolId(req, req.body);
+    if (!schoolId) return res.status(400).json({ success: false, outcome: 'not_authorized', message: 'Organization context is required' });
+    const report = await reportQuery(req.params.id, schoolId);
     if (!report || !canAccessReport(req.user, report)) return res.status(404).json({ success: false, outcome: 'not_authorized', message: 'Report not found' });
     if (report.status === 'sent') return res.status(409).json({ success: false, outcome: 'already_sent', message: 'Report was already sent; no email was sent again' });
     if (report.status === 'archived' || (report.progressId && (report.status !== 'approved' || !canExposeProgressReport(report)))) return res.status(409).json({ success: false, outcome: 'not_finalized', message: 'Report must be approved with a valid finalized snapshot' });
@@ -1494,13 +1397,15 @@ async function publishReport(req, res) {
     return res.status(outcome === 'configuration_failure' ? 503 : 502).json({ success: false, outcome, message: accepted ? 'Transport accepted; completion failed. Reconcile before retry.' : outcome === 'pdf_failure' ? 'PDF generation failed; no email was sent' : 'Email publication failed; report remains unsent', data: { transportAccepted: accepted } });
   } finally { if (!accepted) publishing.delete(key); }
 }
-router.patch('/:id/send', protect, authorize('teacher', 'school_admin', 'super_admin'), publishReport);
-router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'super_admin'), publishReport);
+router.patch('/:id/send', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, publishReport);
+router.post('/:id/send-email', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, publishReport);
 
 // Explicit human-authorized repair; never sends email or changes approval/communication.
-router.post('/:id/regenerate-pdf', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+router.post('/:id/regenerate-pdf', protect, authorize('teacher', 'school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
-    const report = await reportQuery(req.params.id);
+    const schoolId = reportSchoolId(req, req.body);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    const report = await reportQuery(req.params.id, schoolId);
     if (!report || !canAccessReport(req.user, report)) return res.status(404).json({ success: false, message: 'Report not found' });
     if (!['approved', 'sent'].includes(report.status) || (report.progressId && !canExposeProgressReport(report))) return res.status(409).json({ success: false, message: 'Report is not finalized' });
     const pdf = await createReportPdf(report, deliveryData(report));
@@ -1782,9 +1687,11 @@ router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 's
 router.get('/:reportId/media', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
   try {
     const { reportId } = req.params;
+    const schoolId = reportSchoolId(req);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
     
     // Find the report
-    const report = await Report.findById(reportId);
+    const report = await Report.findOne({ _id: reportId, schoolId });
     if (!report) {
       return res.status(404).json({
         success: false,
@@ -1905,7 +1812,7 @@ router.delete('/:reportId/media/:mediaId', protect, authorize('teacher', 'school
  * @desc    Manually trigger due report check for the current teacher
  * @access  Teacher only
  */
-router.post('/check-due', protect, authorize('teacher'), async (req, res) => {
+router.post('/check-due', protect, authorize('teacher'), requireActiveOrganization, async (req, res) => {
   try {
     const { checkDueReports } = require('../services/reminderScheduler');
     
@@ -1994,6 +1901,8 @@ router.post('/can-generate', protect, authorize('teacher'), async (req, res) => 
       });
     }
     
+    const context = await legacyReportContext(req, req.body.schoolId, studentId, templateId);
+    if (context.error) return res.status(context.status).json({ success: false, message: context.error });
     const { canGenerateReport } = require('../services/dueReportsCalculator');
     
     const result = await canGenerateReport(
@@ -2022,110 +1931,29 @@ router.post('/can-generate', protect, authorize('teacher'), async (req, res) => 
   }
 });
 
-/**
- * GET /api/reports/available-templates/:studentId
- * Return all active templates for a student's grade, with availability status.
- * A template is unavailable if ANY teacher has already generated a report for
- * the current period (cross-teacher enforcement).
- */
+/** Return templates compatible with each qualifying Enrollment for this participant. */
 router.get('/available-templates/:studentId', protect, authorize('teacher'), async (req, res) => {
   try {
-    const { studentId } = req.params;
-
-    // Resolve teacher's school
-    const teacher = await User.findById(req.user._id).select('schoolId');
-    if (!teacher) {
-      return res.status(403).json({ success: false, message: 'Teacher not found' });
+    const teacher = await User.findById(req.user._id).select('schoolId role isActive');
+    const student = teacher && await User.findOne({ _id:req.params.studentId, schoolId:teacher.schoolId, role:'student' }).select('firstName lastName studentGrade schoolId').lean();
+    if (!teacher || !student || !await canTeacherAccessParticipantReporting(teacher, student)) return res.status(404).json({ success:false, message:'Participant not found' });
+    const school = await School.findById(teacher.schoolId).select('settings accountType organizationType terminologyProfile');
+    if (!school) return res.status(404).json({ success:false, message:'Organization not found' });
+    const [enrollments,templates] = await Promise.all([
+      Enrollment.find({ schoolId:teacher.schoolId, childId:student._id, status:{ $in:['active','pending'] } }).select('_id programId currentLevelId status').lean(),
+      ReportTemplate.find({ schoolId:teacher.schoolId, isActive:true }).select('_id name reportFrequency grade programId levelId isActive').lean()
+    ]);
+    const academic=resolveWorkspaceProfile(school).capabilities.requiresAcademicReportGrade;
+    const settings=school.settings||{},now=moment().tz(settings.timezone||'UTC');
+    const {getReportForCurrentPeriod}=require('../services/dueReportsCalculator');
+    const contexts=[];
+    for(const enrollment of enrollments){
+      const compatible=compatibleTemplates(templates,{schoolId:teacher.schoolId,programId:enrollment.programId,levelId:enrollment.currentLevelId,grade:student.studentGrade,allowLegacyGrade:academic});
+      const availableTemplates=await Promise.all(compatible.map(async template=>{const existing=await getReportForCurrentPeriod(student._id,String(template._id),String(teacher.schoolId),template.reportFrequency,settings,now);return{...template,isAvailable:!existing,existingReport:existing?{id:existing._id,createdAt:existing.createdAt,status:existing.status}:undefined};}));
+      contexts.push({enrollmentId:enrollment._id,programId:enrollment.programId,levelId:enrollment.currentLevelId,availableTemplates});
     }
-
-    // Resolve student
-    const student = await User.findById(studentId)
-      .select('firstName lastName studentGrade schoolId')
-      .lean();
-    if (!student || student.schoolId?.toString() !== teacher.schoolId?.toString()) {
-      return res.status(404).json({ success: false, message: 'Student not found' });
-    }
-
-    // School settings (for timezone + period calculation)
-    const school = await School.findById(teacher.schoolId).select('settings');
-    if (!school) {
-      return res.status(404).json({ success: false, message: 'School not found' });
-    }
-    const settings = school.settings || {};
-    const timezone = settings.timezone || 'UTC';
-    const now = moment().tz(timezone);
-
-    // Active templates for this school whose grade matches the student's grade
-    const { getReportForCurrentPeriod } = require('../services/dueReportsCalculator');
-    const allTemplates = await ReportTemplate.find({ schoolId: teacher.schoolId, isActive: true })
-      .select('_id name reportFrequency grade')
-      .lean();
-
-    const gradeTemplates = allTemplates.filter(t =>
-      gradesMatch(t.grade, student.studentGrade)
-    );
-
-    // Determine availability for each template
-    const availableTemplates = await Promise.all(
-      gradeTemplates.map(async (template) => {
-        const existingReport = await getReportForCurrentPeriod(
-          studentId,
-          template._id.toString(),
-          teacher.schoolId.toString(),
-          template.reportFrequency,
-          settings,
-          now
-        );
-
-        return {
-          _id: template._id,
-          name: template.name,
-          reportFrequency: template.reportFrequency,
-          grade: template.grade,
-          isAvailable: !existingReport,
-          existingReport: existingReport
-            ? {
-                id: existingReport._id,
-                createdAt: existingReport.createdAt,
-                teacherName: existingReport.teacherId
-                  ? `${existingReport.teacherId.firstName} ${existingReport.teacherId.lastName}`
-                  : 'Unknown',
-                status: existingReport.status,
-              }
-            : undefined,
-        };
-      })
-    );
-
-    const availableCount = availableTemplates.filter(t => t.isAvailable).length;
-
-    return res.json({
-      success: true,
-      data: {
-        student: {
-          id: student._id,
-          name: `${student.firstName} ${student.lastName}`,
-          grade: student.studentGrade,
-        },
-        availableTemplates,
-        totalTemplates: gradeTemplates.length,
-        availableCount,
-        unavailableCount: gradeTemplates.length - availableCount,
-        timezone,
-        calculatedAt: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    logger.error('Error getting available templates for student', {
-      error: error.message,
-      studentId: req.params.studentId,
-    });
-    res.status(500).json({
-      success: false,
-      message: 'Error getting available templates',
-      error: error.message,
-    });
-  }
+    const availableTemplates=Array.from(new Map(contexts.flatMap(context=>context.availableTemplates).map(template=>[String(template._id),template])).values());
+    res.json({success:true,data:{student:{id:student._id,name:`${student.firstName} ${student.lastName}`,grade:student.studentGrade},contexts,availableTemplates,totalTemplates:availableTemplates.length,availableCount:availableTemplates.filter(template=>template.isAvailable).length,unavailableCount:availableTemplates.filter(template=>!template.isAvailable).length,timezone:settings.timezone||'UTC',calculatedAt:new Date().toISOString()}});
+  } catch(error){logger.error('Error getting available templates',{error:error.message,studentId:req.params.studentId});res.status(500).json({success:false,message:'Error getting available templates'});}
 });
-
 module.exports = router;

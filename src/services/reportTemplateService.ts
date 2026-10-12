@@ -1,12 +1,14 @@
 import { REPORT_FREQUENCIES, type ReportFrequency } from '../constants/reportFrequencies';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5050/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 export interface ReportTemplate {
   _id: string;
   name: string;
   schoolId: string;
-  grade: string;
+  programId?: string | { _id: string; name: string };
+  levelId?: string | { _id: string; name: string } | null;
+  grade?: string | null;
 
   reportFrequency: ReportFrequency;
   content?: string;
@@ -42,7 +44,9 @@ export interface ReportTemplate {
 
 export interface CreateReportTemplateData {
   name: string;
-  grade: string;
+  programId: string;
+  levelId?: string;
+  grade?: string;
 
   reportFrequency: ReportFrequency;
   content?: string;
@@ -97,32 +101,21 @@ class ReportTemplateService {
   // Get all report templates
   async getReportTemplates(schoolId?: string): Promise<ApiResponse<ReportTemplate[]>> {
     try {
-      console.log('🔍 ReportTemplateService.getReportTemplates called');
-      console.log('🏫 SchoolId parameter:', schoolId);
-      
       const url = schoolId ? `${this.baseUrl}?schoolId=${schoolId}` : this.baseUrl;
       const fullUrl = `${API_BASE_URL}${url}`;
-      console.log('🌐 Full URL:', fullUrl);
-      
       const headers = this.getHeaders();
-      console.log('🔑 Headers:', headers);
       
       const response = await fetch(fullUrl, {
         method: 'GET',
         headers: headers,
       });
-      console.log('📡 Response status:', response.status);
-      console.log('📡 Response ok:', response.ok);
       
       const data = await response.json();
-      console.log('📡 Response data:', data);
       
       if (!response.ok) {
-        console.log('❌ HTTP error:', response.status, data.message);
         throw new Error(data.message || `HTTP error! status: ${response.status}`);
       }
       
-      console.log('✅ ReportTemplateService.getReportTemplates successful');
       return data;
     } catch (error) {
       console.error('Error fetching report templates:', error);
@@ -148,26 +141,17 @@ class ReportTemplateService {
   // Create new report template
   async createReportTemplate(data: CreateReportTemplateData): Promise<ApiResponse<ReportTemplate>> {
     try {
-      console.log('🐛 createReportTemplate - Input data:', data);
-      console.log('🐛 createReportTemplate - URL:', `${API_BASE_URL}${this.baseUrl}`);
-      console.log('🐛 createReportTemplate - Headers:', this.getHeaders());
-      console.log('🐛 createReportTemplate - Body:', JSON.stringify(data));
-      
       const response = await fetch(`${API_BASE_URL}${this.baseUrl}`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify(data),
       });
       
-      console.log('🐛 createReportTemplate - Response status:', response.status);
-      console.log('🐛 createReportTemplate - Response ok:', response.ok);
-      
       const responseData = await response.json();
-      console.log('🐛 createReportTemplate - Response data:', responseData);
       
       return responseData;
     } catch (error) {
-      console.error('🐛 createReportTemplate - Error:', error);
+      console.error('Error creating report template:', error);
       throw error;
     }
   }
@@ -190,9 +174,9 @@ class ReportTemplateService {
   }
 
   // Delete report template
-  async deleteReportTemplate(id: string): Promise<ApiResponse<void>> {
+  async deleteReportTemplate(id: string, schoolId?: string): Promise<ApiResponse<void>> {
     try {
-      const response = await fetch(`${API_BASE_URL}${this.baseUrl}/${id}`, {
+      const response = await fetch(`${API_BASE_URL}${this.baseUrl}/${id}${schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : ''}`, {
         method: 'DELETE',
         headers: this.getHeaders(),
       });
@@ -205,9 +189,9 @@ class ReportTemplateService {
   }
 
   // Get templates by grade
-  async getTemplatesByGrade(grade: string): Promise<ApiResponse<ReportTemplate[]>> {
+  async getTemplatesByGrade(grade: string, schoolId?: string): Promise<ApiResponse<ReportTemplate[]>> {
     try {
-      const response = await fetch(`${API_BASE_URL}${this.baseUrl}/grade/${encodeURIComponent(grade)}`, {
+      const response = await fetch(`${API_BASE_URL}${this.baseUrl}/grade/${encodeURIComponent(grade)}${schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : ''}`, {
         method: 'GET',
         headers: this.getHeaders(),
       });
@@ -220,9 +204,9 @@ class ReportTemplateService {
   }
 
   // Get templates by frequency
-  async getTemplatesByFrequency(frequency: ReportFrequency): Promise<ApiResponse<ReportTemplate[]>> {
+  async getTemplatesByFrequency(frequency: ReportFrequency, schoolId?: string): Promise<ApiResponse<ReportTemplate[]>> {
     try {
-      const response = await fetch(`${API_BASE_URL}${this.baseUrl}/frequency/${encodeURIComponent(frequency)}`, {
+      const response = await fetch(`${API_BASE_URL}${this.baseUrl}/frequency/${encodeURIComponent(frequency)}${schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : ''}`, {
         method: 'GET',
         headers: this.getHeaders(),
       });
@@ -235,9 +219,9 @@ class ReportTemplateService {
   }
 
   // Toggle template active status
-  async toggleTemplateStatus(id: string): Promise<ApiResponse<ReportTemplate>> {
+  async toggleTemplateStatus(id: string, schoolId?: string): Promise<ApiResponse<ReportTemplate>> {
     try {
-      const response = await fetch(`${API_BASE_URL}${this.baseUrl}/${id}/toggle`, {
+      const response = await fetch(`${API_BASE_URL}${this.baseUrl}/${id}/toggle${schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : ''}`, {
         method: 'PATCH',
         headers: this.getHeaders(),
       });
@@ -257,8 +241,8 @@ class ReportTemplateService {
       errors.push('Template name is required');
     }
 
-    if (!data.grade || data.grade.trim().length === 0) {
-      errors.push('Grade is required');
+    if (!data.programId) {
+      errors.push('Program is required');
     }
 
     if (!data.reportFrequency || !REPORT_FREQUENCIES.includes(data.reportFrequency)) {
@@ -292,4 +276,4 @@ class ReportTemplateService {
   }
 }
 
-export const reportTemplateService = new ReportTemplateService(); 
+export const reportTemplateService = new ReportTemplateService();
