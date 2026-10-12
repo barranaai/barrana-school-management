@@ -80,6 +80,7 @@ import { type ReportFrequency } from '../../../constants/reportFrequencies';
 import { type UploadedMedia } from '../../../services/mediaService';
 import MediaUpload from '../../common/MediaUpload';
 import ChildHistoryDialog from '../../staff/ChildHistoryDialog';
+import TeacherReportHistoryDialog from './TeacherReportHistoryDialog';
 import MedicalInfoDisplay from '../../common/MedicalInfoDisplay';
 import { formatGradeForDisplay, areGradesEqual } from '../../../utils/gradeDisplayUtils';
 import NotificationIcon from '../../common/NotificationIcon';
@@ -145,6 +146,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [openHistory, setOpenHistory] = useState(false);
+  const [openReportHistory, setOpenReportHistory] = useState(false);
   const [openStudentDialog, setOpenStudentDialog] = useState(false);
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
 
@@ -3080,10 +3082,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
             <Button 
               variant="outlined"
               startIcon={<Visibility />}
-              onClick={() => {
-                // TODO: Open reports history view
-                console.log('View reports for student:', selectedStudent?.name);
-              }}
+              onClick={() => setOpenReportHistory(true)}
               sx={{
                 borderRadius: 2,
                 px: 3,
@@ -3179,6 +3178,12 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         childId={selectedStudent?._id || selectedStudent?.id}
         schoolId={typeof user?.schoolId === 'string' ? user.schoolId : user?.schoolId?._id}
         onClose={() => setOpenHistory(false)}
+      />
+      <TeacherReportHistoryDialog
+        open={openReportHistory}
+        participantId={selectedStudent?._id || ''}
+        participantName={selectedStudent?.name || 'Participant'}
+        onClose={() => setOpenReportHistory(false)}
       />
 
       {/* Quick Report Generation Dialog */}

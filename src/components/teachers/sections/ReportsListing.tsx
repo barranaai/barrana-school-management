@@ -98,6 +98,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   const [selectedTranscriptionReport, setSelectedTranscriptionReport] = useState<Report | null>(null);
   const [selectedAIReport, setSelectedAIReport] = useState<Report | null>(null);
   const [selectedMediaReport, setSelectedMediaReport] = useState<Report | null>(null);
+  const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
   const [editedContent, setEditedContent] = useState<string>('');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -389,47 +390,18 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   };
 
   const handleViewReport = (report: Report) => {
-    // If report has PDF URL, open it directly
-    if (report.pdfUrl) {
-      handleOpenPdf(report.pdfUrl);
-    } else {
-      // Otherwise, open the dialog to view content
-      setSelectedReport(report);
-      setOpenReportDialog(true);
-    }
+    setSelectedReport(report);
+    setOpenReportDialog(true);
   };
 
-  const handleOpenPdf = async (pdfUrl: string) => {
+  const handleDownloadReport = async (report: Report) => {
+    setDownloadingReportId(report._id);
     try {
-      console.log('Opening PDF:', pdfUrl);
-      
-      // Construct full URL with API base
-      const API_BASE = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5050';
-      const fullPdfUrl = `${API_BASE}${pdfUrl}`;
-      
-      // Open PDF in new tab
-      window.open(fullPdfUrl, '_blank');
-      toast.success('Opening PDF report...');
+      await reportService.downloadReportPdf(report._id);
+      toast.success('Report downloaded');
     } catch (error) {
-      console.error('Error opening PDF:', error);
-      toast.error('Failed to open PDF report');
-    }
-  };
-
-  const handleSendReport = async (reportId: string) => {
-    try {
-      const response = await reportService.sendReportToParents(reportId, ['parent@example.com']);
-      if (response.success) {
-        toast.success('Report sent to parents successfully!');
-        // Refresh reports
-        window.location.reload();
-      } else {
-        toast.error('Failed to send report');
-      }
-    } catch (error) {
-      console.error('Error sending report:', error);
-      toast.error('Error sending report');
-    }
+      toast.error(error instanceof Error ? error.message : 'Report could not be downloaded');
+    } finally { setDownloadingReportId(null); }
   };
 
   const handleCloseDialog = () => {
@@ -1281,18 +1253,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                             </IconButton>
                           </Tooltip>
                           
-                          {report.status === 'draft' && (
-                            <Tooltip title="Send to Parents (Disabled)">
-                              <IconButton
-                                size="small"
-                                onClick={() => {}} // Disabled functionality
-                                disabled={true}
-                                sx={{ color: 'grey.400', opacity: 0.6 }}
-                              >
-                                <Send />
-                              </IconButton>
-                            </Tooltip>
-                          )}
+                          {report.status === 'draft' && <Chip size="small" label="Finalize in Session Progress" variant="outlined" />}
                         </Box>
                       </TableCell>
                     </TableRow>
@@ -1513,20 +1474,12 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
           >
             Close
           </Button>
-          {selectedReport?.status === 'draft' && (
-            <Button
-              variant="contained"
-              startIcon={<Send />}
-              onClick={() => {}} // Disabled functionality
-              disabled={true}
-              sx={{
-                background: 'linear-gradient(135deg, #cccccc 0%, #999999 100%)',
-                opacity: 0.6,
-              }}
-            >
-              Send to Parents (Disabled)
+          {selectedReport && ['approved', 'sent'].includes(selectedReport.status) && (
+            <Button variant="contained" startIcon={<CloudDownload />} disabled={downloadingReportId === selectedReport._id} onClick={() => void handleDownloadReport(selectedReport)}>
+              {downloadingReportId === selectedReport._id ? 'Preparing Download…' : 'Download Report'}
             </Button>
           )}
+          {selectedReport?.status === 'draft' && <Alert severity="info">Finalize this report in Session Progress before sharing it with parents.</Alert>}
         </DialogActions>
       </Dialog>
 
@@ -2389,4 +2342,4 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   );
 };
 
-export default ReportsListing; 
+export default ReportsListing;

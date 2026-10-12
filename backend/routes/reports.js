@@ -30,7 +30,7 @@ try {
 }
 const { sendReportEmail } = require('../services/emailService');
 const firebaseService = require('../services/firebaseService');
-const { createReportPdf } = require('../services/reportPdf');
+const { createReportPdf, readReportPdf } = require('../services/reportPdf');
 const { compatibleTemplates, compatibility } = require('../services/reportTemplateContext');
 const { canTeacherAccessParticipantReporting } = require('../services/reportParticipantAuthorization');
 const { resolveWorkspaceProfile } = require('../domain/workspaceProfile');
@@ -560,6 +560,33 @@ router.get('/', protect, authorize('school_admin', 'super_admin', 'teacher'), as
       message: 'Error retrieving reports',
       error: error.message
     });
+  }
+});
+
+// Download an existing verified PDF artifact. This is a historical read and
+// intentionally does not require an active organization.
+router.get('/:id/pdf', protect, authorize('teacher', 'school_admin', 'super_admin'), async (req, res) => {
+  try {
+    const schoolId = scopeSchoolId(req.user, req.query.schoolId);
+    if (!schoolId) return res.status(400).json({ success: false, message: 'Organization context is required' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ success: false, message: 'Report not found' });
+    const report = await Report.findOne({ _id: req.params.id, schoolId });
+    if (!report || !canAccessReport(req.user, report)) return res.status(404).json({ success: false, message: 'Report not found' });
+    if (!['approved', 'sent'].includes(report.status) || (report.progressId && !canExposeProgressReport(report))) {
+      return res.status(409).json({ success: false, message: 'Report is not finalized' });
+    }
+    let bytes;
+    try { bytes = await readReportPdf(report); }
+    catch (_) { return res.status(404).json({ success: false, code: 'PDF_UNAVAILABLE', message: 'PDF unavailable; use the authorized PDF regeneration action before downloading' }); }
+    const date = report.finalizedSnapshot?.finalizedAt || report.reportPeriod?.endDate || report.createdAt;
+    const stamp = new Date(date).toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Report_${stamp}.pdf"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.end(bytes);
+  } catch (error) {
+    logger.error('Error downloading report PDF', { service: 'reports', reportId: req.params.id, error: error.message });
+    return res.status(500).json({ success: false, message: 'Error downloading PDF' });
   }
 });
 

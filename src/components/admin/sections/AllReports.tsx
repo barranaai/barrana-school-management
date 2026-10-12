@@ -57,6 +57,7 @@ import toast from 'react-hot-toast';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import { formatGradeForDisplay } from '../../../utils/gradeDisplayUtils';
+import { reportService } from '../../../services/reportService';
 
 interface AllReportsProps {
   schoolBranding?: any;
@@ -160,7 +161,22 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [showMediaDialog, setShowMediaDialog] = useState(false);
   const [selectedReportForMedia, setSelectedReportForMedia] = useState<ExtendedReport | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const { user } = useAuth();
+
+  const handleDownloadReport = async () => {
+    if (!selectedReport) return;
+    setIsDownloading(true);
+    try {
+      const schoolId = user?.role === 'super_admin'
+        ? (typeof user.schoolId === 'string' ? user.schoolId : user.schoolId?._id)
+        : undefined;
+      await reportService.downloadReportPdf(selectedReport._id, schoolId);
+      toast.success('Report downloaded');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Report could not be downloaded');
+    } finally { setIsDownloading(false); }
+  };
 
   useEffect(() => {
     loadReports();
@@ -543,31 +559,8 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
   });
 
   const handleViewReport = (report: ExtendedReport) => {
-    // If report has PDF URL, open it directly
-    if (report.pdfUrl) {
-      handleOpenPdf(report.pdfUrl);
-    } else {
-      // Otherwise, open the dialog to view content
-      setSelectedReport(report);
-      setShowReportDialog(true);
-    }
-  };
-
-  const handleOpenPdf = async (pdfUrl: string) => {
-    try {
-      console.log('Opening PDF:', pdfUrl);
-      
-      // Construct full URL with API base
-      const API_BASE = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:5050';
-      const fullPdfUrl = `${API_BASE}${pdfUrl}`;
-      
-      // Open PDF in new tab
-      window.open(fullPdfUrl, '_blank');
-      toast.success('Opening PDF report...');
-    } catch (error) {
-      console.error('Error opening PDF:', error);
-      toast.error('Failed to open PDF report');
-    }
+    setSelectedReport(report);
+    setShowReportDialog(true);
   };
 
   const handlePlayAudio = (report: ExtendedReport) => {
@@ -1780,7 +1773,8 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
           <Button
             variant="contained"
             startIcon={<Download />}
-            onClick={() => toast.success('Download functionality coming soon!')}
+            onClick={() => void handleDownloadReport()}
+            disabled={isDownloading || !selectedReport || !['approved', 'sent'].includes(selectedReport.status)}
             sx={{
               background: brandingGradient,
               borderRadius: 3,
@@ -1796,7 +1790,7 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
               transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             }}
           >
-            Download Report
+            {isDownloading ? 'Preparing Download…' : 'Download Report'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2460,4 +2454,4 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
   );
 };
 
-export default AllReports; 
+export default AllReports;

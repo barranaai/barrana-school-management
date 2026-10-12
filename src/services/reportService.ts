@@ -231,6 +231,25 @@ class ReportService {
     }
   }
 
+  async downloadReportPdf(id: string, schoolId?: string): Promise<void> {
+    const query = schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : '';
+    const response = await fetch(`${API_BASE_URL}${this.baseUrl}/${encodeURIComponent(id)}/pdf${query}`, {
+      headers: this.getHeaders()
+    });
+    if (!response.ok) {
+      let message = 'Report could not be downloaded.';
+      try { message = (await response.json()).message || message; } catch (_) { /* non-JSON error */ }
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'Report.pdf';
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url; anchor.download = filename; document.body.appendChild(anchor); anchor.click(); anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   // Create new report
   async createReport(data: CreateReportData): Promise<ApiResponse<Report>> {
     try {

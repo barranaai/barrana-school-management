@@ -65,11 +65,11 @@ function harness(reportRow = report(), reportOverrides = {}) {
     evaluate(path.join(__dirname, '../routes/' + name + '.js'), dependencies);
     routers[name] = routes;
   }
-  async function request(name, method, url, { body = {}, query = {}, anonymous = false, role } = {}) {
+  async function request(name, method, url, { body = {}, query = {}, params = {}, anonymous = false, role } = {}) {
     if (!routers[name]) load(name);
     if (role) state.actor.role = role;
     const route = routers[name].find(r => r.method === method && r.url === url); assert.ok(route, url);
-    const req = { headers: anonymous ? {} : { authorization: 'Bearer ' + jwt.sign({ id: String(state.actor._id) }, process.env.JWT_SECRET) }, params: { id: String(progressId), reportId: String(progressId), mediaId: String(id(99)), progressId: String(progressId) }, body, query };
+    const req = { headers: anonymous ? {} : { authorization: 'Bearer ' + jwt.sign({ id: String(state.actor._id) }, process.env.JWT_SECRET) }, params: { id: String(progressId), reportId: String(progressId), mediaId: String(id(99)), progressId: String(progressId), ...params }, body, query };
     const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(data) { this.body = data; return this; }, setHeader() {}, end(bytes) { this.bytes = bytes; } };
     for (const handler of route.handlers) { let next = false; await handler(req, res, () => { next = true; }); if (!next) break; }
     return res;
@@ -349,4 +349,50 @@ test('Super Admin report operations stay within explicit organization scope', as
   });
   assert.equal(allowed.statusCode, 200);
   assert.equal(String(scoped.calls.queries.find(([model]) => model === 'Report')[1].schoolId), String(school));
+});
+
+test('staff PDF download is finalized, tenant-scoped, and requires explicit Super Admin scope', async () => {
+  const h = harness(report('approved'));
+  h.state.report.pdfArtifact = { key: 'test.pdf' };
+  const teacherDownload = await h.request('reports', 'get', '/:id/pdf');
+  assert.equal(teacherDownload.statusCode, 200);
+  assert.equal(teacherDownload.bytes.toString(), '%PDF-test');
+  assert.equal(h.calls.pdfReads, 1);
+
+  h.state.actor.role = 'super_admin';
+  h.state.actor.schoolId = id(90);
+  assert.equal((await h.request('reports', 'get', '/:id/pdf')).statusCode, 400);
+  assert.equal((await h.request('reports', 'get', '/:id/pdf', { query: { schoolId: String(id(90)) } })).statusCode, 404);
+  assert.equal((await h.request('reports', 'get', '/:id/pdf', { query: { schoolId: String(school) } })).statusCode, 200);
+});
+
+test('staff PDF download rejects drafts and other teachers without reading an artifact', async () => {
+  const draft = harness(report('draft'));
+  draft.state.report.pdfArtifact = { key: 'test.pdf' };
+  assert.equal((await draft.request('reports', 'get', '/:id/pdf')).statusCode, 409);
+  assert.equal(draft.calls.pdfReads, 0);
+  const unrelated = harness(report('approved'));
+  unrelated.state.actor._id = id(91);
+  assert.equal((await unrelated.request('reports', 'get', '/:id/pdf')).statusCode, 404);
+  assert.equal(unrelated.calls.pdfReads, 0);
+});
+
+test('staff PDF download safely rejects malformed IDs before report access', async () => {
+  const h = harness(report('approved'));
+  const response = await h.request('reports', 'get', '/:id/pdf', { params: { id: 'not-an-object-id' } });
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.body.message, 'Report not found');
+  assert.equal(h.calls.queries.filter(([model]) => model === 'Report').length, 0);
+  assert.equal(h.calls.pdfReads, 0);
+});
+
+test('staff PDF download does not trust legacy PDF paths when the private artifact is missing', async () => {
+  const h = harness(report('approved'));
+  h.state.report.pdfUrl = '/uploads/reports/legacy.pdf';
+  h.state.report.pdfPath = 'C:\\private\\legacy.pdf';
+  const response = await h.request('reports', 'get', '/:id/pdf');
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.body.code, 'PDF_UNAVAILABLE');
+  assert.match(response.body.message, /authorized PDF regeneration/i);
+  assert.equal(h.calls.pdfReads, 1);
 });
