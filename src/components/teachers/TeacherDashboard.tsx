@@ -17,7 +17,7 @@ import {
 import {
   Dashboard,
   People,
-  // Message,
+  Message,
   // Settings,
   AccountCircle,
   Logout,
@@ -38,7 +38,7 @@ import Meetings from './sections/Meetings';
 import DeliveredSessionWorkflow from './sections/DeliveredSessionWorkflow';
 import { createTeacherTheme } from '../../theme/teacherTheme';
 
-// import CommunicationCenter from './sections/CommunicationCenter';
+import CommunicationCenter from './sections/CommunicationCenter';
 // import TeacherAnalytics from './sections/TeacherAnalytics';
 // import TeacherSettings from './sections/TeacherSettings';
 
@@ -52,7 +52,7 @@ const menuItems = [
   { text: 'My Reports', icon: <Description />, section: 'reports-listing', color: '#4facfe' },
   { text: 'Incidents', icon: <ReportProblem />, section: 'incidents', color: '#f44336' },
   { text: 'Meetings', icon: <EventIcon />, section: 'meetings', color: '#43e97b' },
-  // { text: 'Communication', icon: <Message />, section: 'communication', color: '#4facfe' },
+  { text: 'Communication', icon: <Message />, section: 'communication', color: '#4facfe' },
   // { text: 'Analytics', icon: <TrendingUp />, section: 'analytics', color: '#43e97b' },
   // { text: 'Settings', icon: <Settings />, section: 'settings', color: '#fa709a' },
 ];
@@ -263,8 +263,8 @@ const TeacherDashboard: React.FC = () => {
         return <IncidentReporting schoolBranding={schoolBranding} />;
       case 'meetings':
         return <Meetings schoolBranding={schoolBranding} />;
-      // case 'communication':
-      //   return <CommunicationCenter schoolBranding={schoolBranding} />;
+      case 'communication':
+        return <CommunicationCenter schoolBranding={schoolBranding} />;
       // case 'analytics':
       //   return <TeacherAnalytics schoolBranding={schoolBranding} />;
       // case 'settings':

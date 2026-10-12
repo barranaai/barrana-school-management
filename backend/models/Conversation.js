@@ -10,7 +10,7 @@ const conversationSchema = new mongoose.Schema({
     },
     role: {
       type: String,
-      enum: ['parent', 'school_admin', 'super_admin'],
+      enum: ['parent', 'teacher', 'school_admin', 'super_admin'],
       required: true
     },
     name: {
@@ -64,6 +64,10 @@ const conversationSchema = new mongoose.Schema({
     admin: {
       type: Number,
       default: 0
+    },
+    teacher: {
+      type: Number,
+      default: 0
     }
   },
 
@@ -104,6 +108,8 @@ conversationSchema.index({ 'participants.userId': 1, isActive: 1, 'lastMessage.s
 conversationSchema.methods.getUnreadCount = function(role) {
   if (role === 'parent') {
     return this.unreadCount.parent || 0;
+  } else if (role === 'teacher') {
+    return this.unreadCount.teacher || 0;
   } else if (role === 'school_admin' || role === 'super_admin') {
     return this.unreadCount.admin || 0;
   }
@@ -114,6 +120,8 @@ conversationSchema.methods.getUnreadCount = function(role) {
 conversationSchema.methods.incrementUnread = async function(recipientRole) {
   if (recipientRole === 'parent') {
     this.unreadCount.parent = (this.unreadCount.parent || 0) + 1;
+  } else if (recipientRole === 'teacher') {
+    this.unreadCount.teacher = (this.unreadCount.teacher || 0) + 1;
   } else if (recipientRole === 'school_admin' || recipientRole === 'super_admin') {
     this.unreadCount.admin = (this.unreadCount.admin || 0) + 1;
   }
@@ -124,6 +132,8 @@ conversationSchema.methods.incrementUnread = async function(recipientRole) {
 conversationSchema.methods.resetUnread = async function(role) {
   if (role === 'parent') {
     this.unreadCount.parent = 0;
+  } else if (role === 'teacher') {
+    this.unreadCount.teacher = 0;
   } else if (role === 'school_admin' || role === 'super_admin') {
     this.unreadCount.admin = 0;
   }

@@ -19,7 +19,7 @@ const messageSchema = new mongoose.Schema({
 
   senderRole: {
     type: String,
-    enum: ['parent', 'school_admin', 'super_admin'],
+    enum: ['parent', 'teacher', 'school_admin', 'super_admin'],
     required: true
   },
 
@@ -38,7 +38,7 @@ const messageSchema = new mongoose.Schema({
 
   recipientRole: {
     type: String,
-    enum: ['parent', 'school_admin', 'super_admin'],
+    enum: ['parent', 'teacher', 'school_admin', 'super_admin'],
     required: true
   },
 

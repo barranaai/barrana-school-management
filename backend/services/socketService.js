@@ -3,8 +3,10 @@ const jwt = require('jsonwebtoken');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
+const School = require('../models/School');
 const firebaseService = require('./firebaseService');
 const { logger } = require('../utils/logger');
+const { userCanUseConversation, conversationCanDeliver } = require('./guardianCommunicationService');
 
 class SocketService {
   constructor() {
@@ -38,9 +40,9 @@ class SocketService {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id).select('firstName lastName email role schoolId');
+        const user = await User.findById(decoded.id).select('firstName lastName email role schoolId isActive');
         
-        if (!user) {
+        if (!user || user.isActive === false) {
           return next(new Error('Authentication error: User not found'));
         }
 
@@ -100,19 +102,28 @@ class SocketService {
         isActive: true
       });
 
-      conversations.forEach(conv => {
-        socket.join(`conversation:${conv._id}`);
-      });
+      let joined = 0;
+      for (const conv of conversations) {
+        if (await userCanUseConversation(socket.user, conv)) {
+          socket.join(`conversation:${conv._id}`);
+          joined += 1;
+        }
+      }
 
-      logger.info(`User ${userId} joined ${conversations.length} conversation rooms`);
+      logger.info(`User ${userId} joined ${joined} conversation rooms`);
     } catch (error) {
       logger.error('Error joining user conversations:', error);
     }
   }
 
-  handleJoinConversation(socket, conversationId) {
+  async handleJoinConversation(socket, conversationId) {
+    const conversation = await Conversation.findById(conversationId);
+    const isParticipant = conversation?.participants?.some(item => item.userId.toString() === socket.user._id.toString());
+    if (!conversation || !isParticipant || !(await userCanUseConversation(socket.user, conversation))) {
+      socket.emit('message_error', { error: 'Conversation not found' });
+      return;
+    }
     socket.join(`conversation:${conversationId}`);
-    logger.info(`User ${socket.user._id} joined conversation ${conversationId}`);
   }
 
   handleLeaveConversation(socket, conversationId) {
@@ -124,6 +135,14 @@ class SocketService {
     try {
       const { conversationId, content, tempId, attachments } = data;
       const user = socket.user;
+
+      const activeOrganization = user.schoolId
+        ? await School.findOne({ _id: user.schoolId, isActive: { $ne: false } }).select('_id')
+        : null;
+      if (!activeOrganization) {
+        socket.emit('message_error', { tempId, error: 'Organization is unavailable' });
+        return;
+      }
 
       // Verify conversation and participation
       const conversation = await Conversation.findById(conversationId);
@@ -140,7 +159,7 @@ class SocketService {
         p => p.userId.toString() === user._id.toString()
       );
 
-      if (!isParticipant) {
+      if (!isParticipant || !(await userCanUseConversation(user, conversation)) || !(await conversationCanDeliver(conversation))) {
         socket.emit('message_error', {
           tempId,
           error: 'Not authorized to send messages in this conversation'
@@ -238,6 +257,10 @@ class SocketService {
     try {
       const user = socket.user;
 
+      const conversation = await Conversation.findById(conversationId);
+      const isParticipant = conversation?.participants?.some(item => item.userId.toString() === user._id.toString());
+      if (!conversation || !isParticipant || !(await userCanUseConversation(user, conversation))) return;
+
       // Mark messages as read
       await Message.updateMany(
         {
@@ -254,7 +277,6 @@ class SocketService {
       );
 
       // Update conversation
-      const conversation = await Conversation.findById(conversationId);
       if (conversation) {
         await conversation.resetUnread(user.role);
         

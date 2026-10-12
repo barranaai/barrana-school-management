@@ -26,9 +26,15 @@ function harness({ access = true, delivery = true } = {}) {
     '../services/guardianAccessService': { async authorizeGuardianParticipant() { return { allowed: access }; } },
     '../services/guardianCommunicationService': {
       async guardianCanUseConversation() { return access; },
+      async userCanUseConversation() { return access; },
       async conversationCanDeliver() { return delivery; }
     },
+    '../services/teacherCommunicationAuthorization': {
+      async teacherCanCommunicateWithParticipant() { return access; },
+      async getTeacherCommunicationRecipients() { return []; }
+    },
     '../middleware/auth': { protect: (_req, _res, next) => next(), authorize: () => (_req, _res, next) => next() },
+    '../middleware/lifecycleAuthorization': { requireActiveOrganization: (_req, _res, next) => next() },
     '../utils/logger': { logger: { info() {}, warn() {}, error() {} } },
     '../services/firebaseService': { async sendNotificationToUser() {} }
   };

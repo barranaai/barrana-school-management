@@ -14,6 +14,7 @@ jest.mock('./sections/StudentManagement', () => ({ __esModule: true, default: ()
 jest.mock('./sections/ReportsListing', () => ({ __esModule: true, default: () => <div>Reports</div> }));
 jest.mock('./sections/IncidentReporting', () => ({ __esModule: true, default: () => <div>Incidents</div> }));
 jest.mock('./sections/Meetings', () => ({ __esModule: true, default: () => <div>Meetings</div> }));
+jest.mock('./sections/CommunicationCenter', () => ({ __esModule: true, default: () => <div>Teacher communication center</div> }));
 
 let host: HTMLDivElement, root: Root;
 const step = async (fn: () => void) => { await act(async () => { fn(); }); };
@@ -35,4 +36,11 @@ test('exposes My Sessions and keeps Session Progress as a separate existing dest
   await step(() => Simulate.click(progress));
   expect(window.location.hash).toBe('#session-progress');
   expect(document.body).toHaveTextContent('Teacher progress workflow');
+});
+
+test('exposes the teacher Communication destination', async () => {
+  window.location.hash = '#communication';
+  await step(() => root.render(<TeacherDashboard />)); await settle();
+  expect(document.body).toHaveTextContent('Teacher communication center');
+  expect(document.body).toHaveTextContent('Communication');
 });

@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { authorizeGuardianParticipant } = require('./guardianAccessService');
+const { teacherCanCommunicateWithParticipant } = require('./teacherCommunicationAuthorization');
 
 const sid = value => String(value?._id || value || '');
 const studentId = conversation => conversation?.metadata?.studentId;
@@ -17,6 +18,16 @@ async function guardianCanUseConversation(user, conversation, dependencies = {})
   if (user?.role !== 'parent' || !studentId(conversation)) return true;
   const authorize = dependencies.authorizeGuardianParticipant || authorizeGuardianParticipant;
   return Boolean((await authorize(user, studentId(conversation), 'communication', { allowInactiveParticipant: true })).allowed);
+}
+
+async function userCanUseConversation(user, conversation, dependencies = {}) {
+  if (!user || !conversation || sid(user.schoolId) !== sid(conversation.schoolId)) return false;
+  if (user.role === 'teacher') {
+    if (!studentId(conversation)) return false;
+    const authorizeTeacher = dependencies.teacherCanCommunicateWithParticipant || teacherCanCommunicateWithParticipant;
+    return Boolean(await authorizeTeacher(user, studentId(conversation), dependencies));
+  }
+  return guardianCanUseConversation(user, conversation, dependencies);
 }
 
 async function conversationCanDeliver(conversation, dependencies = {}) {
@@ -46,4 +57,4 @@ async function authorizeScheduledMessageDelivery(message, dependencies = {}) {
   return false;
 }
 
-module.exports = { conversationLookup, guardianCanUseConversation, conversationCanDeliver, authorizeScheduledMessageDelivery };
+module.exports = { conversationLookup, guardianCanUseConversation, userCanUseConversation, conversationCanDeliver, authorizeScheduledMessageDelivery };

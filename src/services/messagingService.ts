@@ -73,6 +73,13 @@ export interface Conversation {
   };
 }
 
+export interface TeacherCommunicationRecipient {
+  guardianId: string;
+  guardianName: string;
+  participantId: string;
+  participantName: string;
+}
+
 class MessagingService {
   private socket: Socket | null = null;
   private baseUrl: string;
@@ -270,6 +277,13 @@ class MessagingService {
   }
 
   // REST API Calls
+  async getTeacherRecipients(): Promise<{ success: boolean; data: TeacherCommunicationRecipient[] }> {
+    const response = await fetch(`${this.baseUrl}/api/messages/teacher-recipients`, { headers: this.getHeaders() });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to fetch communication recipients');
+    return data;
+  }
+
   async getConversations(): Promise<{ success: boolean; data: Conversation[] }> {
     try {
       const response = await fetch(`${this.baseUrl}/api/messages/conversations`, {
