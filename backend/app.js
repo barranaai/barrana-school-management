@@ -133,6 +133,10 @@ const routeDefinitions = [
     "parents"
   ],
   [
+    "/api/guardian-relationships",
+    "guardianRelationships"
+  ],
+  [
     "/api/messages",
     "messages"
   ]

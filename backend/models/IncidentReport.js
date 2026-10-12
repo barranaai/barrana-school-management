@@ -90,6 +90,10 @@ const parentNotificationSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    guardianId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
     parentEmail: { type: String, trim: true },
     notifiedAt: { type: Date, default: Date.now },
     method: { type: String, enum: NOTIFICATION_METHODS, required: true },

@@ -51,6 +51,7 @@ import MedicalInfoDisplay from '../../common/MedicalInfoDisplay';
 import { themeColors } from '../../../theme/adminTheme';
 import NotificationIcon from '../../common/NotificationIcon';
 import ChildHistoryDialog from '../../staff/ChildHistoryDialog';
+import GuardianRelationshipManagement from './GuardianRelationshipManagement';
 import apiService from '../../../services/apiService';
 import {
   formatGradeForDisplay as formatGradeDisplay,
@@ -1592,6 +1593,10 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     </Grid>
 
                     {/* Modern enrollment context */}
+                    <Grid item xs={12}>
+                      <GuardianRelationshipManagement participantId={selectedStudentData.id || selectedStudentData._id} schoolId={school.id || (school as any)._id} />
+                    </Grid>
+
                     <Grid item xs={12}>
                       <Card elevation={0} sx={{ borderRadius: 3, border: '1px solid rgba(102, 126, 234, 0.1)' }}>
                         <Box sx={{ background: brandingGradient, color: 'white', p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

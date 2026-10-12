@@ -11,8 +11,7 @@ const canAccessStudent = async (user, student) => {
   if (isSuperAdmin(user)) return true;
   if (!belongsToSchool(user, student) || student.role !== 'student') return false;
   if (user.role === 'school_admin') return true;
-  if (user.role === 'parent') return sameId(student.parentId, user._id) ||
-    Boolean(student.parentEmail && user.email && student.parentEmail.toLowerCase() === user.email.toLowerCase());
+  if (user.role === 'parent') return (await require('../services/guardianAccessService').relationshipState(user, student, 'profile')).allowed;
   if (user.role !== 'teacher') return false;
   if (sameId(student.assignedTeacher, user._id)) return true;
   return Boolean(student.classId && await Class.exists({ _id: student.classId, schoolId: user.schoolId, 'assignedTeachers.teacherId': user._id }));

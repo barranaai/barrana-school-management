@@ -16,11 +16,13 @@ const path = require('path');
 const fs = require('fs');
 
 const { protect, authorize } = require('../middleware/auth');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const { scopeSchoolId } = require('../middleware/resourceAuthorization');
 const { body, validationResult } = require('express-validator');
 const IncidentReport = require('../models/IncidentReport');
 const User = require('../models/User');
 const School = require('../models/School');
+const { authorizedParticipants, authorizeGuardianParticipant, eligibleGuardiansForAll } = require('../services/guardianAccessService');
 const firebaseService = require('../services/firebaseService');
 const loggerUtils = require('../utils/logger');
 const logger = loggerUtils.logger;
@@ -97,14 +99,7 @@ function scopeQueryToUser(user) {
 
 /** Filter parent's incidents down to only those involving their children. */
 async function filterParentVisible(incidents, parentUser) {
-  const parentEmail = (parentUser.email || '').toLowerCase();
-  if (!parentEmail) return [];
-  const children = await User.find({
-    role: 'student',
-    parentEmail,
-  })
-    .select('_id')
-    .lean();
+  const children = await authorizedParticipants(parentUser, 'incidents', { includeInactive: true });
   const childIds = new Set(children.map((c) => c._id.toString()));
   return incidents.filter((inc) =>
     (inc.studentsInvolved || []).some((s) =>
@@ -134,6 +129,28 @@ function ensureNotLocked(incident, res) {
     return false;
   }
   return true;
+}
+
+/** Resolve and authorize an incident before notification side effects run. */
+async function authorizeIncidentNotification(req, res, next) {
+  try {
+    const schoolId = scopeSchoolId(req.user, req.body?.schoolId || req.query?.schoolId);
+    if (!schoolId) {
+      return res.status(400).json({ success: false, error: 'Organization context is required' });
+    }
+    const incident = await IncidentReport.findById(req.params.id);
+    const incidentSchoolId = normalizeSchoolId(incident?.schoolId);
+    if (!incident || incidentSchoolId !== normalizeSchoolId(schoolId)) {
+      return res.status(404).json({ success: false, error: 'Incident not found' });
+    }
+    if (req.user.role === 'teacher' && String(incident.reportedBy?._id || incident.reportedBy) !== String(req.user._id)) {
+      return res.status(404).json({ success: false, error: 'Incident not found' });
+    }
+    req.incident = incident;
+    next();
+  } catch (_error) {
+    return res.status(404).json({ success: false, error: 'Incident not found' });
+  }
 }
 
 /** Resolve an organization for historical incident reads, including inactive organizations. */
@@ -303,18 +320,23 @@ router.get('/:id', protect, async (req, res) => {
     }
 
     if (req.user.role === 'parent') {
-      const parentEmail = (req.user.email || '').toLowerCase();
       const involvedStudentIds = (incident.studentsInvolved || []).map((s) =>
         (s.studentId?._id || s.studentId)?.toString()
       );
-      const childMatch = await User.findOne({
-        role: 'student',
-        parentEmail,
-        _id: { $in: involvedStudentIds },
-      }).select('_id');
-      if (!childMatch) {
-        return res.status(403).json({ success: false, error: 'Forbidden' });
+      let allowed = false;
+      for (const childId of involvedStudentIds) {
+        const access = await authorizeGuardianParticipant(
+          req.user,
+          childId,
+          'incidents',
+          { allowInactiveParticipant: true }
+        );
+        if (access.allowed) {
+          allowed = true;
+          break;
+        }
       }
+      if (!allowed) return res.status(404).json({ success: false, error: 'Incident not found' });
     }
 
     res.json({ success: true, data: incident });
@@ -490,12 +512,12 @@ router.post(
   '/:id/notify-parents',
   protect,
   authorize('teacher', 'school_admin', 'super_admin'),
+  requireActiveOrganization,
+  authorizeIncidentNotification,
   async (req, res) => {
     try {
-      const incident = await IncidentReport.findById(req.params.id).populate(POPULATE);
-      if (!incident) {
-        return res.status(404).json({ success: false, error: 'Incident not found' });
-      }
+      const incident = req.incident;
+      await incident.populate(POPULATE);
       if (!ensureNotLocked(incident, res)) return;
 
       const methods = Array.isArray(req.body.methods) && req.body.methods.length > 0
@@ -505,12 +527,8 @@ router.post(
       const dispatched = [];
       for (const sv of incident.studentsInvolved) {
         const student = sv.studentId; // populated
-        if (!student?.parentEmail) continue;
-        const parent = await User.findOne({
-          role: 'parent',
-          email: student.parentEmail.toLowerCase(),
-        });
-        if (!parent) continue;
+        const parents = await eligibleGuardiansForAll(student?._id, ['incidents', 'communication']);
+        for (const parent of parents) {
 
         // Persist in-app notification.
         parent.notifications = parent.notifications || [];
@@ -565,7 +583,8 @@ router.post(
 
           incident.parentNotifications.push({
             studentId: student._id,
-            parentEmail: student.parentEmail,
+            guardianId: parent._id,
+            parentEmail: parent.email,
             method,
             notifiedBy: req.user._id,
             notifiedAt: new Date(),
@@ -574,6 +593,7 @@ router.post(
           });
           dispatched.push({ studentId: student._id, method, deliveryStatus, deliveryError });
         }
+      }
       }
 
       if (incident.status === 'reported') incident.status = 'parent_notified';
@@ -594,16 +614,26 @@ router.post(
  * Parent acknowledges the incident. Marks all notifications for any of
  * their children as acknowledged.
  */
-router.post('/:id/acknowledge', protect, authorize('parent'), async (req, res) => {
+router.post('/:id/acknowledge', protect, authorize('parent'), requireActiveOrganization, async (req, res) => {
   try {
     const incident = await IncidentReport.findById(req.params.id);
     if (!incident) {
       return res.status(404).json({ success: false, error: 'Incident not found' });
     }
-    const parentEmail = (req.user.email || '').toLowerCase();
+    const guardianEmail = String(req.user.email || '').trim().toLowerCase();
+    const belongsToGuardian = notification => notification.guardianId
+      ? String(notification.guardianId) === String(req.user._id)
+      : Boolean(guardianEmail && String(notification.parentEmail || '').trim().toLowerCase() === guardianEmail);
+    const authorizedStudentIds = new Set();
+    for (const notification of incident.parentNotifications || []) {
+      if (!belongsToGuardian(notification)) continue;
+      const incidentAccess = await authorizeGuardianParticipant(req.user, notification.studentId, 'incidents', { allowInactiveParticipant: true });
+      const communicationAccess = await authorizeGuardianParticipant(req.user, notification.studentId, 'communication', { allowInactiveParticipant: true });
+      if (incidentAccess.allowed && communicationAccess.allowed) authorizedStudentIds.add(String(notification.studentId));
+    }
     let touched = false;
     incident.parentNotifications.forEach((n) => {
-      if ((n.parentEmail || '').toLowerCase() === parentEmail && !n.acknowledged) {
+      if (belongsToGuardian(n) && authorizedStudentIds.has(String(n.studentId)) && !n.acknowledged) {
         n.acknowledged = true;
         n.acknowledgedAt = new Date();
         n.acknowledgmentNotes = req.body.notes;

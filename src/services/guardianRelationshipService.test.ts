@@ -1,0 +1,10 @@
+import apiService from './apiService';
+import {guardianRelationshipService as service} from './guardianRelationshipService';
+
+const reply=(data:any,status=200)=>({ok:status>=200&&status<300,json:async()=>status<400?{success:true,data}:{success:false,message:data}});
+beforeEach(()=>{(fetch as jest.Mock).mockReset();jest.spyOn(apiService,'getToken').mockReturnValue('token');});
+afterEach(()=>jest.restoreAllMocks());
+test('lists participant guardians with explicit school context',async()=>{(fetch as jest.Mock).mockResolvedValue(reply([]));await service.list('child/id','school/id');expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/guardian-relationships/participant/child%2Fid?schoolId=school%2Fid'),expect.objectContaining({headers:expect.objectContaining({Authorization:'Bearer token'})}));});
+test('links only the selected relationship fields',async()=>{(fetch as jest.Mock).mockResolvedValue(reply({_id:'relationship'},201));await service.link({participantId:'child',guardianId:'guardian',relationshipType:'parent',permissions:{canViewReports:true}});expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body)).toEqual({participantId:'child',guardianId:'guardian',relationshipType:'parent',permissions:{canViewReports:true}});});
+test('supports activation, revocation and permission edits',async()=>{(fetch as jest.Mock).mockResolvedValue(reply({}));await service.update('rel',{permissions:{canViewReports:false}});await service.activate('rel');await service.revoke('rel','requested');expect(fetch).toHaveBeenNthCalledWith(2,expect.stringContaining('/rel/activate'),expect.objectContaining({method:'POST'}));expect(fetch).toHaveBeenNthCalledWith(3,expect.stringContaining('/rel/revoke'),expect.objectContaining({body:JSON.stringify({reason:'requested'})}));});
+test('returns safe API errors',async()=>{(fetch as jest.Mock).mockResolvedValue(reply('Unable to update guardian relationship',403));await expect(service.list('child')).rejects.toThrow('Unable to update guardian relationship');});
