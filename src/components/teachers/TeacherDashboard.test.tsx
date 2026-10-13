@@ -15,6 +15,7 @@ jest.mock('./sections/ReportsListing', () => ({ __esModule: true, default: () =>
 jest.mock('./sections/IncidentReporting', () => ({ __esModule: true, default: () => <div>Incidents</div> }));
 jest.mock('./sections/Meetings', () => ({ __esModule: true, default: () => <div>Meetings</div> }));
 jest.mock('./sections/CommunicationCenter', () => ({ __esModule: true, default: () => <div>Teacher communication center</div> }));
+jest.mock('./sections/TeacherSettings', () => ({ __esModule: true, default: () => <div>Teacher account settings</div> }));
 
 let host: HTMLDivElement, root: Root;
 const step = async (fn: () => void) => { await act(async () => { fn(); }); };
@@ -43,4 +44,11 @@ test('exposes the teacher Communication destination', async () => {
   await step(() => root.render(<TeacherDashboard />)); await settle();
   expect(document.body).toHaveTextContent('Teacher communication center');
   expect(document.body).toHaveTextContent('Communication');
+});
+
+test('exposes the teacher Settings destination', async () => {
+  window.location.hash = '#settings';
+  await step(() => root.render(<TeacherDashboard />)); await settle();
+  expect(document.body).toHaveTextContent('Teacher account settings');
+  expect(document.body).toHaveTextContent('Settings');
 });

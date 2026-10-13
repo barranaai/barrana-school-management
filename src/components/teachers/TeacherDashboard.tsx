@@ -14,19 +14,16 @@ import {
   ThemeProvider,
   CircularProgress,
 } from '@mui/material';
-import {
-  Dashboard,
-  People,
-  Message,
-  // Settings,
-  AccountCircle,
-  Logout,
-  // TrendingUp,
-  Description,
-  ExpandMore,
-  ReportProblem,
-  Event as EventIcon,
-} from '@mui/icons-material';
+import Dashboard from '@mui/icons-material/Dashboard';
+import People from '@mui/icons-material/People';
+import Message from '@mui/icons-material/Message';
+import Settings from '@mui/icons-material/Settings';
+import AccountCircle from '@mui/icons-material/AccountCircle';
+import Logout from '@mui/icons-material/Logout';
+import Description from '@mui/icons-material/Description';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import ReportProblem from '@mui/icons-material/ReportProblem';
+import EventIcon from '@mui/icons-material/Event';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { apiService } from '../../services/apiService';
@@ -40,7 +37,7 @@ import { createTeacherTheme } from '../../theme/teacherTheme';
 
 import CommunicationCenter from './sections/CommunicationCenter';
 // import TeacherAnalytics from './sections/TeacherAnalytics';
-// import TeacherSettings from './sections/TeacherSettings';
+import TeacherSettings from './sections/TeacherSettings';
 
 const drawerWidth = 250;
 
@@ -54,7 +51,7 @@ const menuItems = [
   { text: 'Meetings', icon: <EventIcon />, section: 'meetings', color: '#43e97b' },
   { text: 'Communication', icon: <Message />, section: 'communication', color: '#4facfe' },
   // { text: 'Analytics', icon: <TrendingUp />, section: 'analytics', color: '#43e97b' },
-  // { text: 'Settings', icon: <Settings />, section: 'settings', color: '#fa709a' },
+  { text: 'Settings', icon: <Settings />, section: 'settings', color: '#fa709a' },
 ];
 
 const TeacherDashboard: React.FC = () => {
@@ -267,8 +264,8 @@ const TeacherDashboard: React.FC = () => {
         return <CommunicationCenter schoolBranding={schoolBranding} />;
       // case 'analytics':
       //   return <TeacherAnalytics schoolBranding={schoolBranding} />;
-      // case 'settings':
-      //   return <TeacherSettings schoolBranding={schoolBranding} />;
+      case 'settings':
+        return <TeacherSettings schoolBranding={schoolBranding} />;
       default:
         return <TeacherOverview schoolBranding={schoolBranding} />;
     }

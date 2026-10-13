@@ -33,6 +33,8 @@ export interface User {
   firstName: string;
   lastName: string;
   email: string;
+  phone?: string;
+  address?: string;
   role: 'teacher' | 'parent' | 'student' | 'school_admin' | 'super_admin';
   schoolId?: string | { _id: string; name: string; [key: string]: any };
   isEmailVerified: boolean;
@@ -43,6 +45,7 @@ export interface User {
       email: boolean;
       push: boolean;
       sms: boolean;
+      whatsapp?: boolean;
     };
   };
   lastLogin?: string;
@@ -71,6 +74,8 @@ const mapApiUser = (apiUser: any): User => ({
   firstName: apiUser.firstName,
   lastName: apiUser.lastName,
   email: apiUser.email,
+  phone: apiUser.phone,
+  address: apiUser.address,
   role: apiUser.role,
   schoolId: apiUser.schoolId,
   isEmailVerified: apiUser.isEmailVerified,

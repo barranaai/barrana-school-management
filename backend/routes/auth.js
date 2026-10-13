@@ -218,6 +218,8 @@ router.post('/login', [
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
+          phone: user.phone || '',
+          address: user.address || '',
           role: user.role,
           schoolId: user.schoolId,
           isEmailVerified: user.isEmailVerified,
@@ -252,6 +254,8 @@ router.get('/me', protect, async (req, res) => {
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
+          phone: user.phone || '',
+          address: user.address || '',
           role: user.role,
           schoolId: user.schoolId,
           isEmailVerified: user.isEmailVerified,
@@ -268,6 +272,127 @@ router.get('/me', protect, async (req, res) => {
       success: false,
       message: 'Server error'
     });
+  }
+});
+
+const SELF_PROFILE_FIELDS = ['firstName', 'lastName', 'phone', 'address'];
+const PROTECTED_SELF_FIELDS = [
+  'role', 'schoolId', 'isActive', 'isEmailVerified', 'password',
+  'permissions', 'grade', 'students', 'assignedTeacher'
+];
+
+const publicSelfSettings = user => ({
+  id: user._id,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  email: user.email,
+  phone: user.phone || '',
+  address: user.address || '',
+  role: user.role,
+  schoolId: user.schoolId,
+  preferences: user.preferences
+});
+
+// @route   PATCH /api/auth/me/profile
+// @desc    Update the authenticated user's permitted profile fields
+// @access  Private
+router.patch('/me/profile', protect, async (req, res) => {
+  try {
+    if (PROTECTED_SELF_FIELDS.some(field => Object.prototype.hasOwnProperty.call(req.body || {}, field))) {
+      return res.status(400).json({ success: false, message: 'Protected account fields cannot be changed here' });
+    }
+    if (Object.keys(req.body || {}).some(field => !SELF_PROFILE_FIELDS.includes(field))) {
+      return res.status(400).json({ success: false, message: 'Only permitted profile fields can be changed here' });
+    }
+
+    const updates = {};
+    for (const field of SELF_PROFILE_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) {
+        updates[field] = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
+      }
+    }
+
+    if (!updates.firstName && Object.prototype.hasOwnProperty.call(updates, 'firstName')) {
+      return res.status(400).json({ success: false, message: 'First name is required' });
+    }
+    if (!updates.lastName && Object.prototype.hasOwnProperty.call(updates, 'lastName')) {
+      return res.status(400).json({ success: false, message: 'Last name is required' });
+    }
+    if (updates.phone && !/^\+[1-9]\d{7,14}$/.test(updates.phone)) {
+      return res.status(400).json({ success: false, message: 'Use an international phone number such as +1234567890' });
+    }
+
+    const user = await User.findById(req.user.id || req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    Object.assign(user, updates);
+    await user.save();
+    res.json({ success: true, message: 'Profile updated successfully', data: publicSelfSettings(user) });
+  } catch (error) {
+    logger.error('Self profile update failed', { errorName: error?.name || 'Error' });
+    res.status(400).json({ success: false, message: 'Unable to update profile. Check the supplied information.' });
+  }
+});
+
+// @route   PATCH /api/auth/me/notifications
+// @desc    Update the authenticated user's supported notification preferences
+// @access  Private
+router.patch('/me/notifications', protect, async (req, res) => {
+  try {
+    const allowed = ['email', 'push', 'sms', 'whatsapp'];
+    const supplied = Object.keys(req.body || {});
+    if (!supplied.length || supplied.some(field => !allowed.includes(field))) {
+      return res.status(400).json({ success: false, message: 'Only supported notification preferences can be changed' });
+    }
+    if (supplied.some(field => typeof req.body[field] !== 'boolean')) {
+      return res.status(400).json({ success: false, message: 'Notification preferences must be true or false' });
+    }
+
+    const user = await User.findById(req.user.id || req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (!user.preferences) user.preferences = {};
+    if (!user.preferences.notifications) user.preferences.notifications = {};
+    for (const field of supplied) user.preferences.notifications[field] = req.body[field];
+    user.markModified?.('preferences');
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Notification preferences updated successfully',
+      data: { notifications: user.preferences.notifications }
+    });
+  } catch (error) {
+    logger.error('Notification preference update failed', { errorName: error?.name || 'Error' });
+    res.status(500).json({ success: false, message: 'Unable to update notification preferences' });
+  }
+});
+
+// @route   POST /api/auth/me/change-password
+// @desc    Change the authenticated user's password after confirming the current password
+// @access  Private
+router.post('/me/change-password', protect, authLimiter, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ success: false, message: 'Current password and a new password of at least 8 characters are required' });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ success: false, message: 'The new password must be different from the current password' });
+    }
+
+    const user = await User.findById(req.user.id || req.user._id).select('+password');
+    if (!user || !(await user.comparePassword(currentPassword))) {
+      return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+    }
+
+    user.password = newPassword;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (error) {
+    logger.error('Password change failed', { errorName: error?.name || 'Error' });
+    res.status(500).json({ success: false, message: 'Unable to change password' });
   }
 });
 

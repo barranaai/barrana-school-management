@@ -76,6 +76,7 @@ import messagingService from '../../services/messagingService';
 import CommunicationPage from './CommunicationPage';
 import ParentIncidents from './ParentIncidents';
 import ParentMeetings from './ParentMeetings';
+import AccountSettings from '../common/AccountSettings';
 
 const drawerWidth = 250;
 
@@ -2239,13 +2240,7 @@ const ParentsUI: React.FC = () => {
       <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
         Settings
       </Typography>
-      <Card>
-        <CardContent>
-          <Typography variant="body1">
-            Parent Settings - Coming Soon
-          </Typography>
-        </CardContent>
-      </Card>
+      <AccountSettings />
     </Box>
   );
 
