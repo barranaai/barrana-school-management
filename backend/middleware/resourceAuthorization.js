@@ -1,4 +1,5 @@
 const Class = require('../models/Class');
+const Enrollment = require('../models/Enrollment');
 const idOf = value => value ? String(value._id || value) : null;
 const sameId = (a, b) => Boolean(idOf(a) && idOf(a) === idOf(b));
 const isSuperAdmin = user => user?.role === 'super_admin';
@@ -14,7 +15,25 @@ const canAccessStudent = async (user, student) => {
   if (user.role === 'parent') return (await require('../services/guardianAccessService').relationshipState(user, student, 'profile')).allowed;
   if (user.role !== 'teacher') return false;
   if (sameId(student.assignedTeacher, user._id)) return true;
-  return Boolean(student.classId && await Class.exists({ _id: student.classId, schoolId: user.schoolId, 'assignedTeachers.teacherId': user._id }));
+  if (student.classId && await Class.exists({ _id: student.classId, schoolId: user.schoolId, 'assignedTeachers.teacherId': user._id })) return true;
+  const now = new Date();
+  return Boolean(await Enrollment.exists({
+    schoolId: user.schoolId,
+    childId: student._id,
+    status: 'active',
+    staffAssignments: {
+      $elemMatch: {
+        staffId: user._id,
+        status: 'active',
+        effectiveFrom: { $lte: now },
+        $or: [
+          { effectiveTo: { $exists: false } },
+          { effectiveTo: null },
+          { effectiveTo: { $gte: now } }
+        ]
+      }
+    }
+  }));
 };
 const scopeSchoolId = (user, requested) => isSuperAdmin(user) ? (requested || undefined) : idOf(user?.schoolId);
 module.exports = { idOf, sameId, isSuperAdmin, belongsToSchool, canAccessReport, canAccessStudent, scopeSchoolId };

@@ -2,7 +2,7 @@ import apiService from './apiService';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
-export type HistoryName = { id: string; name: string | null } | null;
+export type HistoryName = { id: string | null; name: string | null } | null;
 
 export interface ChildHistoryEvent {
   type: 'enrollment' | 'enrollment_status' | 'level' | 'group' | 'session' | 'progress' | 'report';
@@ -29,6 +29,30 @@ export interface ChildHistoryData {
     status: string;
     startDate: string | null;
   }>;
+  development: {
+    contexts: Array<{
+      program: HistoryName;
+      level: HistoryName;
+      sessionCount: number;
+      objectiveStatusCounts: Record<'achieved' | 'partially_achieved' | 'not_achieved' | 'needs_improvement' | 'not_observed', number>;
+    }>;
+    timeline: Array<{
+      progressId: string;
+      participationId: string;
+      deliveredSessionId: string;
+      date: string | null;
+      session: HistoryName;
+      program: HistoryName;
+      level: HistoryName;
+      group: HistoryName;
+      deliveryMode?: 'group' | 'individual';
+      overallStatus: string | null;
+      objectiveResults: Array<{ objectiveId: string | null; title: string | null; status: string; expectedOutcome: string | null }>;
+      parameterResults: Array<{ parameterId: string | null; requirementLabel: string | null; parameterLabel: string | null; type: string; value: any }>;
+      revisionNumber: number;
+      priorRevisionCount: number;
+    }>;
+  };
   events: ChildHistoryEvent[];
 }
 

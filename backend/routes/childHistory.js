@@ -149,16 +149,54 @@ router.get('/:childId', protect, authorize('school_admin', 'super_admin', 'teach
     }
 
     const participationById = new Map(participations.map(row => [id(row), row]));
+    const developmentTimeline = [];
     for (const progress of progressRows) {
       const participation = participationById.get(id(progress.childParticipationId));
       const session = participation && sessionById.get(id(participation.deliveredSessionId));
+      const eligibleEvidence = participation?.status === 'active' && session && session.status !== 'cancelled';
       events.push(event('progress', progress.updatedAt || progress.createdAt, 'Progress recorded',
         session?.title || 'Session progress', {
           progressId: id(progress), participationId: id(participation), deliveredSessionId: id(session),
+          participationStatus: participation?.status || null, sessionStatus: session?.status || null,
           overallStatus: progress.overallStatus || null,
           objectiveResults: progress.objectiveResults || [], parameterResults: progress.parameterResults || [],
           observations: progress.observations || null, recommendations: progress.recommendations || null
         }));
+      if (!eligibleEvidence) continue;
+      developmentTimeline.push({
+        progressId: id(progress), participationId: id(participation), deliveredSessionId: id(session),
+        date: dated(session.deliveredAt || session.scheduledAt || progress.createdAt),
+        session: { id: id(session), name: session.title || null },
+        program: named(session.programId), level: named(session.levelId), group: deliveryGroup(session),
+        deliveryMode: session.deliveryMode || 'group',
+        overallStatus: progress.overallStatus || null,
+        objectiveResults: (progress.objectiveResults || []).map(result => ({
+          objectiveId: id(result.objectiveId), title: result.title || null, status: result.status,
+          expectedOutcome: result.expectedOutcome || null
+        })),
+        parameterResults: (progress.parameterResults || []).map(result => ({
+          parameterId: id(result.parameterId), requirementLabel: result.requirementLabel || null,
+          parameterLabel: result.parameterLabel || null, type: result.type, value: result.value
+        })),
+        revisionNumber: progress.revisionNumber || 1,
+        priorRevisionCount: (progress.revisions || []).length
+      });
+    }
+
+    developmentTimeline.sort((left, right) => new Date(left.date || 0) - new Date(right.date || 0));
+    const developmentByContext = [];
+    const contextMap = new Map();
+    for (const point of developmentTimeline) {
+      const key = `${point.program?.id || 'unknown'}:${point.level?.id || 'none'}`;
+      if (!contextMap.has(key)) {
+        const context = { program: point.program, level: point.level, sessionCount: 0,
+          objectiveStatusCounts: { achieved: 0, partially_achieved: 0, not_achieved: 0, needs_improvement: 0, not_observed: 0 } };
+        contextMap.set(key, context); developmentByContext.push(context);
+      }
+      const context = contextMap.get(key); context.sessionCount += 1;
+      for (const result of point.objectiveResults) {
+        if (Object.hasOwn(context.objectiveStatusCounts, result.status)) context.objectiveStatusCounts[result.status] += 1;
+      }
     }
 
     for (const report of reports) {
@@ -194,6 +232,7 @@ router.get('/:childId', protect, authorize('school_admin', 'super_admin', 'teach
           isActive: child.isActive !== false
         },
         currentEnrollments,
+        development: { contexts: developmentByContext, timeline: developmentTimeline },
         events
       }
     });

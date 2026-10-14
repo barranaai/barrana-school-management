@@ -3,7 +3,12 @@ import {
   Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, Paper, Stack, Typography
 } from '@mui/material';
-import { History, School, Event, TrendingUp, Description, SwapHoriz } from '@mui/icons-material';
+import Description from '@mui/icons-material/Description';
+import Event from '@mui/icons-material/Event';
+import History from '@mui/icons-material/History';
+import School from '@mui/icons-material/School';
+import SwapHoriz from '@mui/icons-material/SwapHoriz';
+import TrendingUp from '@mui/icons-material/TrendingUp';
 import { ChildHistoryData, ChildHistoryEvent, getChildHistory } from '../../services/childHistoryService';
 import { downloadChildHistory } from '../../services/childHistoryService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -86,6 +91,32 @@ const ChildHistoryDialog: React.FC<Props> = ({ open, childId, schoolId, onClose,
           {data.currentEnrollments.length === 0 ? <Typography color="text.secondary">No current enrollment.</Typography> :
             <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 1 }}>{data.currentEnrollments.map(row => <Chip key={row.enrollmentId}
               label={[row.program?.name, row.level?.name, row.group?.name, label(row.status)].filter(Boolean).join(' · ')} />)}</Stack>}
+        </Box>
+        <Divider />
+        <Box>
+          <Typography variant="h6" gutterBottom>Development over time</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Each entry is one recorded session. Edits update that entry and do not create extra development events.
+          </Typography>
+          {data.development.timeline.length === 0 ? <Alert severity="info">No developmental progress has been recorded yet.</Alert> : <Stack spacing={2}>
+            {data.development.contexts.map((context, index) => <Paper key={`${context.program?.id}-${context.level?.id}-${index}`} variant="outlined" sx={{ p: 2 }}>
+              <Typography fontWeight={700}>{context.program?.name || 'Program unavailable'} · {context.level?.name || 'Level unavailable'}</Typography>
+              <Typography variant="body2" color="text.secondary">{context.sessionCount} recorded {context.sessionCount === 1 ? 'session' : 'sessions'}</Typography>
+              <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 1 }}>
+                {Object.entries(context.objectiveStatusCounts).map(([status, count]) => <Chip key={status} size="small" label={`${label(status)}: ${count}`} variant={status === 'not_observed' ? 'outlined' : 'filled'} />)}
+              </Stack>
+            </Paper>)}
+            <Typography variant="subtitle1" fontWeight={700}>Session timeline</Typography>
+            {data.development.timeline.map(point => <Paper key={point.progressId} variant="outlined" sx={{ p: 2 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
+                <Box><Typography fontWeight={700}>{point.session?.name || 'Session'}</Typography><Typography variant="body2" color="text.secondary">{[point.program?.name, point.level?.name, point.group?.name].filter(Boolean).join(' · ')}</Typography></Box>
+                <Typography variant="caption" color="text.secondary">{dateLabel(point.date)}</Typography>
+              </Stack>
+              <Stack direction="row" flexWrap="wrap" gap={1} sx={{ my: 1 }}><Chip size="small" label={`Overall: ${label(point.overallStatus)}`} />{point.priorRevisionCount > 0 && <Chip size="small" variant="outlined" label={`Revised ${point.priorRevisionCount} ${point.priorRevisionCount === 1 ? 'time' : 'times'}`} />}</Stack>
+              {point.objectiveResults.map(result => <Typography key={result.objectiveId || result.title} variant="body2">{result.title || 'Objective'}: <strong>{label(result.status)}</strong></Typography>)}
+              {point.parameterResults.map(result => <Typography key={result.parameterId || result.parameterLabel} variant="body2" color="text.secondary">{result.requirementLabel ? `${result.requirementLabel} — ` : ''}{result.parameterLabel || 'Measurement'}: {String(result.value)}</Typography>)}
+            </Paper>)}
+          </Stack>}
         </Box>
         <Divider />
         <Box>
