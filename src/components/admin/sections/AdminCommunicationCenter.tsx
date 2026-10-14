@@ -50,7 +50,6 @@ import {
   CheckCircle,
   Circle,
   Person,
-  Email as EmailIcon,
   School,
   Group,
   Close,
@@ -86,7 +85,7 @@ type Conversation = MessagingConversation & {
 
 const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ schoolBranding }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState(0); // 0 = Messages, 1 = Bulk Communications (coming soon)
+  const [activeTab, setActiveTab] = useState(0);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -651,10 +650,9 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         targetParentIds = selectedRecipients;
         console.log('Selected parents:', targetParentIds.length);
       } else {
-        // For grade/class/group, we'd need to find parents of students in those grades/classes/groups
-        // For now, use all parents as fallback
-        targetParentIds = parents.map(p => p._id);
-        console.log('Other type - using all parents:', targetParentIds.length);
+        showSnackbar('This recipient filter is not available. Choose all parents or selected parents.', 'error');
+        setSending(false);
+        return;
       }
 
       if (!targetParentIds || targetParentIds.length === 0) {
@@ -753,18 +751,7 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load all parents directly (more efficient than querying by email)
-        const parentsResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5050'}/users?role=parent`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        
-        const parentsData = await parentsResponse.json();
-        if (parentsData.success) {
-          console.log('Loaded all parent users:', parentsData.data);
-          setParents(parentsData.data);
-        }
+        setParents(await messagingService.getAdminRecipients());
 
         // Load grades and classes
         const classesResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5050'}/classes`, {
@@ -978,7 +965,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       {/* Tabs */}
       <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 2 }}>
         <Tab label="Direct Messages" />
-        <Tab label="Bulk Communications" disabled />
       </Tabs>
 
       {activeTab === 0 && (
@@ -1001,6 +987,9 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                       <Add />
                     </IconButton>
                   </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 2 }}>
+                    Use + to message one parent, selected parents, or all parents in your organization.
+                  </Typography>
 
                   {/* Search */}
                   <TextField
@@ -1661,23 +1650,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
                     label="Selected Parents" 
                     sx={{ mr: 2 }}
                   />
-                  <FormControlLabel 
-                    value="grade" 
-                    control={<Radio />} 
-                    label="Selected Grade" 
-                    sx={{ mr: 2 }}
-                  />
-                  <FormControlLabel 
-                    value="class" 
-                    control={<Radio />} 
-                    label="Selected Class" 
-                    sx={{ mr: 2 }}
-                  />
-                  <FormControlLabel 
-                    value="group" 
-                    control={<Radio />} 
-                    label="Selected Group(s)" 
-                  />
                 </RadioGroup>
               </FormControl>
 
@@ -1685,9 +1657,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
               <Alert severity="info" sx={{ mb: 2 }}>
                 {recipientType === 'all' && 'Message will be sent to all parents in the school.'}
                 {recipientType === 'selected' && 'Select specific parents to receive this message.'}
-                {recipientType === 'grade' && 'Select grades to send message to all parents of students in those grades.'}
-                {recipientType === 'class' && 'Select classes to send message to all parents of students in those classes.'}
-                {recipientType === 'group' && 'Select parent groups to send message to all members of those groups.'}
               </Alert>
 
               {/* Recipient Selection */}
@@ -2196,18 +2165,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
               </Button>
             </DialogActions>
           </Dialog>
-        </Box>
-      )}
-
-      {activeTab === 1 && (
-        <Box sx={{ textAlign: 'center', py: 8 }}>
-          <EmailIcon sx={{ fontSize: 64, mb: 2, opacity: 0.3, color: 'text.secondary' }} />
-          <Typography variant="h6" gutterBottom color="text.secondary">
-            Bulk Communications
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Send emails to multiple parents at once - Coming Soon
-          </Typography>
         </Box>
       )}
 

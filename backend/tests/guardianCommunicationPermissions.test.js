@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { conversationLookup, guardianCanUseConversation, conversationCanDeliver, authorizeScheduledMessageDelivery } = require('../services/guardianCommunicationService');
+const { conversationLookup, guardianCanUseConversation, conversationCanDeliver, authorizeScheduledMessageDelivery, getAdminCommunicationRecipients } = require('../services/guardianCommunicationService');
 
 const conversation = (changes = {}) => ({
   schoolId: 'school-a',
@@ -54,9 +54,18 @@ test('conversation reuse is scoped to the selected child', () => {
   assert.deepEqual(conversationLookup('school-a', 'admin-a', 'guardian-a')['metadata.studentId'], { $exists: false });
 });
 
-test('staff and non-child conversations preserve existing access', async () => {
+test('staff conversations preserve access while guardian conversations require a current permission', async () => {
   assert.equal(await guardianCanUseConversation({ role: 'school_admin' }, conversation()), true);
-  assert.equal(await conversationCanDeliver(conversation({ metadata: {} })), true);
+  const generalConversation = conversation({ metadata: {} });
+  assert.equal(await conversationCanDeliver(generalConversation, {
+    findGuardian: async () => guardian(),
+    authorizedParticipants: async () => [{ _id: 'child-a' }]
+  }), true);
+  assert.equal(await conversationCanDeliver(generalConversation, {
+    findGuardian: async () => guardian(),
+    authorizedParticipants: async () => []
+  }), false);
+  assert.equal(await conversationCanDeliver(conversation({ participants: [{ userId: 'teacher-a', role: 'teacher' }], metadata: {} })), true);
 });
 
 test('scheduled delivery rechecks permission and preserves a blocked historical record', async () => {
@@ -67,4 +76,16 @@ test('scheduled delivery rechecks permission and preserves a blocked historical 
   assert.equal(message.deliveryBlockReason, 'guardian_communication_not_authorized');
   assert.ok(message.deliveryBlockedAt instanceof Date);
   assert.equal(saves, 1);
+});
+
+test('administrator recipients are active authorized guardians in the same organization and are deduplicated', async () => {
+  const otherSchoolGuardian = guardian({ _id: 'guardian-other', schoolId: 'school-b' });
+  const inactiveGuardian = guardian({ _id: 'guardian-inactive', isActive: false });
+  const recipients = await getAdminCommunicationRecipients('school-a', {
+    findParticipants: async () => [{ _id: 'child-a' }, { _id: 'child-b' }],
+    eligibleGuardians: async childId => childId === 'child-a'
+      ? [guardian({ firstName: 'Gina', lastName: 'Guardian', email: 'g@example.invalid' }), otherSchoolGuardian]
+      : [guardian({ firstName: 'Gina', lastName: 'Guardian', email: 'g@example.invalid' }), inactiveGuardian]
+  });
+  assert.deepEqual(recipients.map(item => String(item._id)), ['guardian-a']);
 });

@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { authorizeGuardianParticipant } = require('./guardianAccessService');
+const { authorizeGuardianParticipant, authorizedParticipants, eligibleGuardians } = require('./guardianAccessService');
 const { teacherCanCommunicateWithParticipant } = require('./teacherCommunicationAuthorization');
 
 const sid = value => String(value?._id || value || '');
@@ -31,9 +31,8 @@ async function userCanUseConversation(user, conversation, dependencies = {}) {
 }
 
 async function conversationCanDeliver(conversation, dependencies = {}) {
-  if (!studentId(conversation)) return true;
   const parentParticipant = conversation?.participants?.find(item => item.role === 'parent');
-  if (!parentParticipant) return false;
+  if (!parentParticipant) return true;
   const findGuardian = dependencies.findGuardian || (query => User.findOne(query));
   const guardian = await findGuardian({
     _id: parentParticipant.userId?._id || parentParticipant.userId,
@@ -42,8 +41,34 @@ async function conversationCanDeliver(conversation, dependencies = {}) {
     isActive: { $ne: false }
   });
   if (!guardian || sid(guardian.schoolId) !== sid(conversation.schoolId)) return false;
+  if (!studentId(conversation)) {
+    const findAuthorizedParticipants = dependencies.authorizedParticipants || authorizedParticipants;
+    return (await findAuthorizedParticipants(guardian, 'communication')).length > 0;
+  }
   const authorize = dependencies.authorizeGuardianParticipant || authorizeGuardianParticipant;
   return Boolean((await authorize(guardian, studentId(conversation), 'communication', { allowInactiveParticipant: true })).allowed);
+}
+
+async function getAdminCommunicationRecipients(schoolId, dependencies = {}) {
+  const findParticipants = dependencies.findParticipants || (async query => User.find(query).select('_id').lean());
+  const findEligibleGuardians = dependencies.eligibleGuardians || eligibleGuardians;
+  const participants = await findParticipants({ schoolId, role: 'student', isActive: true });
+  const recipients = new Map();
+
+  for (const participant of participants) {
+    const guardians = await findEligibleGuardians(participant._id, 'communication');
+    for (const guardian of guardians) {
+      if (sid(guardian.schoolId) !== sid(schoolId) || guardian.isActive === false) continue;
+      recipients.set(sid(guardian), {
+        _id: guardian._id,
+        firstName: guardian.firstName,
+        lastName: guardian.lastName,
+        email: guardian.email
+      });
+    }
+  }
+
+  return [...recipients.values()];
 }
 
 async function authorizeScheduledMessageDelivery(message, dependencies = {}) {
@@ -57,4 +82,4 @@ async function authorizeScheduledMessageDelivery(message, dependencies = {}) {
   return false;
 }
 
-module.exports = { conversationLookup, guardianCanUseConversation, userCanUseConversation, conversationCanDeliver, authorizeScheduledMessageDelivery };
+module.exports = { conversationLookup, guardianCanUseConversation, userCanUseConversation, conversationCanDeliver, authorizeScheduledMessageDelivery, getAdminCommunicationRecipients };

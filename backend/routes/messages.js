@@ -6,8 +6,8 @@ const fs = require('fs');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
-const { authorizeGuardianParticipant } = require('../services/guardianAccessService');
-const { conversationLookup, userCanUseConversation, conversationCanDeliver } = require('../services/guardianCommunicationService');
+const { authorizeGuardianParticipant, authorizedParticipants } = require('../services/guardianAccessService');
+const { conversationLookup, userCanUseConversation, conversationCanDeliver, getAdminCommunicationRecipients } = require('../services/guardianCommunicationService');
 const { teacherCanCommunicateWithParticipant, getTeacherCommunicationRecipients } = require('../services/teacherCommunicationAuthorization');
 const { protect, authorize } = require('../middleware/auth');
 const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
@@ -90,6 +90,16 @@ router.get('/teacher-recipients', protect, authorize('teacher'), async (req, res
     res.json({ success: true, data: recipients });
   } catch (error) {
     logger.error('Error fetching teacher communication recipients:', error);
+    res.status(500).json({ success: false, message: 'Error fetching communication recipients' });
+  }
+});
+
+router.get('/admin-recipients', protect, authorize('school_admin'), async (req, res) => {
+  try {
+    const recipients = await getAdminCommunicationRecipients(req.user.schoolId);
+    res.json({ success: true, data: recipients });
+  } catch (error) {
+    logger.error('Error fetching administrator communication recipients:', error);
     res.status(500).json({ success: false, message: 'Error fetching communication recipients' });
   }
 });
@@ -248,6 +258,13 @@ router.post('/conversation', protect, authorize('parent', 'teacher', 'school_adm
         success: false,
         message: 'Recipient is not available for communication'
       });
+    }
+
+    if (senderIsAdmin && recipientIsParent && !studentId) {
+      const permittedParticipants = await authorizedParticipants(recipient, 'communication');
+      if (permittedParticipants.length === 0) {
+        return res.status(404).json({ success: false, message: 'Recipient not found' });
+      }
     }
 
     let studentData = null;

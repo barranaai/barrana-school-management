@@ -2,9 +2,15 @@ const cron = require('node-cron');
 const path = require('path');
 const Event = require('../models/Event');
 const User = require('../models/User');
+const { eligibleGuardians } = require('./guardianAccessService');
+const { authorizeScheduledMessageDelivery } = require('./guardianCommunicationService');
+
+async function guardiansFor(students) {
+  const guardians = (await Promise.all(students.map(student => eligibleGuardians(student._id, 'communication')))).flat();
+  return [...new Map(guardians.map(user => [String(user._id), user])).values()];
+}
 const ParentGroup = require('../models/ParentGroup');
 const Message = require('../models/Message');
-const Conversation = require('../models/Conversation');
 const Report = require('../models/Report');
 const ReportTemplate = require('../models/ReportTemplate');
 const School = require('../models/School');
@@ -14,7 +20,6 @@ const { cleanupOldPDFs } = require('./pdfService');
 const { getCurrentDateInTimezone, isReportDue, calculateDueDate, getStartOfFrequencyPeriod } = require('../utils/dateUtils');
 const firebaseService = require('./firebaseService');
 const { getIO } = require('./socketService');
-const { authorizeScheduledMessageDelivery } = require('./guardianCommunicationService');
 
 /**
  * Get recipients for an event based on target type
@@ -47,20 +52,8 @@ async function getEventRecipients(event) {
           studentGrade: event.targetGrade,
           schoolId: event.schoolId,
           isActive: true
-        }).select('parentEmail parentPhone parentName');
-        
-        // Get unique parent emails
-        const parentEmailsForGrade = [...new Set(studentsInGrade
-          .filter(s => s.parentEmail)
-          .map(s => s.parentEmail))];
-        
-        // Fetch parent user accounts to get preferences
-        const parentUsersForGrade = await User.find({
-          role: 'parent',
-          email: { $in: parentEmailsForGrade },
-          schoolId: event.schoolId,
-          isActive: true
-        }).select('firstName lastName email phone phoneNumber preferences');
+        }).select('_id');
+        const parentUsersForGrade = await guardiansFor(studentsInGrade);
         
         recipients = parentUsersForGrade.map(user => ({
           _id: user._id,
@@ -77,20 +70,8 @@ async function getEventRecipients(event) {
           classId: event.targetClass,
           schoolId: event.schoolId,
           isActive: true
-        }).select('parentEmail parentPhone parentName');
-        
-        // Get unique parent emails
-        const parentEmailsForClass = [...new Set(studentsInClass
-          .filter(s => s.parentEmail)
-          .map(s => s.parentEmail))];
-        
-        // Fetch parent user accounts to get preferences
-        const parentUsersForClass = await User.find({
-          role: 'parent',
-          email: { $in: parentEmailsForClass },
-          schoolId: event.schoolId,
-          isActive: true
-        }).select('firstName lastName email phone phoneNumber preferences');
+        }).select('_id');
+        const parentUsersForClass = await guardiansFor(studentsInClass);
         
         recipients = parentUsersForClass.map(user => ({
           _id: user._id,
@@ -241,12 +222,12 @@ function initializePDFCleanup() {
 /**
  * Process scheduled messages that are due to be sent
  */
-async function processScheduledMessages() {
+async function processScheduledMessages(dependencies = {}) {
   try {
     const now = new Date();
     
     // Find all scheduled messages that are due (scheduledDateTime <= now and not yet sent)
-    const scheduledMessages = await Message.find({
+    const scheduledMessages = dependencies.scheduledMessages || await Message.find({
       isScheduled: true,
       scheduledDateTime: { $lte: now },
       sentAt: null // Not yet sent
@@ -263,8 +244,9 @@ async function processScheduledMessages() {
     for (const message of scheduledMessages) {
       try {
         const conversation = message.conversationId;
-        if (!(await authorizeScheduledMessageDelivery(message))) {
-          logger.warn('Scheduled message ' + message._id + ' was blocked because guardian communication access is no longer active');
+        const authorizeDelivery = dependencies.authorizeScheduledMessageDelivery || authorizeScheduledMessageDelivery;
+        if (!(await authorizeDelivery(message))) {
+          logger.warn(`Scheduled message ${message._id} was blocked because guardian communication access is no longer active`);
           continue;
         }
         // Mark message as sent
@@ -273,14 +255,14 @@ async function processScheduledMessages() {
         await message.save();
         
         // Update conversation
-
         if (conversation) {
           await conversation.updateLastMessage(message);
           await conversation.incrementUnread(message.recipientRole);
         }
         
         // Get recipient user for notifications
-        const recipientUser = await User.findById(message.recipientId._id || message.recipientId);
+        const findRecipient = dependencies.findRecipient || (id => User.findById(id));
+        const recipientUser = await findRecipient(message.recipientId._id || message.recipientId);
         if (recipientUser) {
           // Create in-app notification
           const notification = {
@@ -319,7 +301,8 @@ async function processScheduledMessages() {
               senderRole: message.senderRole
             };
             
-            await firebaseService.sendNotificationToUser(recipientUser, pushNotification, pushData);
+            const sendPush = dependencies.sendPush || firebaseService.sendNotificationToUser.bind(firebaseService);
+            await sendPush(recipientUser, pushNotification, pushData);
             logger.info(`Push notification sent for scheduled message to recipient ${message.recipientId._id || message.recipientId}`);
           } catch (pushError) {
             logger.error('Error sending push notification for scheduled message:', pushError);
@@ -328,7 +311,7 @@ async function processScheduledMessages() {
         
         // Emit socket event if socket service is available
         try {
-          const socketService = require('./socketService');
+          const socketService = dependencies.socketService || require('./socketService');
           if (socketService.getIO()) {
             socketService.getIO().to(`conversation:${conversation._id}`).emit('new_message', {
               ...message.toObject(),

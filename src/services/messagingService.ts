@@ -80,6 +80,13 @@ export interface TeacherCommunicationRecipient {
   participantName: string;
 }
 
+export interface AdminCommunicationRecipient {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
 class MessagingService {
   private socket: Socket | null = null;
   private baseUrl: string;
@@ -301,6 +308,15 @@ class MessagingService {
       console.error('Error fetching conversations:', error);
       throw error;
     }
+  }
+
+  async getAdminRecipients(): Promise<AdminCommunicationRecipient[]> {
+    const response = await fetch(`${this.baseUrl}/api/messages/admin-recipients`, {
+      headers: this.getHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to fetch communication recipients');
+    return data.data || [];
   }
 
   async getConversationMessages(
