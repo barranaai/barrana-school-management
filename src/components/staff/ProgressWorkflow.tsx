@@ -57,21 +57,22 @@ function SessionEntry({ api, sessionId, token, schoolId, initialParticipationId 
   if(managingParticipants) return <SessionParticipationManagement token={token} schoolId={schoolId} session={session as any} onClose={() => setManagingParticipants(false)} onRecordProgress={participationId => { setSelected(participationId); setManagingParticipants(false); }} />;
   const classChild = users.find(u => identity(u.classId) === session.classId && u.studentClass);
   const child = children.find(p => p._id === selected);
-  const user = users.find(u => u._id === identity(child?.childId));
   return <Stack spacing={2}><Paper sx={{ p: 2 }}><Typography variant="h5">{session.plannedSessionSnapshot.title}</Typography><Typography>Class: {classChild?.studentClass || 'Class unavailable'}</Typography><Typography>Program: {data.program.name} · Level: {data.level.name}</Typography><Typography>Scheduled: {date(session.scheduledAt)} · Delivered: {date(session.deliveredAt)}</Typography><Chip label={label(session.status)} /><Typography variant="h6" sx={{mt:2}}>Planned objectives</Typography>{session.plannedSessionSnapshot.objectives.map(o=><Typography key={o.objectiveId}>• {o.title} — {o.expectedOutcome || o.description}</Typography>)}</Paper>
     <Button onClick={() => setManagingParticipants(true)}>Manage Participants</Button>
     {!['in_progress','completed'].includes(session.status) && <Alert severity="info">Progress can be recorded only for an in-progress or completed session.</Alert>}
     {initialParticipationId && !child && <Alert severity="error">The selected participation is unavailable for this session.</Alert>}
     {children.length === 0 ? <Alert severity="info">No participating children in this session.</Alert> : <TextField select label="Participating child" value={selected} onChange={e => setSelected(e.target.value)}>{children.map(p => { const u = users.find(u => u._id === identity(p.childId)); return <MenuItem key={p._id} value={p._id}>{u ? u.firstName + ' ' + u.lastName : 'Participant'} — {label(p.status)}</MenuItem>; })}</TextField>}
-    {child && <ChildEntry key={child._id} api={api} session={session} participation={child} parameters={data.parameters} templates={data.templates} parentEmail={user?.parentEmail || ''} token={token} schoolId={schoolId} />}
+    {child && <ChildEntry key={child._id} api={api} session={session} participation={child} parameters={data.parameters} token={token} schoolId={schoolId} />}
   </Stack>;
 }
-function ChildEntry({ api, session, participation, parameters, templates, parentEmail, token, schoolId }: { api: WorkflowService; session: Session; participation: Participation; parameters: Parameter[]; templates: any[]; parentEmail: string; token: string; schoolId: string }) {
+function ChildEntry({ api, session, participation, parameters, token, schoolId }: { api: WorkflowService; session: Session; participation: Participation; parameters: Parameter[]; token: string; schoolId: string }) {
   const [loaded, setLoaded] = useState(false); const [progress, setProgress] = useState<Progress>(); const [report, setReport] = useState<WorkflowReport>();
   const [error, setError] = useState(''); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false); const [dirty, setDirty] = useState(false); const [conflicted, setConflicted] = useState(false);
   const [objectives, setObjectives] = useState<Record<string, { status: string; instructorNote: string; evidence: string }>>({});
   const [values, setValues] = useState<Record<string, { recorded: boolean; value: any; note: string }>>({});
   const [observations, setObservations] = useState(''); const [recommendations, setRecommendations] = useState(''); const [overall, setOverall] = useState('in_progress'); const [template, setTemplate] = useState('');
+  const [compatibleTemplates,setCompatibleTemplates]=useState<any[]>([]);
+  const [templateError,setTemplateError]=useState('');
   useEffect(() => { let active = true; (async () => {
     const rows = await api.progress(participation._id); if(rows.length > 1) throw new Error('Multiple Progress records found. Contact your administrator.');
     const p = rows[0]; const r = p ? await api.findReport(identity(participation.childId), p._id) : undefined;
@@ -80,6 +81,8 @@ function ChildEntry({ api, session, participation, parameters, templates, parent
     setObjectives(Object.fromEntries(session.plannedSessionSnapshot.objectives.map(o => { const v = p?.objectiveResults.find(v => identity(v.objectiveId) === o.objectiveId); return [o.objectiveId, { status: v?.status || 'not_observed', instructorNote: v?.instructorNote || '', evidence: v?.evidence || '' }]; })));
     setValues(Object.fromEntries(parameters.map(param => { const v = p?.parameterResults.find(v => identity(v.parameterId) === param._id); return [param._id, { recorded: !!v, value: v?.value ?? (param.type === 'checkbox' ? false : ''), note: v?.note || '' }]; })));
     setObservations(p?.observations || ''); setRecommendations(p?.recommendations || ''); setOverall(p?.overallStatus || 'in_progress'); setLoaded(true);
+    if(p && !r) try { const templates = await api.compatibleTemplates(p._id); if(active) setCompatibleTemplates(templates); }
+    catch(e) { if(active) setTemplateError(workflowError(e)); }
   })().catch(e => { if(active) setError(workflowError(e)); }); return () => { active = false; }; }, [api, participation, parameters, session]);
   const eligible = participation.status === 'active' && ['in_progress','completed'].includes(session.status);
   const unavailable = progress?.parameterResults.some(r => !parameters.some(p => p._id === identity(r.parameterId)));
@@ -94,6 +97,9 @@ function ChildEntry({ api, session, participation, parameters, templates, parent
       });
       const saved = await api.saveProgress(progress?._id, { ...(progress ? { __v: progress.__v } : {}), childParticipationId: participation._id, objectiveResults: Object.entries(objectives).map(([objectiveId,v]) => ({ objectiveId,...v })), parameterResults, observations, recommendations, overallStatus: overall });
       setProgress(saved); setDirty(false); setConflicted(false); setNotice('Progress saved. No report was approved or sent.');
+      setTemplateError('');
+      try { setCompatibleTemplates(await api.compatibleTemplates(saved._id)); }
+      catch(e) { setCompatibleTemplates([]); setTemplateError(workflowError(e)); }
     } catch(e) { if (e instanceof WorkflowError && e.code === 'PROGRESS_REVISION_CONFLICT') setConflicted(true); setError(workflowError(e)); } finally { setBusy(false); }
   }
   async function generate() { if(!progress) return; setBusy(true);setError('');try {setReport(await api.draft(progress._id,template));}catch(e){setError(workflowError(e));}finally{setBusy(false);} }
@@ -110,11 +116,11 @@ function ChildEntry({ api, session, participation, parameters, templates, parent
     <TextField label="Internal observations" multiline value={observations} onChange={e=>{setObservations(e.target.value);setDirty(true);}} /><TextField label="Recommendations" multiline value={recommendations} onChange={e=>{setRecommendations(e.target.value);setDirty(true);}} /><TextField label="Overall status" select value={overall} onChange={e=>{setOverall(e.target.value);setDirty(true);}}>{['in_progress','achieved','partially_achieved','needs_improvement'].map(s=><MenuItem key={s} value={s}>{label(s)}</MenuItem>)}</TextField>
     <Button variant="contained" disabled={busy || !eligible || !!unavailable || conflicted} onClick={saveProgress}>Save progress</Button></Stack></Box>
     {progress && !dirty && <ObjectiveCarryForwardReview token={token} schoolId={schoolId} progressId={progress._id} />}
-    {progress && !report && <Stack spacing={2}><Typography variant="h6">Create a report draft</Typography>{templates.length===0 && <Alert severity="info">No active report templates are available.</Alert>}<TextField select label="Report template" value={template} onChange={e=>setTemplate(e.target.value)}>{templates.map(t=><MenuItem key={t._id} value={t._id}>{t.name}</MenuItem>)}</TextField><Button disabled={!template || busy || dirty || !eligible} onClick={generate}>Generate report draft</Button>{dirty && <Typography>Save progress before generating a draft.</Typography>}</Stack>}
-    {report && progress && <ReportReview key={report._id} api={api} initial={report} progress={progress} childId={identity(participation.childId)} parentEmail={parentEmail} />}
+    {progress && !report && <Stack spacing={2}><Typography variant="h6">Create a report draft</Typography>{templateError ? <Alert severity="error">{templateError}</Alert> : compatibleTemplates.length===0 && <Alert severity="info">No compatible report template is configured for this Program and Level. Ask an administrator to create one.</Alert>}<TextField select label="Report template" value={template} onChange={e=>setTemplate(e.target.value)} disabled={!compatibleTemplates.length}>{compatibleTemplates.map(t=><MenuItem key={t._id} value={t._id}>{t.name}{t.levelId ? ' — this level' : ' — all levels'} · {t.reportFrequency}</MenuItem>)}</TextField><Button disabled={!template || busy || dirty || !eligible} onClick={generate}>Generate report draft</Button>{dirty && <Typography>Save progress before generating a draft.</Typography>}</Stack>}
+    {report && progress && <ReportReview key={report._id} api={api} initial={report} progress={progress} childId={identity(participation.childId)} />}
   </Stack>;
 }
-function ReportReview({ api, initial, progress, childId, parentEmail }: { api: WorkflowService; initial: WorkflowReport; progress: Progress; childId: string; parentEmail: string }) {
+function ReportReview({ api, initial, progress, childId }: { api: WorkflowService; initial: WorkflowReport; progress: Progress; childId: string }) {
   const [report,setReport]=useState(initial);const [title,setTitle]=useState(initial.title);const [content,setContent]=useState(initial.content);const [fields,setFields]=useState(initial.customFieldValues || {});
   const [dirty,setDirty]=useState(false);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [confirm,setConfirm]=useState<'approve'|'send'|'refresh'|''>('');
   const editable=['draft','review'].includes(report.status);const finalized=['approved','sent'].includes(report.status);const snapshot=report.finalizedSnapshot;
@@ -129,7 +135,7 @@ function ReportReview({ api, initial, progress, childId, parentEmail }: { api: W
         adopt(await api.edit(report._id,{title,content,customFieldValues:custom}));setNotice('Draft saved. Not sent to parents.');
       } else if(kind==='approve') adopt(await api.approve(report._id));
       else if(kind==='refresh') {const latest=await api.findReport(childId,progress._id);if(!latest)throw new Error('Report is no longer available.');adopt(latest);}
-      else {const result=await api.send(report._id,parentEmail);if(!result.success) {setError(result.error || result.message || 'Sending failed.');return;}setReport({...report,status:'sent'});setNotice(result.message || 'Email transport accepted the report.');}
+      else {const result=await api.send(report._id);if(!result.success) {setError(result.error || result.message || 'Sending failed.');return;}setReport({...report,status:'sent'});setNotice(result.message || 'Email transport accepted the report.');}
     } catch(e) {setError(workflowError(e));} finally {setBusy(false);}
   }
   return <Paper sx={{p:3}}><Stack spacing={2}><Typography variant="h5">Report review</Typography><Chip label={finalized ? (report.status==='sent'?'Sent':'Finalized') : 'DRAFT — not sent to parents'} color={finalized?'success':'warning'} />
@@ -142,9 +148,8 @@ function ReportReview({ api, initial, progress, childId, parentEmail }: { api: W
     {(report.templateSnapshot?.customFields || []).map(f=><ValueInput key={f.name} name={f.name} type={f.type} value={(finalized ? snapshot?.customFieldValues || {} : fields)?.[f.name]} disabled={busy || !editable} onChange={v=>{setFields({...fields,[f.name]:v});setDirty(true);}} />)}
     {editable && <Stack direction="row" spacing={2}><Button disabled={busy} onClick={()=>action('save')}>Save draft</Button><Button variant="contained" disabled={busy || dirty} onClick={()=>setConfirm('approve')}>Approve / Finalize</Button></Stack>}
     {dirty && <Typography>Save your edits before approval.</Typography>}
-    {report.status==='approved' && <Button disabled={busy || !parentEmail || !validFinalized} onClick={()=>setConfirm('send')}>Send finalized report</Button>}
-    {report.status==='approved' && !parentEmail && <Alert severity="warning">No authorized parent email is available.</Alert>}
+    {report.status==='approved' && <Button disabled={busy || !validFinalized} onClick={()=>setConfirm('send')}>Send finalized report</Button>}
     <Button disabled={busy} onClick={()=>setConfirm('refresh')}>Refresh latest report</Button>
-    <Dialog open={!!confirm} onClose={()=>setConfirm('')}><DialogTitle>{confirm==='approve'?'Finalize this report?':confirm==='send'?'Send this finalized report?':'Refresh the report?'}</DialogTitle><DialogContent>{confirm==='approve'?'You are approving the parent-visible content and custom fields. Normal editing will be locked. This does not send the report.':confirm==='send'?'Send the finalized report to ' + parentEmail + '? Transport acceptance does not prove inbox delivery.':'Refreshing replaces your local edits with the latest saved report.'}</DialogContent><DialogActions><Button onClick={()=>setConfirm('')}>Cancel</Button><Button onClick={()=>action(confirm)}>{confirm==='approve'?'Confirm finalization':confirm==='send'?'Confirm send':'Confirm refresh'}</Button></DialogActions></Dialog>
+    <Dialog open={!!confirm} onClose={()=>setConfirm('')}><DialogTitle>{confirm==='approve'?'Finalize this report?':confirm==='send'?'Send this finalized report?':'Refresh the report?'}</DialogTitle><DialogContent>{confirm==='approve'?'You are approving the parent-visible content and custom fields. Normal editing will be locked. This does not send the report.':confirm==='send'?'Send the finalized report to the participant’s authorized guardians? Transport acceptance does not prove inbox delivery.':'Refreshing replaces your local edits with the latest saved report.'}</DialogContent><DialogActions><Button onClick={()=>setConfirm('')}>Cancel</Button><Button onClick={()=>action(confirm)}>{confirm==='approve'?'Confirm finalization':confirm==='send'?'Confirm send':'Confirm refresh'}</Button></DialogActions></Dialog>
   </Stack></Paper>;
 }

@@ -35,6 +35,9 @@ test('Progress editing sends its current concurrency token without revision snap
 test('draft generation and approval use separate existing endpoints',async()=>{
  (fetch as jest.Mock).mockResolvedValue(reply({_id:'report'}));await api.draft('progress','template');expect(fetch).toHaveBeenCalledTimes(1);expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('/reports/from-progress/progress'),expect.objectContaining({method:'POST',body:JSON.stringify({schoolId:'school',templateId:'template'})}));await api.approve('report');expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('/reports/report/approve'),expect.objectContaining({method:'PATCH',body:'{}'}));
 });
+test('compatible templates are loaded from the Progress historical context endpoint',async()=>{(fetch as jest.Mock).mockResolvedValue(reply([{_id:'template',name:'Swimming',reportFrequency:'Monthly'}]));expect(await api.compatibleTemplates('progress')).toHaveLength(1);expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/reports/from-progress/progress/templates?schoolId=school'),expect.objectContaining({method:'GET'}));});
+test('invalid compatible-template responses fail closed',async()=>{(fetch as jest.Mock).mockResolvedValue(reply({templates:[]}));await expect(api.compatibleTemplates('progress')).rejects.toMatchObject({status:502,message:'Compatible report templates could not be loaded. Please try again.'});});
+test('report publication sends no client-selected guardian address',async()=>{(fetch as jest.Mock).mockResolvedValue(reply({_id:'report',status:'sent'}));await api.send('report');const [url,options]=(fetch as jest.Mock).mock.calls[0];expect(url).toContain('/reports/report/send-email');expect(JSON.parse(options.body)).toEqual({});});
 test('revision conflict code is preserved and mapped to the required message',async()=>{
  (fetch as jest.Mock).mockResolvedValue({ok:false,status:409,json:async()=>({success:false,message:'stale',code:'REPORT_REVISION_CONFLICT'})});
  await expect(api.edit('report',{content:'local edit'})).rejects.toMatchObject({status:409,code:'REPORT_REVISION_CONFLICT'});expect(workflowError(new WorkflowError('stale',409,'REPORT_REVISION_CONFLICT'))).toBe(conflictMessage);
@@ -56,7 +59,7 @@ test.each(['valid', 'missing', 'wrong'])('session context checks objective ident
  '/api/config/programs/program':{name:'Swimming'},'/api/config/levels/level':{name:'Beginner'},
  '/api/planned-sessions/plan':{roadmapId:'roadmap',roadmapVersion:1,objectives:[{_id:'o'}]},
  '/api/config/requirements':[{_id:'r',programId:'program'}],'/api/config/parameters':[{_id:'parameter',programId:'program'},{_id:'unplanned',programId:'program'}],
- '/api/report-templates':[{_id:'template',schoolId:'school',isActive:true}],'/api/users/child':{_id:'child',schoolId:'school'}
+ '/api/users/child':{_id:'child',schoolId:'school'}
  };
  (fetch as jest.Mock).mockImplementation(async(url:string)=>{const parsed=new URL(url,'http://test');expect(parsed.searchParams.get('schoolId')).toBe('school');if(!payloads[parsed.pathname])throw Error('Unexpected API '+parsed.pathname);return reply(payloads[parsed.pathname]);});
  if (mode === 'missing') delete (session.plannedSessionSnapshot.objectives[0] as any).objectiveId;
@@ -69,4 +72,5 @@ test.each(['valid', 'missing', 'wrong'])('session context checks objective ident
  expect(outcome.context?.parameters.map(p=>p._id)).toEqual(mode === 'valid' ? ['parameter'] : undefined);
  expect((fetch as jest.Mock).mock.calls.some(([url])=>url.includes('/users/'))).toBe(mode === 'valid');
  expect((fetch as jest.Mock).mock.calls.some(([url])=>url.includes('other-child'))).toBe(false);
+  expect((fetch as jest.Mock).mock.calls.some(([url])=>url.includes('/report-templates'))).toBe(false);
 });
