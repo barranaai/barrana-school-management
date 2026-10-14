@@ -194,8 +194,10 @@ export const calculateDueDate = (
   );
   
   const timezone = schoolSettings.timezone || 'UTC';
-  const currentDate = baseDate || getCurrentTimeInSchoolTimezone(timezone);
+  const currentDate = (baseDate ? baseDate.clone().tz(timezone) : getCurrentTimeInSchoolTimezone(timezone));
   const frequencyConfig = schoolSettings.reportFrequencies?.[frequency];
+  const supportedFrequencies = ['Daily', 'Weekly', 'Bi-Weekly', 'Monthly', 'Bi-Monthly', 'Quarterly', 'Annually'];
+  if (!supportedFrequencies.includes(frequency)) throw new Error(`Unsupported frequency: ${frequency}`);
 
   try {
     
@@ -239,7 +241,7 @@ export const calculateDueDate = (
       
     case 'Weekly':
       calculationMethod = 'weekly-target-day';
-      const targetDay = (frequencyConfig.dueDay || 5) - 1; // Convert to moment day (0-6)
+      const targetDay = frequencyConfig.dueDay || 5; // Moment day: Sunday=0, Friday=5
       const currentDay = dueDate.day();
       const daysToAdd = (targetDay - currentDay + 7) % 7;
       
@@ -302,7 +304,7 @@ export const calculateDueDate = (
       calculationMethod,
       isEnabled: frequencyConfig.enabled
     };
-    
+
     const executionTime = performance.now() - startTime;
     calculationLogger.logCalculationResult(studentId || 'system', templateId || 'system', frequency, result, executionTime);
     
@@ -313,6 +315,7 @@ export const calculateDueDate = (
     
     return result;
   } catch (error) {
+
     const executionTime = performance.now() - startTime;
     calculationLogger.logCalculationError('execution', studentId || 'system', templateId || 'system', frequency, error as Error, {
       calculationId,
@@ -342,7 +345,7 @@ const calculateBiWeeklyDate = (
   switch (rule) {
     case 'alternateWeeks':
       // Set to the configured day of the week
-      const targetDay = dueDay - 1;
+      const targetDay = dueDay;
       const currentDay = dueDate.day();
       const daysToAdd = (targetDay - currentDay + 7) % 7;
       dueDate.add(daysToAdd, 'days');

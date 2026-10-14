@@ -13,7 +13,7 @@ export interface CacheKey {
   studentId?: string;
   templateId?: string;
   settingsHash: string;
-  baseDate: string; // ISO string
+  baseDate: string; // ISO string, or a stable marker when the current time is implicit
 }
 
 export interface CacheEntry {
@@ -60,7 +60,7 @@ class DueDateCache {
     };
     
     const settingsHash = this.hashObject(settingsForHash);
-    const baseDateString = baseDate ? baseDate.toISOString() : moment().toISOString();
+    const baseDateString = baseDate ? baseDate.toISOString() : 'implicit-current-time';
     
     return {
       frequency,
@@ -83,7 +83,10 @@ class DueDateCache {
    * Simple hash function for objects
    */
   private hashObject(obj: any): string {
-    return btoa(JSON.stringify(obj)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
+    // Keep the complete serialized settings. This is deterministic for the
+    // normalized object above, preserves Unicode, and cannot collide because
+    // two values merely shared a truncated encoded prefix.
+    return JSON.stringify(obj);
   }
   
   /**
@@ -400,9 +403,7 @@ class DueDateCache {
         const result = calculateDueDate(frequency, schoolSettings);
         this.set(frequency, schoolSettings, schoolId, result);
       } catch (error) {
-        calculationLogger.logCalculationError('cache-warmup', 'system', 'system', frequency, error as Error, {
-          schoolId
-        });
+        calculationLogger.logDueDateCalculation('cache-warmup-error', { frequency, schoolId, error: (error as Error).message });
       }
     });
     

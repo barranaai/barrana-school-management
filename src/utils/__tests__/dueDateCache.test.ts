@@ -11,6 +11,12 @@ import { ReportFrequency } from '../../constants/reportFrequencies';
 jest.mock('../calculationLogger', () => ({
   calculationLogger: {
     logDueDateCalculation: jest.fn(),
+    logCalculationError: jest.fn(),
+    logCalculationPhase: jest.fn(() => 'test-calculation'),
+    logCalculationResult: jest.fn(),
+    logFrequencyConfigValidation: jest.fn(),
+    logTimezoneConversion: jest.fn(),
+    logPeriodCalculation: jest.fn(),
   }
 }));
 
@@ -206,6 +212,44 @@ describe('DueDateCache', () => {
       const cachedResult = dueDateCache.get('Daily', differentTimezoneSettings, schoolId, undefined, undefined, baseDate);
       expect(cachedResult).toBeNull();
     });
+
+    it('should not collide when settings differ late in their serialized representation', () => {
+      const schoolId = 'school123';
+      const baseDate = moment('2024-06-17T10:00:00');
+      const firstSettings = {
+        ...mockSchoolSettings,
+        reportFrequencies: {
+          Daily: { ...mockSchoolSettings.reportFrequencies.Daily, dueTime: '17:00' }
+        }
+      };
+      const secondSettings = {
+        ...mockSchoolSettings,
+        reportFrequencies: {
+          Daily: { ...mockSchoolSettings.reportFrequencies.Daily, dueTime: '17:01' }
+        }
+      };
+
+      dueDateCache.set('Daily', firstSettings, schoolId, mockResult, undefined, undefined, baseDate);
+
+      expect(dueDateCache.get('Daily', secondSettings, schoolId, undefined, undefined, baseDate)).toBeNull();
+    });
+
+    it('supports Unicode settings when generating cache keys', () => {
+      const schoolId = 'school123';
+      const baseDate = moment('2024-06-17T10:00:00');
+      const unicodeSettings = {
+        ...mockSchoolSettings,
+        calendar: {
+          ...mockSchoolSettings.calendar,
+          holidays: [{ name: 'عيد الفطر', date: '2024-04-10', isRecurring: false }]
+        }
+      };
+
+      expect(() => {
+        dueDateCache.set('Daily', unicodeSettings, schoolId, mockResult, undefined, undefined, baseDate);
+      }).not.toThrow();
+      expect(dueDateCache.get('Daily', unicodeSettings, schoolId, undefined, undefined, baseDate)).toEqual(mockResult);
+    });
   });
 
   describe('Cache statistics', () => {
@@ -331,6 +375,18 @@ describe('DueDateCache', () => {
 
       const stats = dueDateCache.getStats();
       expect(stats.totalEntries).toBe(1); // Should still be one entry
+    });
+
+    it('should reuse a cached result when baseDate is omitted', () => {
+      const schoolId = 'school123';
+      const nowSpy = jest.spyOn(moment, 'now');
+      nowSpy.mockReturnValue(moment.utc('2024-06-17T10:00:00.000Z').valueOf());
+
+      dueDateCache.set('Daily', mockSchoolSettings, schoolId, mockResult);
+      nowSpy.mockReturnValue(moment.utc('2024-06-17T10:00:00.001Z').valueOf());
+
+      expect(dueDateCache.get('Daily', mockSchoolSettings, schoolId)).toEqual(mockResult);
+      expect(dueDateCache.getStats().totalHits).toBe(1);
     });
   });
 });

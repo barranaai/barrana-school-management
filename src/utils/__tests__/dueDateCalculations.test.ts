@@ -239,6 +239,61 @@ describe('Due Date Calculations', () => {
         expect(result.dueDate.isAfter(baseDate)).toBe(true);
         expect(result.dueDate.day()).toBe(5); // Friday of next week
       });
+
+      it('should map configured Monday and Sunday boundaries using the 1-7 convention', () => {
+        const mondaySettings = {
+          ...mockSchoolSettings,
+          reportFrequencies: {
+            Weekly: { enabled: true, dueDay: 1, dueTime: '17:00' }
+          }
+        };
+        const sundaySettings = {
+          ...mockSchoolSettings,
+          reportFrequencies: {
+            Weekly: { enabled: true, dueDay: 7, dueTime: '17:00' }
+          }
+        };
+
+        const mondayResult = calculateDueDate(
+          'Weekly',
+          mondaySettings,
+          moment.tz('2024-06-16 10:00', 'America/New_York')
+        );
+        const sundayResult = calculateDueDate(
+          'Weekly',
+          sundaySettings,
+          moment.tz('2024-06-22 10:00', 'America/New_York')
+        );
+
+        expect(mondayResult.dueDate.isoWeekday()).toBe(1);
+        expect(mondayResult.dueDate.format('YYYY-MM-DD')).toBe('2024-06-17');
+        expect(sundayResult.dueDate.isoWeekday()).toBe(7);
+        expect(sundayResult.dueDate.format('YYYY-MM-DD')).toBe('2024-06-23');
+      });
+    });
+
+    describe('Bi-Weekly frequency', () => {
+      it('uses the configured 1-7 weekday convention at Monday and Sunday boundaries', () => {
+        const calculate = (dueDay: number, baseDate: string) => calculateDueDate(
+          'Bi-Weekly',
+          {
+            ...mockSchoolSettings,
+            reportFrequencies: {
+              'Bi-Weekly': {
+                enabled: true,
+                rule: 'alternateWeeks',
+                dueDay,
+                dueTime: '17:00',
+                startWeek: 0
+              }
+            }
+          },
+          moment.tz(baseDate, 'America/New_York')
+        );
+
+        expect(calculate(1, '2024-06-16 10:00').dueDate.isoWeekday()).toBe(1);
+        expect(calculate(7, '2024-06-22 10:00').dueDate.isoWeekday()).toBe(7);
+      });
     });
 
     describe('Monthly frequency', () => {
@@ -385,6 +440,17 @@ describe('Due Date Calculations', () => {
 
       const result = calculateDueDate('Daily', settingsNoTimezone);
       expect(result.timezone).toBe('UTC');
+    });
+
+    it('converts a differently-zoned base date before choosing the local calendar day', () => {
+      const baseDateUTC = moment.utc('2024-06-18 02:30'); // Monday 10:30 PM in New York
+      const originalValue = baseDateUTC.valueOf();
+      const result = calculateDueDate('Daily', mockSchoolSettings, baseDateUTC);
+
+      expect(result.dueDate.tz()).toBe('America/New_York');
+      expect(result.dueDate.format('YYYY-MM-DD HH:mm')).toBe('2024-06-17 17:00');
+      expect(baseDateUTC.valueOf()).toBe(originalValue);
+      expect(baseDateUTC.isUTC()).toBe(true);
     });
   });
 
