@@ -25,6 +25,7 @@ const paths = {
   auth: require.resolve('../middleware/auth'),
   lifecycle: require.resolve('../middleware/lifecycleAuthorization'),
   participantAuthorization: require.resolve('../services/reportParticipantAuthorization'),
+  logger: require.resolve('../utils/logger'),
   openai: require.resolve('openai'),
   routes: require.resolve('../routes/ai')
 };
@@ -36,6 +37,7 @@ const originals = { userFindOne: User.findOne, reportFindOne: Report.findOne };
 let teacherAuthorized = true;
 let providerMode = 'success';
 let transcriptionPrompt = '';
+let operationalLogs = [];
 
 const participant = (id = studentA, schoolId = schoolA) => ({
   _id: id,
@@ -94,6 +96,18 @@ require.cache[paths.participantAuthorization] = {
   loaded: true,
   exports: { canTeacherAccessParticipantReporting: async () => teacherAuthorized }
 };
+require.cache[paths.logger] = {
+  id: paths.logger,
+  filename: paths.logger,
+  loaded: true,
+  exports: {
+    logger: {
+      info(message, metadata) { operationalLogs.push({ message, metadata }); },
+      warn(message, metadata) { operationalLogs.push({ message, metadata }); },
+      error(message, metadata) { operationalLogs.push({ message, metadata }); }
+    }
+  }
+};
 
 class FakeOpenAI {
   constructor() {
@@ -145,6 +159,7 @@ test.beforeEach(() => {
   teacherAuthorized = true;
   providerMode = 'success';
   transcriptionPrompt = '';
+  operationalLogs = [];
 });
 
 test.after(() => {
@@ -242,6 +257,10 @@ test('authorized processing uses the authoritative participant identity and clea
   assert.equal(response.status, 200);
   assert.equal(response.body.data.transcription, 'Clear observation');
   assert.match(transcriptionPrompt, /Maya Participant/);
+  const serializedLogs = JSON.stringify(operationalLogs);
+  assert.doesNotMatch(serializedLogs, /Clear observation/);
+  assert.doesNotMatch(serializedLogs, /Maya Participant/);
+  assert.doesNotMatch(serializedLogs, /kidsible-ai-audio/);
   assertNoRequestFiles();
 });
 

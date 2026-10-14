@@ -955,10 +955,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   };
 
   const transcribeAudio = async () => {
-    console.log('🔍 Transcribe Audio Debug:');
-    console.log('🔍 Recordings count:', recordings.length);
-    console.log('🔍 Selected student:', selectedStudent);
-    
     // Validate prerequisites
     if (recordings.length === 0) {
       toast.error('No recordings found. Please record some audio first.');
@@ -967,6 +963,12 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     
     if (!selectedStudent) {
       toast.error('No student selected. Please select a student first.');
+      return;
+    }
+
+    const participantId = selectedStudent._id || selectedStudent.id;
+    if (!participantId) {
+      toast.error('The selected student is missing a valid participant record.');
       return;
     }
     
@@ -985,11 +987,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       
       for (let i = 0; i < recordings.length; i++) {
         const recording = recordings[i];
-        console.log(`🔍 Transcribing recording ${i + 1}/${recordings.length}`);
         
         try {
           const response = await aiService.transcribeAudio({
             audioBlob: recording.blob,
+            studentId: participantId,
             language: 'en',
             studentName: `${selectedStudent.firstName} ${selectedStudent.lastName}`
           });
@@ -1005,24 +1007,16 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                 : r
             ));
             
-            console.log(`✅ Recording ${i + 1} transcribed successfully:`, response.data.substring(0, 100) + '...');
           } else {
-            console.warn(`⚠️ Recording ${i + 1} transcription failed or empty:`, response);
             transcriptions.push(`[Recording ${i + 1}: Transcription failed or empty]`);
           }
-        } catch (recordingError) {
-          console.error(`❌ Error transcribing recording ${i + 1}:`, recordingError);
+        } catch {
           transcriptions.push(`[Recording ${i + 1}: Error during transcription]`);
         }
       }
 
       // Combine all transcriptions
       const combinedTranscription = transcriptions.join('\n\n--- Next Recording ---\n\n');
-      console.log('🔍 Transcribe Debug:');
-      console.log('🔍 Individual transcriptions:', transcriptions);
-      console.log('🔍 Combined transcription:', combinedTranscription);
-      console.log('🔍 Success count:', successCount, 'out of', recordings.length);
-      
       setTranscription(combinedTranscription);
       
       if (successCount === recordings.length) {
@@ -1041,12 +1035,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   };
 
   const generateReportFromTranscription = async () => {
-    console.log('🔍 Generate Report Debug:');
-    console.log('🔍 Global transcription:', transcription);
-    console.log('🔍 Recordings with transcription:', recordings.filter(r => r.transcription?.trim()));
-    console.log('🔍 Selected student:', selectedStudent);
-    console.log('🔍 Selected template:', selectedTemplate);
-    
     // Check if we have the required components
     if (!selectedStudent) {
       toast.error('Please select a student first');
@@ -1100,20 +1088,23 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   };
 
   // Upload audio files to server
-  const uploadAudioFiles = async (recordings: any[], studentName: string) => {
+  const uploadAudioFiles = async (recordings: any[], studentId: string) => {
     const uploadedRecordings: Array<{
       url: string;
       duration: number;
       transcription: string;
     }> = [];
+
+    if (!studentId?.trim()) {
+      throw new Error('A valid participant record is required before uploading audio.');
+    }
     
     for (const recording of recordings) {
       try {
         const formData = new FormData();
         formData.append('audio', recording.blob, `recording_${Date.now()}.webm`);
-        formData.append('studentName', studentName);
         
-        const response = await fetch('/api/ai/upload-audio', {
+        const response = await fetch(`/api/ai/upload-audio?studentId=${encodeURIComponent(studentId)}`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -1133,13 +1124,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
             duration: recording.duration,
             transcription: recording.transcription || ''
           });
-          console.log('✅ Audio uploaded successfully:', result.data.url);
         } else {
           throw new Error(result.message || 'Upload failed');
         }
       } catch (error) {
-        console.error('❌ Error uploading audio file:', error);
-        throw new Error(`Failed to upload audio file: ${error}`);
+        throw new Error(error instanceof Error ? error.message : 'Failed to upload audio file');
       }
     }
     
@@ -1147,10 +1136,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   };
 
   const saveReportAsDraft = async () => {
-    console.log('Save Report Draft function called!');
-    console.log('Selected student:', selectedStudent);
-    console.log('Selected template:', selectedTemplate);
-    
     if (!selectedStudent || !selectedTemplate) {
       toast.error('Please select a student and template first');
       return;
@@ -1165,15 +1150,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     toast.loading('Saving report draft...');
     
     try {
-      console.log('🔍 DEBUG: Save Draft called');
-      console.log('🔍 Token exists:', !!localStorage.getItem('token'));
-      console.log('🔍 Token value:', localStorage.getItem('token')?.substring(0, 20) + '...');
-      console.log('Saving draft for student:', selectedStudent);
-      console.log('Selected template:', selectedTemplate);
-      console.log('Report content length:', reportContent.length);
-      console.log('Recordings count:', recordings.length);
-      console.log('Transcription:', transcription);
-
       // Ensure we have the correct student ID format
       const studentId = selectedStudent._id || selectedStudent.id;
       const templateId = selectedTemplate._id;
@@ -1194,9 +1170,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       }> = [];
       if (recordings.length > 0) {
         console.log('🎤 Uploading audio files...');
-        const studentName = `${selectedStudent.firstName || selectedStudent.name} ${selectedStudent.lastName || ''}`;
-        uploadedRecordings = await uploadAudioFiles(recordings, studentName);
-        console.log('✅ Audio files uploaded:', uploadedRecordings.length);
+        uploadedRecordings = await uploadAudioFiles(recordings, studentId);
       }
 
       const reportData: CreateReportData = {
@@ -1246,35 +1220,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         attachments: processedAttachments
       };
 
-      console.log('🔍 DEBUG - uploadedMedia before report creation:', uploadedMedia);
-      console.log('🔍 DEBUG - uploadedMedia length:', uploadedMedia.length);
-      console.log('🔍 DEBUG - uploadedMedia details:', uploadedMedia.map(m => ({
-        id: m.id,
-        originalName: m.originalName,
-        url: m.url,
-        isTemporary: m.isTemporary
-      })));
-      console.log('🔍 DEBUG - processed attachments:', processedAttachments);
-      console.log('🔍 DEBUG - processed attachments length:', processedAttachments.length);
-
-      console.log('🎤 DEBUG - Recordings state before sending:', recordings);
-      console.log('🎤 DEBUG - Recordings length:', recordings.length);
-      console.log('🎤 DEBUG - Individual recordings:', recordings.map((r, i) => ({ 
-        index: i, 
-        id: r.id, 
-        duration: r.duration, 
-        hasUrl: !!r.url, 
-        hasBlob: !!r.blob 
-      })));
-      console.log('Report data being sent:', reportDataWithAttachments);
-      console.log('Voice recording in report data:', reportDataWithAttachments.voiceRecording);
-      console.log('Recordings array in report data:', reportDataWithAttachments.voiceRecording?.recordings);
-
       const createResponse = await reportService.createReport(reportDataWithAttachments);
-      
-      console.log('Create response:', createResponse);
-      console.log('Voice recording in response:', createResponse.data?.voiceRecording);
-      console.log('Recordings array in response:', createResponse.data?.voiceRecording?.recordings);
       
       if (createResponse.success) {
         toast.success('Report sent for approval successfully!');
@@ -1327,10 +1273,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
             aiGenerated: createResponse.data.aiGenerated?.isAiGenerated
           };
           
-          console.log('🔍 Converted report for DataContext:', convertedReport);
-          console.log('🔍 Voice recording in converted report:', convertedReport.voiceRecording);
-          console.log('🔍 Recordings array in converted report:', convertedReport.voiceRecording?.recordings);
-          
           addReport(convertedReport);
         }
         // Don't close the dialog, let teacher continue working
@@ -1377,9 +1319,7 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       }> = [];
       if (recordings.length > 0) {
         console.log('🎤 Uploading audio files for final report...');
-        const studentName = `${selectedStudent.firstName || selectedStudent.name} ${selectedStudent.lastName || ''}`;
-        uploadedRecordings = await uploadAudioFiles(recordings, studentName);
-        console.log('✅ Audio files uploaded for final report:', uploadedRecordings.length);
+        uploadedRecordings = await uploadAudioFiles(recordings, selectedStudent._id || selectedStudent.id);
       }
 
       // Ensure all required fields are present for attachments
@@ -1429,30 +1369,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         attachments: processedAttachments // Add the processed attachments
       };
 
-      console.log('🔍 DEBUG - uploadedMedia before report creation:', uploadedMedia);
-      console.log('🔍 DEBUG - uploadedMedia length:', uploadedMedia.length);
-      console.log('🔍 DEBUG - uploadedMedia details:', uploadedMedia.map(m => ({
-        id: m.id,
-        originalName: m.originalName,
-        url: m.url,
-        isTemporary: m.isTemporary
-      })));
-      console.log('🔍 DEBUG - processed attachments:', processedAttachments);
-      console.log('🔍 DEBUG - processed attachments length:', processedAttachments.length);
-      
-      console.log('🎤 DEBUG - Recordings state before sending:', recordings);
-      console.log('🎤 DEBUG - Recordings length:', recordings.length);
-      console.log('🎤 DEBUG - Individual recordings:', recordings.map((r, i) => ({
-        index: i,
-        id: r.id,
-        duration: r.duration,
-        hasUrl: !!r.url,
-        hasBlob: !!r.blob
-      })));
-      console.log('Report data being sent:', reportDataWithAttachments);
-      console.log('Voice recording in report data:', reportDataWithAttachments.voiceRecording);
-      console.log('Recordings array in report data:', reportDataWithAttachments.voiceRecording?.recordings);
-      
       const createResponse = await reportService.createReport(reportDataWithAttachments);
       
       if (createResponse.success && createResponse.data) {

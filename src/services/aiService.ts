@@ -3,6 +3,7 @@
 
 export interface TranscriptionRequest {
   audioBlob: Blob;
+  studentId: string;
   language?: string;
   studentName?: string;
 }
@@ -59,34 +60,32 @@ class AIService {
 
   // Voice to Text Transcription
   async transcribeAudio(request: TranscriptionRequest): Promise<AIResponse> {
+    const studentId = request.studentId?.trim();
+    if (!studentId) {
+      return { success: false, error: 'Participant context is required' };
+    }
+
     try {
-      console.log('🎤 Starting transcription via backend API...');
-      
       // Create FormData for file upload to backend
       const formData = new FormData();
       formData.append('audio', request.audioBlob, 'recording.webm');
       formData.append('language', request.language || 'en');
-      if (request.studentName) {
-        formData.append('studentName', request.studentName);
-      }
       
       // Use backend API endpoint instead of calling OpenAI directly
-      const response = await fetch(`${this.baseUrl}/process-voice`, {
+      const response = await fetch(`${this.baseUrl}/process-voice?studentId=${encodeURIComponent(studentId)}`, {
         method: 'POST',
         headers: this.authHeaders(),
         body: formData
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Transcription API error:', errorText);
-        throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.message || `Transcription failed (${response.status})`);
       }
 
       const result = await response.json();
       
       if (result.success && result.data) {
-        console.log('✅ Transcription successful:', result.data.transcription);
         return {
           success: true,
           data: result.data.transcription
@@ -95,7 +94,6 @@ class AIService {
         throw new Error(result.message || 'Transcription failed');
       }
     } catch (error) {
-      console.error('Transcription error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Transcription failed'
@@ -106,8 +104,6 @@ class AIService {
   // AI Report Generation
   async generateReport(request: ReportGenerationRequest): Promise<AIResponse> {
     try {
-      console.log('🤖 Web AI Report Generation Request:', request);
-      
       // Use the backend API endpoint instead of calling OpenAI directly
       const response = await fetch(`${this.baseUrl}/generate-report`, {
         method: 'POST',
