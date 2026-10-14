@@ -6,6 +6,7 @@ const Class = require('../models/Class');
 const Enrollment = require('../models/Enrollment');
 const { protect, authorize } = require('../middleware/auth');
 const { scopeSchoolId } = require('../middleware/resourceAuthorization');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const { logger } = require('../utils/logger');
 
 const router = express.Router();
@@ -129,6 +130,7 @@ router.get('/:id', protect, authorize('school_admin', 'super_admin'), async (req
 router.post('/', [
   protect,
   authorize('school_admin', 'super_admin'),
+  requireActiveOrganization,
   body('firstName').trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('email').optional({ checkFalsy: true }).isEmail().withMessage('Please provide a valid email'),
@@ -370,6 +372,7 @@ router.post('/', [
 router.put('/:id', [
   protect,
   authorize('school_admin', 'super_admin'),
+  requireActiveOrganization,
   body('firstName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('First name must be between 2 and 50 characters'),
   body('lastName').optional().trim().isLength({ min: 2, max: 50 }).withMessage('Last name must be between 2 and 50 characters'),
   body('email').optional().isEmail().withMessage('Please provide a valid email'),
@@ -586,7 +589,7 @@ router.put('/:id', [
 });
 
 // Deactivate a participant while preserving enrollment and longitudinal history.
-router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (req, res) => {
+router.delete('/:id', protect, authorize('school_admin', 'super_admin'), requireActiveOrganization, async (req, res) => {
   try {
     const schoolId = requireParticipantSchool(req, res);
     if (!schoolId) return;
@@ -634,6 +637,7 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (
 router.post('/assign-teacher', [
   protect,
   authorize('school_admin', 'super_admin'),
+  requireActiveOrganization,
   body('teacherId').isMongoId().withMessage('Valid teacher ID is required'),
   body('studentIds').isArray().withMessage('Student IDs must be an array'),
   body('studentIds.*').isMongoId().withMessage('Each student ID must be valid')

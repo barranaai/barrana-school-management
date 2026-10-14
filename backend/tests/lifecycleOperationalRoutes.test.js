@@ -6,10 +6,10 @@ const path = require('node:path');
 function loadRoutes(file, active) {
   const routes = [];
   const shared = [];
-  const effects = { uploads: 0, lifecycleChecks: 0 };
+  const effects = { uploads: 0, lifecycleChecks: 0, downstreamCalls: 0 };
   const router = { use: (...handlers) => shared.push(...handlers) };
   for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
-    router[method] = (url, ...handlers) => routes.push({ method, url, handlers: [...shared, ...handlers] });
+    router[method] = (url, ...handlers) => routes.push({ method, url, handlers: [...shared, ...handlers].flat(Infinity) });
   }
   const pass = (_req, _res, next) => next();
   let validatorMiddleware;
@@ -29,7 +29,10 @@ function loadRoutes(file, active) {
   });
   upload.diskStorage = () => ({});
   const callable = () => callable;
-  const generic = new Proxy(callable, { get: () => generic, apply: () => generic });
+  const generic = new Proxy(callable, {
+    get: () => generic,
+    apply: () => { effects.downstreamCalls += 1; return generic; }
+  });
   const lifecycle = (req, res, next) => {
     effects.lifecycleChecks += 1;
     if (active) return next();
@@ -59,6 +62,8 @@ function loadRoutes(file, active) {
 
 async function rejectedBeforeMutation(file, method, url) {
   const { routes, effects } = loadRoutes(file, false);
+  // Ignore any dependency factories invoked while the route module was registered.
+  effects.downstreamCalls = 0;
   const route = routes.find(item => item.method === method && item.url === url);
   assert.ok(route, `${method.toUpperCase()} ${url} is registered`);
   const req = {
@@ -77,6 +82,7 @@ async function rejectedBeforeMutation(file, method, url) {
   assert.equal(res.body.message, 'Organization is deactivated');
   assert.equal(effects.lifecycleChecks, 1);
   assert.equal(effects.uploads, 0, 'uploads must not run before lifecycle rejection');
+  assert.equal(effects.downstreamCalls, 0, 'models and services must not run before lifecycle rejection');
 }
 
 const routeCases = {
@@ -98,7 +104,13 @@ const routeCases = {
   guardianRelationships: [
     ['post', '/'], ['post', '/guardians'], ['patch', '/:id'], ['post', '/:id/activate'], ['post', '/:id/revoke']
   ],
-  availability: [['post', '/'], ['delete', '/:id']]
+  availability: [['post', '/'], ['delete', '/:id']],
+  enrollments: [
+    ['post', '/:id/staff-assignments'], ['put', '/:id/staff-assignments/:assignmentId/end'],
+    ['post', '/'], ['put', '/:id/class-assignment'], ['put', '/:id'], ['delete', '/:id']
+  ],
+  progress: [['post', '/'], ['put', '/:id']],
+  students: [['post', '/'], ['put', '/:id'], ['delete', '/:id'], ['post', '/assign-teacher']]
 };
 
 for (const [name, cases] of Object.entries(routeCases)) {
@@ -118,3 +130,21 @@ test('active organization middleware continues to the existing report handler', 
   assert.equal(next, true);
   assert.equal(effects.lifecycleChecks, 1);
 });
+
+for (const [name, method, url] of [
+  ['enrollments', 'post', '/'],
+  ['progress', 'post', '/'],
+  ['students', 'post', '/']
+]) {
+  test(`active organization middleware continues to the existing ${name} handler`, async () => {
+    const { routes, effects } = loadRoutes(path.join(__dirname, `../routes/${name}.js`), true);
+    const route = routes.find(item => item.method === method && item.url === url);
+    assert.ok(route, `${method.toUpperCase()} ${url} is registered`);
+    const lifecycleIndex = route.handlers.findIndex(handler => handler.name === 'lifecycle');
+    assert.ok(lifecycleIndex >= 0);
+    let next = false;
+    await route.handlers[lifecycleIndex]({}, {}, () => { next = true; });
+    assert.equal(next, true);
+    assert.equal(effects.lifecycleChecks, 1);
+  });
+}

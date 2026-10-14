@@ -63,7 +63,8 @@ function harness({ legacy = false } = {}) {
     authorize(...roles) { return (req, res, next) => roles.includes(req.user.role) ? next() : res.status(403).json({ success: false }); }
   };
   const deps = { express: { Router: () => router }, mongoose, '../middleware/auth': auth,
-    '../middleware/resourceAuthorization': { scopeSchoolId: (user, requested) => user.role === 'super_admin' ? requested : String(user.schoolId) } };
+    '../middleware/resourceAuthorization': { scopeSchoolId: (user, requested) => user.role === 'super_admin' ? requested : String(user.schoolId) },
+    '../middleware/lifecycleAuthorization': { requireActiveOrganization: (_req, _res, next) => next() } };
   for (const [name, model] of Object.entries(models)) deps['../models/' + name] = model;
   const file = path.join(__dirname, '../routes/progress.js');
   vm.runInNewContext(fs.readFileSync(file, 'utf8'), { module: { exports: {} }, require(name) { assert.ok(Object.hasOwn(deps, name), name); return deps[name]; }, Object, Date, Number, Map, Set }, { filename: file });

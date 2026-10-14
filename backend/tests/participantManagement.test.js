@@ -65,6 +65,7 @@ function harness() {
     '../middleware/resourceAuthorization': {
       scopeSchoolId(user, requested) { return user.role === 'super_admin' ? requested : String(user.schoolId); }
     },
+    '../middleware/lifecycleAuthorization': { requireActiveOrganization(req, res, next) { next(); } },
     '../utils/logger': { logger: { info() {}, warn() {}, error() {} } }
   });
   const app = express(); app.use(express.json()); app.use(router);

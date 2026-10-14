@@ -67,6 +67,38 @@ test('Super Admin activity is checked against the explicit organization context'
   assert.equal(observed, schoolB);
 });
 
+test('Super Admin operational writes fail closed without explicit organization context', async () => {
+  let lookups = 0;
+  const School = { findOne: () => { lookups += 1; return organizationQuery(null); } };
+  const { requireActiveOrganization } = loadWith({
+    '../models/School': School,
+    './resourceAuthorization': { scopeSchoolId: (user, requested) => user.role === 'super_admin' ? requested : String(user.schoolId) }
+  }, path.join(__dirname, '../middleware/lifecycleAuthorization.js'));
+  const req = { user: { role: 'super_admin' }, body: {}, query: {} };
+  const res = response(); let continued = false;
+  await requireActiveOrganization(req, res, () => { continued = true; });
+  assert.equal(continued, false);
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.message, 'Organization context is required');
+  assert.equal(lookups, 0);
+});
+
+test('Super Admin operational writes reject an unavailable organization scope', async () => {
+  let observed;
+  const School = { findOne: criteria => { observed = String(criteria._id); return organizationQuery(null); } };
+  const { requireActiveOrganization } = loadWith({
+    '../models/School': School,
+    './resourceAuthorization': { scopeSchoolId: (user, requested) => user.role === 'super_admin' ? requested : String(user.schoolId) }
+  }, path.join(__dirname, '../middleware/lifecycleAuthorization.js'));
+  const req = { user: { role: 'super_admin' }, body: { schoolId: schoolB }, query: {} };
+  const res = response(); let continued = false;
+  await requireActiveOrganization(req, res, () => { continued = true; });
+  assert.equal(continued, false);
+  assert.equal(observed, schoolB);
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.message, 'Organization is deactivated');
+});
+
 test('lifecycle implementation soft-deactivates organizations and teachers and preserves historical reads', () => {
   const fs = require('node:fs');
   const schools = fs.readFileSync(path.join(__dirname, '../routes/schools.js'), 'utf8');

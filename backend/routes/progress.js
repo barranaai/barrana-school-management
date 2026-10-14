@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const { protect, authorize } = require('../middleware/auth');
 const { scopeSchoolId } = require('../middleware/resourceAuthorization');
+const { requireActiveOrganization } = require('../middleware/lifecycleAuthorization');
 const Progress = require('../models/Progress');
 const ChildParticipation = require('../models/ChildParticipation');
 const DeliveredSession = require('../models/DeliveredSession');
@@ -84,8 +85,8 @@ router.get('/:id/revisions', authorize(...readers), async (req, res) => {
   }
 });
 router.get('/:id', authorize(...readers), async (req, res) => { try { const schoolId = schoolFor(req, req.query.schoolId); if (!oid(schoolId) || !oid(req.params.id)) return res.status(404).json({ success: false, message: 'Progress not found' }); const row = await Progress.findOne({ _id: req.params.id, schoolId }); if (!row) return res.status(404).json({ success: false, message: 'Progress not found' }); if (req.user.role === 'teacher') { const p = await ChildParticipation.findOne({ _id: row.childParticipationId, schoolId }); const s = p && await DeliveredSession.findOne({ _id: p.deliveredSessionId, schoolId }); if (!s || !teacherOwns(s, req.user)) return res.status(404).json({ success: false, message: 'Progress not found' }); } res.json({ success: true, data: row }); } catch (e) { res.status(500).json({ success: false, message: 'Unable to load Progress' }); } });
-router.post('/', authorize(...managers, 'teacher'), async (req, res) => { try { const c = await context(req.body, req.user); if (c.error) return res.status(c.status || 400).json({ success: false, message: c.error }); const results = await validatedResults(req.body, c); if (results.error) return res.status(400).json({ success: false, message: results.error }); const data = await Progress.create({ schoolId: c.schoolId, childParticipationId: c.participation._id, ...results, observations: req.body.observations, recommendations: req.body.recommendations, overallStatus: req.body.overallStatus, metadata: req.body.metadata, createdBy: req.user._id, updatedBy: req.user._id, revisionNumber: 1, revisions: [] }); res.status(201).json({ success: true, data }); } catch (e) { res.status(400).json({ success: false, message: e.code === 11000 ? 'Progress already exists for this participation' : 'Unable to save Progress' }); } });
-router.put('/:id', authorize(...managers, 'teacher'), async (req, res) => {
+router.post('/', authorize(...managers, 'teacher'), requireActiveOrganization, async (req, res) => { try { const c = await context(req.body, req.user); if (c.error) return res.status(c.status || 400).json({ success: false, message: c.error }); const results = await validatedResults(req.body, c); if (results.error) return res.status(400).json({ success: false, message: results.error }); const data = await Progress.create({ schoolId: c.schoolId, childParticipationId: c.participation._id, ...results, observations: req.body.observations, recommendations: req.body.recommendations, overallStatus: req.body.overallStatus, metadata: req.body.metadata, createdBy: req.user._id, updatedBy: req.user._id, revisionNumber: 1, revisions: [] }); res.status(201).json({ success: true, data }); } catch (e) { res.status(400).json({ success: false, message: e.code === 11000 ? 'Progress already exists for this participation' : 'Unable to save Progress' }); } });
+router.put('/:id', authorize(...managers, 'teacher'), requireActiveOrganization, async (req, res) => {
   try {
     if (!Object.hasOwn(req.body, '__v') || !validRevision(req.body.__v)) {
       return res.status(400).json({ success: false, message: 'Expected Progress revision is required' });
