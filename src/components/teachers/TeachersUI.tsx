@@ -210,7 +210,6 @@ const TeachersUI: React.FC = () => {
       formData.append('teacherId', user?.id || '');
       
       // Simulate upload
-      console.log('Saving recording for:', selectedStudent.name);
       toast.success(`Recording saved for ${selectedStudent.name}!`);
       
       // Reset recording state
@@ -223,6 +222,12 @@ const TeachersUI: React.FC = () => {
   // AI Transcription function
   const transcribeAudio = async () => {
     if (!recordingBlob || !selectedStudent) return;
+
+    const participantId = typeof selectedStudent.id === 'string' ? selectedStudent.id.trim() : '';
+    if (!participantId) {
+      toast.error('A valid participant record is required before transcription.');
+      return;
+    }
     
     setIsTranscribing(true);
     toast.loading('Transcribing audio...');
@@ -230,8 +235,8 @@ const TeachersUI: React.FC = () => {
     try {
       const response = await aiService.transcribeAudio({
         audioBlob: recordingBlob,
-        language: 'en',
-        studentName: selectedStudent.name
+        studentId: participantId,
+        language: 'en'
       });
 
       if (response.success && response.data) {
@@ -240,8 +245,7 @@ const TeachersUI: React.FC = () => {
       } else {
         throw new Error(response.error || 'Transcription failed');
       }
-    } catch (error) {
-      console.error('Transcription error:', error);
+    } catch {
       toast.error('Transcription failed. Please try again.');
     } finally {
       setIsTranscribing(false);
@@ -963,4 +967,4 @@ const TeachersUI: React.FC = () => {
   );
 };
 
-export default TeachersUI; 
+export default TeachersUI;
