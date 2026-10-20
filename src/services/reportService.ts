@@ -205,7 +205,6 @@ class ReportService {
       
       return data;
     } catch (error) {
-      console.error('Error fetching reports:', error);
       throw error;
     }
   }
@@ -226,7 +225,6 @@ class ReportService {
       
       return data;
     } catch (error) {
-      console.error('Error fetching report:', error);
       throw error;
     }
   }
@@ -254,9 +252,6 @@ class ReportService {
   async createReport(data: CreateReportData): Promise<ApiResponse<Report>> {
     try {
       const url = `${API_BASE_URL}${this.baseUrl}`;
-      console.log('Creating report at URL:', url);
-      console.log('Request headers:', this.getHeaders());
-      console.log('Request data:', data);
       
       const response = await fetch(url, {
         method: 'POST',
@@ -266,8 +261,6 @@ class ReportService {
       
       const responseData = await response.json();
       
-      console.log('Response status:', response.status);
-      console.log('Response data:', responseData);
       
       if (!response.ok) {
         throw new Error(responseData.message || `HTTP error! status: ${response.status}`);
@@ -275,7 +268,6 @@ class ReportService {
       
       return responseData;
     } catch (error) {
-      console.error('Error creating report:', error);
       throw error;
     }
   }
@@ -298,7 +290,6 @@ class ReportService {
       
       return responseData;
     } catch (error) {
-      console.error('Error updating report:', error);
       throw error;
     }
   }
@@ -319,7 +310,6 @@ class ReportService {
       
       return data;
     } catch (error) {
-      console.error('Error deleting report:', error);
       throw error;
     }
   }
@@ -341,7 +331,6 @@ class ReportService {
       
       return data;
     } catch (error) {
-      console.error('Error approving report:', error);
       throw error;
     }
   }
@@ -383,7 +372,6 @@ class ReportService {
       
       return data;
     } catch (error) {
-      console.error('Error fetching teacher reports:', error);
       throw error;
     }
   }
@@ -418,7 +406,6 @@ class ReportService {
       
       return data;
     } catch (error) {
-      console.error('Error fetching student reports:', error);
       throw error;
     }
   }
@@ -518,7 +505,6 @@ class ReportService {
       
       return data.data;
     } catch (error) {
-      console.error('Error checking due status:', error);
       throw error;
     }
   }
@@ -541,7 +527,6 @@ class ReportService {
       
       return data.data;
     } catch (error) {
-      console.error('Error checking due reports:', error);
       throw error;
     }
   }

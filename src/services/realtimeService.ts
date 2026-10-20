@@ -55,7 +55,7 @@ class RealtimeService {
       
       console.log('Connected to real-time service');
     } catch (error) {
-      console.error('Failed to connect to real-time service:', error);
+      console.error('Failed to connect to real-time service');
       this.handleReconnect(userId);
     }
   }
@@ -79,7 +79,7 @@ class RealtimeService {
           this.emitEvent(update.type, update);
         });
       } catch (error) {
-        console.error('Error polling for updates:', error);
+        console.error('Unable to poll for real-time updates');
         this.handleReconnect(userId);
       }
     }, 5000); // Poll every 5 seconds
@@ -93,7 +93,7 @@ class RealtimeService {
       });
       return response.data.data || [];
     } catch (error) {
-      console.error('Error fetching updates:', error);
+      console.error('Unable to fetch real-time updates');
       return [];
     }
   }
@@ -142,7 +142,7 @@ class RealtimeService {
         try {
           callback(event);
         } catch (error) {
-          console.error('Error in event listener:', error);
+          console.error('Real-time event listener failed');
         }
       });
     }
@@ -156,7 +156,7 @@ class RealtimeService {
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Error sending real-time message:', error);
+      console.error('Unable to send real-time message');
       throw new Error('Failed to send message');
     }
   }
@@ -167,7 +167,7 @@ class RealtimeService {
       const response = await axios.get(`${this.baseURL}/realtime/status`);
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching system status:', error);
+      console.error('Unable to fetch system status');
       return {
         status: 'offline',
         uptime: 0,
@@ -184,7 +184,7 @@ class RealtimeService {
       const response = await axios.get(`${this.baseURL}/realtime/active-users`);
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching active users:', error);
+      console.error('Unable to fetch active users');
       return [];
     }
   }
@@ -196,9 +196,9 @@ class RealtimeService {
         userId,
         timestamp: new Date().toISOString()
       });
-      console.log(`Joined room: ${roomId}`);
+      console.log('Joined real-time room');
     } catch (error) {
-      console.error('Error joining room:', error);
+      console.error('Unable to join real-time room');
       throw new Error('Failed to join room');
     }
   }
@@ -210,9 +210,9 @@ class RealtimeService {
         userId,
         timestamp: new Date().toISOString()
       });
-      console.log(`Left room: ${roomId}`);
+      console.log('Left real-time room');
     } catch (error) {
-      console.error('Error leaving room:', error);
+      console.error('Unable to leave real-time room');
       throw new Error('Failed to leave room');
     }
   }
@@ -225,7 +225,7 @@ class RealtimeService {
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Error sending room message:', error);
+      console.error('Unable to send real-time room message');
       throw new Error('Failed to send room message');
     }
   }
@@ -236,7 +236,7 @@ class RealtimeService {
       const response = await axios.get(`${this.baseURL}/realtime/rooms/${roomId}/participants`);
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching room participants:', error);
+      console.error('Unable to fetch room participants');
       return [];
     }
   }
@@ -249,7 +249,7 @@ class RealtimeService {
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Error broadcasting event:', error);
+      console.error('Unable to broadcast real-time event');
       throw new Error('Failed to broadcast event');
     }
   }
@@ -271,7 +271,7 @@ class RealtimeService {
       const response = await axios.get(`${this.baseURL}/realtime/stats`);
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching connection stats:', error);
+      console.error('Unable to fetch connection statistics');
       return {
         uptime: 0,
         messagesSent: 0,

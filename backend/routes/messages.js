@@ -64,7 +64,7 @@ router.post('/upload-attachments', protect, authorize('parent', 'school_admin', 
       url: `/uploads/message-attachments/${file.filename}`
     }));
 
-    logger.info(`Uploaded ${uploadedFiles.length} attachment(s) for user ${req.user._id}`);
+    logger.info('Message attachments uploaded', { count: uploadedFiles.length });
 
     res.status(200).json({
       success: true,
@@ -332,7 +332,7 @@ router.post('/conversation', protect, authorize('parent', 'teacher', 'school_adm
         }
       });
 
-      logger.info(`New conversation created: ${conversation._id}`);
+      logger.info('New conversation created');
     }
 
     // Create initial message with attachments
@@ -399,7 +399,7 @@ router.post('/conversation', protect, authorize('parent', 'teacher', 'school_adm
         recipientUser.notifications.push(notification);
         await recipientUser.save();
 
-        logger.info(`Created in-app notification for recipient ${recipient._id}`);
+        logger.info('Message in-app notification created');
 
         // Send push notification
         try {
@@ -419,7 +419,7 @@ router.post('/conversation', protect, authorize('parent', 'teacher', 'school_adm
           };
 
           await firebaseService.sendNotificationToUser(recipientUser, pushNotification, pushData);
-          logger.info(`Push notification sent to recipient ${recipient._id}`);
+          logger.info('Message push notification accepted', { channel: 'push' });
         } catch (pushError) {
           logger.error('Error sending push notification:', pushError);
           // Don't fail the entire request if push notification fails
@@ -430,9 +430,9 @@ router.post('/conversation', protect, authorize('parent', 'teacher', 'school_adm
       // Don't fail the entire request if notification creation fails
     }
 
-      logger.info(`Message sent in conversation ${conversation._id}`);
+      logger.info('Conversation message accepted');
     } else {
-      logger.info(`Message scheduled for ${message.scheduledDateTime} in conversation ${conversation._id}`);
+      logger.info('Conversation message scheduled');
     }
 
     res.status(201).json({
@@ -540,7 +540,7 @@ router.post('/send', protect, authorize('parent', 'teacher', 'school_admin', 'su
         recipientUser.notifications.push(notification);
         await recipientUser.save();
 
-        logger.info(`Created notification for recipient ${recipient.userId}`);
+        logger.info('Message notification created');
 
         // Send push notification
         try {
@@ -560,7 +560,7 @@ router.post('/send', protect, authorize('parent', 'teacher', 'school_admin', 'su
           };
 
           await firebaseService.sendNotificationToUser(recipientUser, pushNotification, pushData);
-          logger.info(`Push notification sent to recipient ${recipient.userId}`);
+          logger.info('Message push notification accepted', { channel: 'push' });
         } catch (pushError) {
           logger.error('Error sending push notification:', pushError);
           // Don't fail the entire request if push notification fails
@@ -571,7 +571,7 @@ router.post('/send', protect, authorize('parent', 'teacher', 'school_admin', 'su
       // Don't fail the entire request if notification creation fails
     }
 
-    logger.info(`Message sent in conversation ${conversation._id}`);
+    logger.info('Conversation message accepted');
 
     res.status(201).json({
       success: true,
@@ -645,7 +645,7 @@ router.patch('/conversation/:conversationId/read', protect, authorize('parent', 
       await conversation.save();
     }
 
-    logger.info(`Messages marked as read in conversation ${conversationId}`);
+    logger.info('Conversation messages marked as read');
 
     res.json({
       success: true,

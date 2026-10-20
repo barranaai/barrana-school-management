@@ -1,6 +1,6 @@
 const nodemailer = require('nodemailer');
 const twilio = require('twilio');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 const EventReminder = require('../models/EventReminder');
 const whatsappService = require('./whatsappService');
 const smsService = require('./smsService');
@@ -26,7 +26,7 @@ try {
     logger.warn('Twilio credentials not found. SMS/WhatsApp notifications will be disabled.');
   }
 } catch (error) {
-  logger.error('Error initializing Twilio:', error);
+  logger.error('Notification provider initialization failed', safeError(error, 'NOTIFICATION_PROVIDER_INITIALIZATION_FAILED'));
 }
 
 // Initialize email transporter
@@ -48,7 +48,7 @@ try {
     logger.warn('Email credentials not found. Email notifications will be disabled.');
   }
 } catch (error) {
-  logger.error('Error initializing email transporter:', error);
+  logger.error('Email notification initialization failed', safeError(error, 'EMAIL_NOTIFICATION_INITIALIZATION_FAILED'));
 }
 
 /**
@@ -112,7 +112,7 @@ const getSchoolWithBranding = async (schoolId) => {
     }
     return school;
   } catch (e) {
-    logger.warn('Unable to load school branding for email:', e.message);
+    logger.warn('Unable to load school branding for email', safeError(e, 'BRANDING_LOOKUP_FAILED'));
     return null;
   }
 };
@@ -150,12 +150,12 @@ const sendEmailReminder = async (event, recipient, reminderType) => {
               path: filePath,
               contentType: att.mimeType
             });
-            logger.info(`Added attachment to email: ${att.originalName}`);
+      logger.info('Notification attachment prepared', { channel: 'email' });
           } else {
-            logger.warn(`Attachment file not found: ${filePath}`);
+      logger.warn('Notification attachment unavailable', { channel: 'email' });
           }
         } catch (error) {
-          logger.error(`Error processing attachment ${att.originalName}:`, error);
+      logger.error('Notification attachment processing failed', safeError(error, 'ATTACHMENT_PROCESSING_FAILED'));
         }
       }
     }
@@ -201,7 +201,7 @@ const sendEmailReminder = async (event, recipient, reminderType) => {
     };
 
     await emailTransporter.sendMail(mailOptions);
-    logger.info(`Email sent to ${recipient.email} for event ${event._id} with ${emailAttachments.length} attachment(s)`);
+    logger.info('Event email accepted', { channel: 'email', attachmentsCount: emailAttachments.length });
     
     return { 
       sent: true, 
@@ -210,7 +210,7 @@ const sendEmailReminder = async (event, recipient, reminderType) => {
       attachmentsCount: emailAttachments.length
     };
   } catch (error) {
-    logger.error(`Error sending email to ${recipient.email}:`, error);
+    logger.error('Event email failed', safeError(error, 'EVENT_EMAIL_FAILED'));
     return { 
       sent: false, 
       status: 'failed', 
@@ -250,7 +250,7 @@ const sendSMSReminder = async (event, recipient, reminderType) => {
       to: recipient.phone
     });
 
-    logger.info(`SMS sent to ${recipient.phone} for event ${event._id}`);
+    logger.info('Event SMS accepted', { channel: 'sms' });
     
     return { 
       sent: true, 
@@ -259,7 +259,7 @@ const sendSMSReminder = async (event, recipient, reminderType) => {
       messageId: result.sid
     };
   } catch (error) {
-    logger.error(`Error sending SMS to ${recipient.phone}:`, error);
+    logger.error('Event SMS failed', safeError(error, 'EVENT_SMS_FAILED'));
     return { 
       sent: false, 
       status: 'failed', 
@@ -274,7 +274,7 @@ const sendSMSReminder = async (event, recipient, reminderType) => {
 const sendWhatsAppReminder = async (event, recipient, reminderType) => {
   // Check if recipient has WhatsApp enabled
   if (!recipient.preferences?.notifications?.whatsapp) {
-    logger.info(`WhatsApp notifications disabled for ${recipient.email}`);
+    logger.info('WhatsApp notification skipped by recipient preference', { channel: 'whatsapp' });
     return { sent: false, status: 'skipped', error: 'WhatsApp notifications disabled' };
   }
 
@@ -314,7 +314,7 @@ const sendWhatsAppReminder = async (event, recipient, reminderType) => {
     });
 
     if (result.success) {
-      logger.info(`WhatsApp sent to ${recipient.phone || recipient.phoneNumber} for event ${event._id}`);
+      logger.info('Event WhatsApp accepted', { channel: 'whatsapp' });
       return { 
         sent: true, 
         status: 'sent', 
@@ -322,7 +322,7 @@ const sendWhatsAppReminder = async (event, recipient, reminderType) => {
         messageId: result.messageId
       };
     } else {
-      logger.error(`WhatsApp failed to ${recipient.phone || recipient.phoneNumber}: ${result.error}`);
+      logger.error('Event WhatsApp failed', { channel: 'whatsapp', status: 'failed' });
       return { 
         sent: false, 
         status: 'failed',
@@ -330,7 +330,7 @@ const sendWhatsAppReminder = async (event, recipient, reminderType) => {
       };
     }
   } catch (error) {
-    logger.error(`Error sending WhatsApp to ${recipient.phone || recipient.phoneNumber}:`, error);
+    logger.error('Event WhatsApp error', safeError(error, 'EVENT_WHATSAPP_FAILED'));
     return { 
       sent: false, 
       status: 'failed',
@@ -344,7 +344,7 @@ const sendWhatsAppReminder = async (event, recipient, reminderType) => {
  */
 const sendEventReminder = async (event, recipient, reminderType) => {
   try {
-    logger.info(`Sending ${reminderType} reminder for event ${event._id} to ${recipient.name}`);
+    logger.info('Sending event reminder', { reminderType, channel: 'multi' });
 
     // Send via all channels
     const [emailResult, smsResult, whatsappResult] = await Promise.all([
@@ -373,11 +373,11 @@ const sendEventReminder = async (event, recipient, reminderType) => {
     reminderLog.updateOverallStatus();
     await reminderLog.save();
 
-    logger.info(`Reminder log created for event ${event._id}, recipient ${recipient._id}`);
+    logger.info('Event reminder outcome recorded');
 
     return reminderLog;
   } catch (error) {
-    logger.error(`Error sending event reminder:`, error);
+    logger.error('Event reminder failed', safeError(error, 'EVENT_REMINDER_FAILED'));
     throw error;
   }
 };
@@ -536,17 +536,17 @@ const sendEventUpdateNotification = async (event, recipients, changes) => {
 
           // SMS Fallback: Try SMS if WhatsApp fails
           if (!whatsappSuccess && recipient.preferences?.notifications?.sms) {
-            logger.info(`WhatsApp failed for ${recipient.phone}, trying SMS fallback...`);
+            logger.info('Trying SMS fallback after WhatsApp failure', { channel: 'sms' });
             try {
               const smsMessage = `Event Updated: ${changeText}\n${event.title}\n${new Date(event.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}\n- ${school ? school.name : 'School'}`;
               smsResult = await smsService.sendMessage(recipient.phone, smsMessage, { school });
               smsSuccess = smsResult && smsResult.success;
               
               if (smsSuccess) {
-                logger.info(`✅ SMS fallback successful for ${recipient.phone}`);
+                logger.info('SMS fallback accepted', { channel: 'sms' });
               }
             } catch (smsError) {
-              logger.error(`SMS fallback also failed for ${recipient.phone}:`, smsError.message);
+              logger.error('SMS fallback failed', safeError(smsError, 'SMS_FALLBACK_FAILED'));
             }
           }
           
@@ -583,7 +583,7 @@ const sendEventUpdateNotification = async (event, recipients, changes) => {
             }
 
             await EventReminder.create(reminderData);
-            logger.info(`Update notification sent to ${recipient.phone} via ${whatsappSuccess ? 'WhatsApp' : 'SMS (fallback)'}`);
+            logger.info('Event update notification accepted', { channel: whatsappSuccess ? 'whatsapp' : 'sms' });
 
             // Log WhatsApp to notification logger
             if (whatsappSuccess) {
@@ -623,7 +623,7 @@ const sendEventUpdateNotification = async (event, recipients, changes) => {
               });
             }
           } else {
-            logger.error(`All notification channels failed for ${recipient.phone}`);
+            logger.error('All event update notification channels failed');
             
             // Log failed WhatsApp attempt
             if (!whatsappSuccess && recipient.preferences?.notifications?.whatsapp) {
@@ -645,15 +645,15 @@ const sendEventUpdateNotification = async (event, recipients, changes) => {
             }
           }
         } catch (whatsappError) {
-          logger.error(`Failed to send WhatsApp update notification to ${recipient.phone}:`, whatsappError.message);
+          logger.error('WhatsApp update notification failed', safeError(whatsappError, 'WHATSAPP_UPDATE_FAILED'));
           // Don't fail if WhatsApp fails
         }
       }
     }
 
-    logger.info(`Event update notifications sent to ${recipients.length} recipients for event ${event._id}`);
+    logger.info('Event update notification batch completed', { recipientCount: recipients.length });
   } catch (error) {
-    logger.error('Error sending event update notification:', error);
+    logger.error('Event update notification failed', safeError(error, 'EVENT_UPDATE_NOTIFICATION_FAILED'));
     throw error;
   }
 };
@@ -778,17 +778,17 @@ const sendEventDeletionNotification = async (event, recipients) => {
 
           // SMS Fallback: Try SMS if WhatsApp fails
           if (!whatsappSuccess && recipient.preferences?.notifications?.sms) {
-            logger.info(`WhatsApp failed for ${recipient.phone}, trying SMS fallback...`);
+            logger.info('Trying SMS fallback after WhatsApp failure', { channel: 'sms' });
             try {
               const smsMessage = `Event Cancelled: ${event.title}\n${new Date(event.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}\nPlease remove from your calendar.\n- ${school ? school.name : 'School'}`;
               smsResult = await smsService.sendMessage(recipient.phone, smsMessage, { school });
               smsSuccess = smsResult && smsResult.success;
               
               if (smsSuccess) {
-                logger.info(`✅ SMS fallback successful for ${recipient.phone}`);
+                logger.info('SMS fallback accepted', { channel: 'sms' });
               }
             } catch (smsError) {
-              logger.error(`SMS fallback also failed for ${recipient.phone}:`, smsError.message);
+              logger.error('SMS fallback failed', safeError(smsError, 'SMS_FALLBACK_FAILED'));
             }
           }
           
@@ -825,18 +825,18 @@ const sendEventDeletionNotification = async (event, recipients) => {
             }
 
             await EventReminder.create(reminderData);
-            logger.info(`Cancellation notification sent to ${recipient.phone} via ${whatsappSuccess ? 'WhatsApp' : 'SMS (fallback)'}`);
+            logger.info('Event cancellation notification accepted', { channel: whatsappSuccess ? 'whatsapp' : 'sms' });
           }
         } catch (whatsappError) {
-          logger.error(`Failed to send WhatsApp cancellation notification to ${recipient.phone}:`, whatsappError.message);
+          logger.error('WhatsApp cancellation notification failed', safeError(whatsappError, 'WHATSAPP_CANCELLATION_FAILED'));
           // Don't fail if WhatsApp fails
         }
       }
     }
 
-    logger.info(`Event deletion notifications sent to ${recipients.length} recipients for event ${event._id}`);
+    logger.info('Event deletion notification batch completed', { recipientCount: recipients.length });
   } catch (error) {
-    logger.error('Error sending event deletion notification:', error);
+    logger.error('Event deletion notification failed', safeError(error, 'EVENT_DELETION_NOTIFICATION_FAILED'));
     throw error;
   }
 };

@@ -15,6 +15,18 @@ const requiresSchoolDetails = function() {
   return organizationTypeRequiresSchoolDetails(organizationType);
 };
 
+const removeCommunicationSecrets = (_document, returned) => {
+  if (returned?.communication?.whatsapp) {
+    delete returned.communication.whatsapp.twilioAccountSid;
+    delete returned.communication.whatsapp.twilioAuthToken;
+  }
+  if (returned?.communication?.sms) {
+    delete returned.communication.sms.twilioAccountSid;
+    delete returned.communication.sms.twilioAuthToken;
+  }
+  return returned;
+};
+
 const schoolSchema = new mongoose.Schema({
   // Basic Information
   name: {
@@ -453,8 +465,8 @@ const schoolSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toJSON: { virtuals: true, transform: removeCommunicationSecrets },
+  toObject: { virtuals: true, transform: removeCommunicationSecrets }
 });
 
 // Virtual for full address

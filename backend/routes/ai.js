@@ -153,11 +153,9 @@ try {
     openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
-  } else {
-    console.log('OpenAI API key not provided - AI features disabled');
   }
-} catch (error) {
-  console.log('OpenAI initialization failed - AI features disabled:', error.message);
+} catch (_error) {
+  logger.error('AI provider initialization failed', { category: 'AI_INITIALIZATION_FAILED' });
 }
 
 // AI Report Generation
@@ -170,7 +168,7 @@ router.post('/generate-report', async (req, res) => {
       });
     }
     
-    const { transcription, studentName, grade, template, templateId, timestamp, studentId, reportId } = req.body;
+    const { transcription, studentName, grade, template, templateId, studentId, reportId } = req.body;
     if (studentId && !await canAccessStudent(req.user, await User.findById(studentId)))
       return res.status(404).json({ success: false, message: 'Student not found' });
     if (reportId && !canAccessReport(req.user, await Report.findById(reportId)))
@@ -195,7 +193,7 @@ router.post('/generate-report', async (req, res) => {
         if (!templateData)
           return res.status(404).json({ success: false, message: 'Report template not found' });
       } catch (error) {
-        logger.error('Error fetching report template', error);
+        logger.error('AI report-template lookup failed', { category: 'AI_TEMPLATE_LOOKUP_FAILED' });
         return res.status(404).json({ success: false, message: 'Report template not found' });
       }
     }
@@ -203,29 +201,13 @@ router.post('/generate-report', async (req, res) => {
     // Generate a properly formatted report based on the transcription
     const reportContent = await generateStructuredReport(transcription, studentName, grade, template, templateData);
     
-    const reportData = {
-      reportId: 'R' + Date.now(),
-      content: reportContent,
-      metadata: {
-        aiModel: 'GPT-4',
-        confidence: 0.94,
-        processingTime: 2.3,
-        language: 'en-US',
-        generatedAt: timestamp || new Date().toISOString(),
-        originalTranscription: transcription,
-        studentName,
-        grade,
-        template
-      }
-    };
-
     res.status(200).json({
       success: true,
       message: 'Report generated successfully',
       data: reportContent // Return the formatted report directly
     });
   } catch (error) {
-    console.error('Error generating report:', error);
+    logger.error('AI report generation failed', { category: 'AI_REPORT_GENERATION_FAILED' });
     res.status(500).json({
       success: false,
       message: 'Failed to generate report'
@@ -388,8 +370,8 @@ router.get('/insights', async (req, res) => {
     ];
 
     res.status(200).json({ success: true, data: insights });
-  } catch (error) {
-    console.error('Error getting insights:', error);
+  } catch (_error) {
+    logger.error('AI insights request failed', { category: 'AI_INSIGHTS_FAILED' });
     res.status(500).json({
       success: false,
       message: 'Failed to get insights'
@@ -400,20 +382,17 @@ router.get('/insights', async (req, res) => {
 async function generateStructuredReport(transcription, studentName, grade, template, templateData) {
   // Check if we have a template with content or AI prompt for intelligent generation
   if (templateData && (templateData.content || templateData.aiPrompt)) {
-    console.log('🤖 Using intelligent template-based report generation');
     return await generateReportWithCustomPrompt(transcription, studentName, grade, templateData);
   }
   
-  console.log('🤖 Using default static template for report generation');
   
   // Use AI to generate content based on transcription if OpenAI is available
   if (process.env.OPENAI_API_KEY) {
     try {
-      console.log('🤖 Using AI to generate content from transcription');
       const aiGeneratedContent = await generateAIReportFromTranscription(transcription, studentName, grade);
       return aiGeneratedContent;
-    } catch (error) {
-      console.error('❌ AI generation failed, falling back to static template:', error);
+    } catch (_error) {
+      logger.warn('AI report generation fell back to the static template', { category: 'AI_GENERATION_FALLBACK' });
     }
   }
   
@@ -510,22 +489,18 @@ ${aiGeneratedReport}
 
     return report.trim();
   } catch (error) {
-    console.error('Error generating AI report:', error);
     throw error;
   }
 }
 
 async function generateReportWithCustomPrompt(transcription, studentName, grade, templateData) {
-  console.log('🧠 Starting intelligent template-based report generation');
   
   // Check if we have structured template content or just a simple AI prompt
   if (templateData.content && templateData.content.trim()) {
-    console.log('📋 Using structured template content for intelligent mapping');
     return await generateIntelligentStructuredReport(transcription, studentName, grade, templateData);
   }
   
   // Fallback to simple prompt replacement if no structured content
-  console.log('📝 Fallback to simple prompt replacement');
   return generateSimplePromptReport(transcription, studentName, grade, templateData);
 }
 
@@ -533,31 +508,24 @@ async function generateIntelligentStructuredReport(transcription, studentName, g
   try {
     // Parse the template structure to extract categories and subcategories
     const templateStructure = parseTemplateStructure(templateData.content);
-    console.log('🔍 Parsed template structure:', templateStructure.length, 'sections found');
     
     // Use AI to analyze transcription and map to template sections
     const mappedContent = await analyzeTranscriptionWithAI(transcription, templateStructure, studentName, grade);
     
     // If we have mapped content, use it; otherwise, fall back to AI generation
     if (mappedContent && mappedContent.length > 0) {
-      console.log('✅ Using mapped content for report generation');
-      console.log('📋 Mapped content details:', JSON.stringify(mappedContent, null, 2));
-      console.log('🚀 About to call formatIntelligentReport...');
       try {
         const report = formatIntelligentReport(mappedContent, studentName, grade, templateData);
-        console.log('📄 Generated report length:', report.length);
         return report;
-      } catch (error) {
-        console.error('❌ Error in formatIntelligentReport:', error);
-        console.log('⚠️ Falling back to AI generation with template structure');
+      } catch (_error) {
+        logger.warn('AI structured report formatting fell back to template generation', { category: 'AI_GENERATION_FALLBACK' });
         return await generateAIReportWithTemplateStructure(transcription, studentName, grade, templateData);
       }
     } else {
-      console.log('⚠️ No mapped content found, using AI generation with template structure');
       return await generateAIReportWithTemplateStructure(transcription, studentName, grade, templateData);
     }
-  } catch (error) {
-    console.error('❌ Error in intelligent report generation:', error);
+  } catch (_error) {
+    logger.warn('AI structured report generation fell back to template generation', { category: 'AI_GENERATION_FALLBACK' });
     // Fallback to AI generation with template structure
     return await generateAIReportWithTemplateStructure(transcription, studentName, grade, templateData);
   }
@@ -593,8 +561,6 @@ Please generate a comprehensive, well-structured report that:
 
 Template Name: ${templateData.name}`;
 
-    console.log('🤖 Calling OpenAI with system prompt length:', systemPrompt.length);
-    console.log('🤖 User prompt:', userPrompt.substring(0, 200) + '...');
     
     const completion = await openai.chat.completions.create({
       model: "gpt-4",
@@ -607,12 +573,9 @@ Template Name: ${templateData.name}`;
     });
 
     const aiGeneratedReport = completion.choices[0].message.content;
-    console.log('✅ AI Generated Report length:', aiGeneratedReport?.length || 0);
-    console.log('📄 AI Generated Report preview:', aiGeneratedReport?.substring(0, 300));
     
     // Check if AI generated content is empty
     if (!aiGeneratedReport || aiGeneratedReport.trim().length === 0) {
-      console.error('❌ AI generated empty report!');
       throw new Error('AI generated empty report content');
     }
     
@@ -633,18 +596,15 @@ Template Name: ${templateData.name}`;
 
 ${aiGeneratedReport}`;
 
-    console.log('📝 Final report length:', report.length);
     return report.trim();
-  } catch (error) {
-    console.error('Error generating AI report with template structure:', error);
+  } catch (_error) {
+    logger.warn('AI template report generation fell back to the simple report', { category: 'AI_GENERATION_FALLBACK' });
     // Fallback to simple prompt report
     return generateSimplePromptReport(transcription, studentName, grade, templateData);
   }
 }
 
 function parseTemplateStructure(templateContent) {
-  console.log('🔧 Parsing template structure...');
-  console.log('📋 Template content preview:', templateContent.substring(0, 200));
   const sections = [];
   const lines = templateContent.split('\n');
   
@@ -670,7 +630,6 @@ function parseTemplateStructure(templateContent) {
         subsections: [],
         type: 'section'
       };
-      console.log('📌 Found heading:', sectionTitle);
     }
     // Check if line starts with "Subheading:" - this is a subsection
     else if (/^Subheading:\s*/i.test(line)) {
@@ -684,10 +643,8 @@ function parseTemplateStructure(templateContent) {
           type: 'subsection',
           content: null // Will be filled by AI
         });
-        console.log('  ↳ Found subheading:', subsectionTitle);
       } else {
         // If we have a subheading without a section, create a default section
-        console.log('⚠️ Found subheading without section:', subsectionTitle);
         currentSection = {
           title: 'General',
           subsections: [{
@@ -707,16 +664,13 @@ function parseTemplateStructure(templateContent) {
     sections.push(currentSection);
   }
   
-  console.log('✅ Template parsing complete. Found sections:', sections.map(s => `${s.title} (${s.subsections.length} subsections)`));
   return sections;
 }
 
 async function analyzeTranscriptionWithAI(transcription, templateStructure, studentName, grade) {
-  console.log('🤖 Analyzing transcription with AI for intelligent mapping...');
   
   // Check if OpenAI is configured
   if (!process.env.OPENAI_API_KEY) {
-    console.log('⚠️ OpenAI not configured, using pattern matching fallback');
     return analyzeTranscriptionWithPatterns(transcription, templateStructure);
   }
   
@@ -764,23 +718,20 @@ Analyze the transcription and map observations to relevant template sections. On
     });
     
     const response = completion.choices[0].message.content;
-    console.log('🔍 AI Analysis Response:', response);
     
     // Parse the JSON response
     const aiAnalysis = JSON.parse(response);
     return aiAnalysis.mappedSections || [];
     
-  } catch (error) {
-    console.error('❌ AI analysis failed:', error);
+  } catch (_error) {
+    logger.warn('AI transcription analysis fell back to pattern matching', { category: 'AI_GENERATION_FALLBACK' });
     // Fallback to pattern matching
     return analyzeTranscriptionWithPatterns(transcription, templateStructure);
   }
 }
 
 function analyzeTranscriptionWithPatterns(transcription, templateStructure) {
-  console.log('🔍 Using dynamic pattern matching for analysis...');
   const mappedSections = [];
-  const transcriptionLower = transcription.toLowerCase();
   const sentences = transcription.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 0);
   
   // Define comprehensive keyword patterns for each section type
@@ -866,12 +817,10 @@ function analyzeTranscriptionWithPatterns(transcription, templateStructure) {
     });
   });
   
-  console.log('✅ Pattern matching complete. Mapped', mappedSections.length, 'sections');
   return mappedSections;
 }
 
 function generateDynamicKeywords(templateStructure) {
-  console.log('🔧 Generating dynamic keywords from template structure...');
   const dynamicKeywords = {};
   
   templateStructure.forEach(section => {
@@ -884,7 +833,6 @@ function generateDynamicKeywords(templateStructure) {
       
       if (keywords.length > 0) {
         dynamicKeywords[sectionKey] = keywords;
-        console.log(`🔍 Keywords for ${subsection.title}:`, keywords);
       }
     });
   });
@@ -994,10 +942,6 @@ function generateIntelligentContent(subsectionTitle, relevantSentences, fullTran
 }
 
 function formatIntelligentReport(mappedContent, studentName, grade, templateData) {
-  console.log('🚀 FORMAT INTELLIGENT REPORT CALLED!');
-  console.log('📝 Formatting intelligent report...');
-  console.log('📋 Mapped content received:', mappedContent.length, 'items');
-  console.log('🔍 Mapped content:', JSON.stringify(mappedContent, null, 2));
   
   let report = `# Student Progress Report\n\n`;
   report += `**Student Name:** ${studentName}\n`;
@@ -1024,7 +968,6 @@ function formatIntelligentReport(mappedContent, studentName, grade, templateData
     });
   });
   
-  console.log('🔍 Content map keys:', Array.from(contentMap.keys()));
   
   // Generate report following template structure
   templateStructure.forEach(section => {
@@ -1067,12 +1010,10 @@ function formatIntelligentReport(mappedContent, studentName, grade, templateData
 }
 
 async function generateSimplePromptReport(transcription, studentName, grade, templateData) {
-  console.log('📝 Using simple prompt report generation (fallback)');
   
   // Try to use OpenAI if available
   if (openai) {
     try {
-      console.log('🤖 Attempting AI generation in fallback...');
       const systemPrompt = `You are an educational report assistant. Create a student progress report based on teacher observations.`;
       const userPrompt = `Create a progress report for ${studentName} (Grade ${grade}) based on these observations:\n\n"${transcription}"\n\nTemplate: ${templateData.name}\nTemplate Structure:\n${templateData.content || 'General progress report'}`;
       
@@ -1089,7 +1030,6 @@ async function generateSimplePromptReport(transcription, studentName, grade, tem
       const aiContent = completion.choices[0].message.content;
       
       if (aiContent && aiContent.trim().length > 0) {
-        console.log('✅ Fallback AI generation successful');
         return `# Student Progress Report
 
 **Student Name:** ${studentName}  
@@ -1106,13 +1046,12 @@ ${aiContent}
 *This report was generated using AI analysis of teacher observations.*
 *Template: ${templateData.name}*`;
       }
-    } catch (error) {
-      console.error('❌ Fallback AI generation failed:', error.message);
+    } catch (_error) {
+      logger.warn('AI simple report generation fell back to direct observations', { category: 'AI_GENERATION_FALLBACK' });
     }
   }
   
   // Final fallback - include transcription with template structure
-  console.log('📋 Using template structure with transcription (final fallback)');
   
   const report = `# Student Progress Report
 

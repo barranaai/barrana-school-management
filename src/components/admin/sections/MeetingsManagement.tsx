@@ -104,7 +104,7 @@ const MeetingsManagement: React.FC<Props> = ({ schoolBranding }) => {
       if (mRes.success && Array.isArray(mRes.data)) setMeetings(mRes.data);
       if (sRes.success && sRes.data) setStats(sRes.data);
     } catch (err) {
-      console.error('Admin: load meetings error', err);
+      console.error('Unable to load meetings');
     } finally {
       setLoading(false);
     }

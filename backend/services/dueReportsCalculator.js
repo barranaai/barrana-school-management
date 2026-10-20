@@ -18,7 +18,7 @@ const ReportTemplate = require('../models/ReportTemplate');
 const User = require('../models/User');
 const School = require('../models/School');
 const Enrollment = require('../models/Enrollment');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 const { compatibleTemplates } = require('./reportTemplateContext');
 const { resolveWorkspaceProfile } = require('../domain/workspaceProfile');
 const { calculateDueDate: dateUtilsCalculateDueDate } = require('../utils/dateUtils');
@@ -137,7 +137,7 @@ async function getReportForCurrentPeriod(studentId, templateId, schoolId, freque
     
     return report;
   } catch (error) {
-    logger.error('Error getting report for current period:', error);
+    logger.error('Current-period report lookup failed', safeError(error, 'REPORT_LOOKUP_FAILED'));
     return null;
   }
 }
@@ -151,7 +151,7 @@ async function getReportForCurrentPeriod(studentId, templateId, schoolId, freque
  */
 async function calculateDueReportsForTeacher(teacherId, options = {}) {
   try {
-    logger.info(`📊 Calculating due reports for teacher: ${teacherId}`);
+    logger.info('Calculating due reports');
     
     // Get teacher
     const teacher = await User.findById(teacherId).select('schoolId firstName lastName');
@@ -223,14 +223,14 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
       const studentEnrollments = enrollments.filter(e => String(e.childId) === String(student._id));
       for (const enrollment of studentEnrollments) {
        const applicableTemplates = compatibleTemplates(templates,{schoolId:teacher.schoolId,programId:enrollment.programId,levelId:enrollment.currentLevelId,grade:student.studentGrade,allowLegacyGrade:academic});
-       logger.info(`📋 Participant: ${student.firstName} ${student.lastName} | Enrollment: ${enrollment._id} | Matching templates: ${applicableTemplates.length}`);
+       logger.info('Compatible report templates selected', { count: applicableTemplates.length });
        for (const template of applicableTemplates) {
         try {
-          logger.info(`🔍 Checking template: ${template.name} (${template.reportFrequency}) for student: ${student.firstName} ${student.lastName}`);
+          logger.info('Checking report schedule', { frequency: template.reportFrequency });
           
           // SAFETY CHECK: Validate template has required fields
           if (!template.reportFrequency) {
-            logger.error(`⚠️ Template ${template.name} missing reportFrequency - skipping`);
+            logger.error('Report template is missing a frequency; skipping');
             continue;
           }
           
@@ -242,14 +242,13 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
           try {
             dueDateResult = dateUtilsCalculateDueDate(normalizedFrequency, settings, now);
           } catch (calcError) {
-            logger.error(`❌ Failed to calculate due date for ${normalizedFrequency}:`, calcError);
-            logger.error(`Template: ${template.name}, Student: ${student.firstName} ${student.lastName}`);
+            logger.error('Due-date calculation failed', { frequency: normalizedFrequency, ...safeError(calcError, 'DUE_DATE_CALCULATION_FAILED') });
             continue; // Skip this template but continue processing others
           }
           
           // SAFETY CHECK: Validate dueDateResult
           if (!dueDateResult || !dueDateResult.dueDate) {
-            logger.error(`⚠️ Invalid dueDateResult for template ${template.name} - skipping`);
+            logger.error('Due-date calculation returned an invalid result; skipping');
             continue;
           }
           
@@ -263,7 +262,7 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
           
           // SAFETY CHECK: Validate dueDateMoment is valid
           if (!dueDateMoment || !dueDateMoment.isValid || !dueDateMoment.isValid()) {
-            logger.error(`⚠️ Invalid dueDateMoment for template ${template.name} - skipping`);
+            logger.error('Due-date calculation returned an invalid date; skipping');
             continue;
           }
           
@@ -299,7 +298,7 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
             // A report exists for this period (by any teacher, any status except archived).
             // Once a report has been generated it is no longer "due".
             if (existingReport.status !== 'archived') {
-              logger.info(`✅ Report already exists (status: ${existingReport.status}) for ${student.firstName} ${student.lastName} - ${template.name} - not due`);
+              logger.info('A report already exists for this period; skipping', { status: existingReport.status });
               continue;
             }
             // Archived reports are treated as if they don't exist — fall through to push as due.
@@ -329,7 +328,7 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
             calculatedAt: new Date()
           });
         } catch (error) {
-          logger.error(`Error processing student ${student._id} template ${template._id}:`, error);
+          logger.error('Due-report item processing failed', safeError(error, 'DUE_REPORT_ITEM_FAILED'));
         }
       }
       }
@@ -338,12 +337,12 @@ async function calculateDueReportsForTeacher(teacherId, options = {}) {
     // Sort by most overdue first
     dueReports.sort((a, b) => b.daysOverdue - a.daysOverdue);
     
-    logger.info(`✅ Calculated ${dueReports.length} due reports for teacher ${teacherId}`);
+    logger.info('Due-report calculation completed', { count: dueReports.length });
     
     return dueReports;
     
   } catch (error) {
-    logger.error('Error calculating due reports:', error);
+    logger.error('Due-report calculation failed', safeError(error, 'DUE_REPORT_CALCULATION_FAILED'));
     throw error;
   }
 }
@@ -376,7 +375,7 @@ async function calculateDueReportsForAllTeachers() {
     return allDueReports;
     
   } catch (error) {
-    logger.error('Error calculating due reports for all teachers:', error);
+    logger.error('Organization due-report calculation failed', safeError(error, 'DUE_REPORT_CALCULATION_FAILED'));
     throw error;
   }
 }
@@ -458,7 +457,7 @@ async function canGenerateReport(teacherId, studentId, templateId) {
     };
     
   } catch (error) {
-    logger.error('Error checking if report can be generated:', error);
+    logger.error('Report-generation eligibility check failed', safeError(error, 'REPORT_ELIGIBILITY_CHECK_FAILED'));
     return { canGenerate: false, reason: 'Error checking report status' };
   }
 }

@@ -112,10 +112,6 @@ const TeacherDashboard: React.FC = () => {
   useEffect(() => {
     const fetchSchoolInfo = async () => {
       try {
-        console.log('🔍 User data:', user);
-        console.log('🔍 School data from context:', school);
-        console.log('🔍 User schoolId:', user?.schoolId);
-        console.log('🔍 User schoolId type:', typeof user?.schoolId);
         
         // Fetch school branding - try teachers endpoint first, fallback to parents endpoint structure
         try {
@@ -158,7 +154,6 @@ const TeacherDashboard: React.FC = () => {
           } else {
             const brandingData = await brandingResponse.json();
             if (brandingData.success) {
-              console.log('School branding data:', brandingData.data);
               setSchoolBranding(brandingData.data);
               if (brandingData.data.schoolName) {
                 setSchoolName(brandingData.data.schoolName);
@@ -166,12 +161,10 @@ const TeacherDashboard: React.FC = () => {
             }
           }
         } catch (error) {
-          console.error('Error fetching school branding:', error);
         }
         
         // Check if schoolId is an object with school information
         if (user?.schoolId && typeof user.schoolId === 'object' && (user.schoolId as any).name) {
-          console.log('✅ Using school name from user.schoolId object:', (user.schoolId as any).name);
           if (!schoolName || schoolName === 'Barrana.ai') {
             setSchoolName((user.schoolId as any).name);
           }
@@ -180,7 +173,6 @@ const TeacherDashboard: React.FC = () => {
         
         // First try to get school from context if available
         if (school && school.name) {
-          console.log('✅ Using school from context:', school.name);
           if (!schoolName || schoolName === 'Barrana.ai') {
             setSchoolName(school.name);
           }
@@ -190,19 +182,15 @@ const TeacherDashboard: React.FC = () => {
         // Try to get current user with populated school data
         if (user?._id) {
           try {
-            console.log('🔍 Fetching current user with populated school data...');
             const response = await apiService.getCurrentUser();
-            console.log('🔍 Current user API response:', response);
             
             if (response.success && response.data?.schoolId && typeof response.data.schoolId === 'object' && (response.data.schoolId as any).name) {
-              console.log('✅ Setting school name from current user API:', (response.data.schoolId as any).name);
               if (!schoolName || schoolName === 'Barrana.ai') {
                 setSchoolName((response.data.schoolId as any).name);
               }
               return;
             }
           } catch (error) {
-            console.error('❌ Error fetching current user:', error);
           }
         }
         
@@ -213,21 +201,17 @@ const TeacherDashboard: React.FC = () => {
               ? user.schoolId 
               : (user.schoolId as any)?._id;
             
-            console.log('🔍 Fetching school with ID:', schoolId);
             
             if (schoolId) {
               const response = await apiService.getSchool(schoolId);
-              console.log('🔍 School API response:', response);
               
               if (response.success && response.data) {
-                console.log('✅ Setting school name from API:', response.data.name);
                 if (!schoolName || schoolName === 'Barrana.ai') {
                   setSchoolName(response.data.name);
                 }
               }
             }
           } catch (error) {
-            console.error('❌ Error fetching school info:', error);
           }
         }
       } finally {

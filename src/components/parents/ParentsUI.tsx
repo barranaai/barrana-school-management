@@ -140,14 +140,7 @@ const ParentsUI: React.FC = () => {
         const reportsData = await reportsResponse.json();
         
         if (reportsData.success) {
-          console.log('📊 Reports data received:', reportsData.data);
           if (reportsData.data.length > 0) {
-            console.log('📄 First report structure:', reportsData.data[0]);
-            console.log('📄 Student ID:', reportsData.data[0].studentId);
-            console.log('📄 Teacher ID:', reportsData.data[0].teacherId);
-            console.log('📄 Template ID:', reportsData.data[0].templateId);
-            console.log('📄 PDF URL:', reportsData.data[0].pdfUrl);
-            console.log('📄 PDF Path:', reportsData.data[0].pdfPath);
           }
           // Keep the original report structure to access all nested properties
           setParentReports(reportsData.data);
@@ -162,9 +155,6 @@ const ParentsUI: React.FC = () => {
         const brandingData = await brandingResponse.json();
         
         if (brandingData.success) {
-          console.log('School branding data:', JSON.stringify(brandingData.data, null, 2));
-          console.log('Logo value:', brandingData.data.logo);
-          console.log('School name:', brandingData.data.schoolName);
           setSchoolBranding(brandingData.data);
         }
 
@@ -176,10 +166,8 @@ const ParentsUI: React.FC = () => {
         });
         const eventsData = await eventsResponse.json();
         
-        console.log('Events API response:', eventsData);
         
         if (eventsData.success) {
-          console.log('Events data:', eventsData.data);
           setEvents(eventsData.data || []);
         }
 
@@ -192,13 +180,11 @@ const ParentsUI: React.FC = () => {
         const notificationsData = await notificationsResponse.json();
         
         if (notificationsData.success) {
-          console.log('Notifications data:', notificationsData.data);
           setNotifications(notificationsData.data || []);
           setUnreadCount(notificationsData.unreadCount || 0);
         }
         
       } catch (error) {
-        console.error('Error fetching parent data:', error);
       } finally {
         setLoading(false);
       }
@@ -216,7 +202,6 @@ const ParentsUI: React.FC = () => {
         try {
           // Set up notification handler first
           const onNotificationReceived = (payload: any) => {
-            console.log('🔔 Push notification received:', payload);
             
             // Handle notification click based on type
             if (payload.data?.type === 'report_generated' || payload.data?.type === 'report_sent') {
@@ -224,7 +209,6 @@ const ParentsUI: React.FC = () => {
               setCurrentSection('reports');
               
               if (payload.data?.reportId) {
-                console.log('Report notification clicked, reportId:', payload.data.reportId);
               }
               
               // Refresh reports and notifications data
@@ -253,7 +237,6 @@ const ParentsUI: React.FC = () => {
                     setUnreadCount(notificationsData.unreadCount || 0);
                   }
                 } catch (error) {
-                  console.error('Error refreshing data:', error);
                 }
               };
               
@@ -263,7 +246,6 @@ const ParentsUI: React.FC = () => {
               setCurrentSection('dashboard');
               
               if (payload.data?.eventId) {
-                console.log('Event notification clicked, eventId:', payload.data.eventId);
               }
               
               // Refresh events and notifications data
@@ -292,7 +274,6 @@ const ParentsUI: React.FC = () => {
                     setUnreadCount(notificationsData.unreadCount || 0);
                   }
                 } catch (error) {
-                  console.error('Error refreshing data:', error);
                 }
               };
               
@@ -304,12 +285,9 @@ const ParentsUI: React.FC = () => {
           const success = await notificationService.initializePushNotifications(onNotificationReceived);
           
           if (success) {
-            console.log('✅ Push notifications initialized successfully for parent');
           } else {
-            console.warn('⚠️ Push notifications initialization failed or not supported');
           }
         } catch (error) {
-          console.error('❌ Error initializing push notifications:', error);
         }
       }
     };
@@ -322,7 +300,6 @@ const ParentsUI: React.FC = () => {
     if (user?.role === 'parent') {
       // Set up Socket.io listener for message read events
       messagingService.onMessageRead((data) => {
-        console.log('✅ Message marked as read, refreshing notifications');
         
         // Remove message notifications for this conversation
         setNotifications(prev => {
@@ -363,7 +340,6 @@ const ParentsUI: React.FC = () => {
 
   const handleOpenPdf = async (pdfUrl: string) => {
     try {
-      console.log('Fetching PDF:', pdfUrl);
       
       // Fetch the PDF with authentication
       const response = await fetch(pdfUrl, {
@@ -384,7 +360,6 @@ const ParentsUI: React.FC = () => {
       // Clean up blob URL after a delay
       setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
     } catch (error) {
-      console.error('Error opening PDF:', error);
       alert('Failed to open PDF. Please try again.');
     }
   };
@@ -478,7 +453,6 @@ const ParentsUI: React.FC = () => {
     });
     
     if (dayEvents.length > 0) {
-      console.log(`Events for ${date.toDateString()}:`, dayEvents);
     }
     
     return dayEvents;
@@ -853,7 +827,6 @@ const ParentsUI: React.FC = () => {
                                 if (report.pdfUrl) {
                                   handleOpenPdf(report.pdfUrl);
                                 } else {
-                                  console.log('No PDF URL available, opening dialog');
                                   handleViewReport(report);
                                 }
                               }}
@@ -959,7 +932,6 @@ const ParentsUI: React.FC = () => {
                               }
                               setUnreadCount(prev => Math.max(0, prev - 1));
                             } catch (error) {
-                              console.error('Error marking notification as read:', error);
                             }
                           }
                           

@@ -1,5 +1,5 @@
 const NotificationLog = require('../models/NotificationLog');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 
 /**
  * Centralized Notification Logging Service
@@ -57,7 +57,7 @@ class NotificationLogger {
         createdByRole: data.createdByRole
       });
 
-      logger.info(`Notification logged: ${data.channel} to ${data.recipientName}`, {
+      logger.info('Notification outcome recorded', {
         logId: logEntry._id,
         channel: data.channel,
         type: data.type,
@@ -66,7 +66,7 @@ class NotificationLogger {
 
       return logEntry;
     } catch (error) {
-      logger.error('Failed to create notification log:', error);
+      logger.error('Failed to record notification outcome', safeError(error, 'NOTIFICATION_LOG_FAILED'));
       // Don't throw - logging should never break the notification flow
       return null;
     }
@@ -141,7 +141,7 @@ class NotificationLogger {
       await log.save();
       return log;
     } catch (error) {
-      logger.error('Failed to mark notification as sent:', error);
+      logger.error('Failed to mark notification as sent', safeError(error, 'NOTIFICATION_LOG_UPDATE_FAILED'));
       return null;
     }
   }
@@ -164,7 +164,7 @@ class NotificationLogger {
       await log.save();
       return log;
     } catch (err) {
-      logger.error('Failed to mark notification as failed:', err);
+      logger.error('Failed to mark notification as failed', safeError(err, 'NOTIFICATION_LOG_UPDATE_FAILED'));
       return null;
     }
   }
@@ -183,7 +183,7 @@ class NotificationLogger {
       await log.save();
       return log;
     } catch (error) {
-      logger.error('Failed to mark notification as delivered:', error);
+      logger.error('Failed to mark notification as delivered', safeError(error, 'NOTIFICATION_LOG_UPDATE_FAILED'));
       return null;
     }
   }
@@ -200,7 +200,7 @@ class NotificationLogger {
       await log.save();
       return log;
     } catch (error) {
-      logger.error('Failed to increment retry count:', error);
+      logger.error('Failed to increment notification retry count', safeError(error, 'NOTIFICATION_LOG_UPDATE_FAILED'));
       return null;
     }
   }
@@ -212,7 +212,7 @@ class NotificationLogger {
     try {
       return await NotificationLog.getStatistics(schoolId, dateRange);
     } catch (error) {
-      logger.error('Failed to get notification statistics:', error);
+      logger.error('Failed to load notification statistics', safeError(error, 'NOTIFICATION_STATISTICS_FAILED'));
       return null;
     }
   }
@@ -224,7 +224,7 @@ class NotificationLogger {
     try {
       return await NotificationLog.getDeliveryRate(schoolId, channel, dateRange);
     } catch (error) {
-      logger.error('Failed to get delivery rate:', error);
+      logger.error('Failed to load notification delivery rate', safeError(error, 'NOTIFICATION_STATISTICS_FAILED'));
       return null;
     }
   }

@@ -1,15 +1,10 @@
 const mongoose = require('mongoose');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 
 const connectDB = async () => {
   try {
-    // Debug: Log environment variables
-    logger.info(`🔍 Environment variables check:`);
-    logger.info(`MONGODB_URI: ${process.env.MONGODB_URI ? 'SET' : 'NOT SET'}`);
-    logger.info(`MONGODB_URI_PROD: ${process.env.MONGODB_URI_PROD ? 'SET' : 'NOT SET'}`);
-    
     const mongoURI = process.env.MONGODB_URI || process.env.MONGODB_URI_PROD || 'mongodb://localhost:27017/barrana_ai';
-    logger.info(`🔗 Using MongoDB URI: ${mongoURI.substring(0, 20)}...`);
+    logger.info('Database connection starting', { configured: Boolean(process.env.MONGODB_URI || process.env.MONGODB_URI_PROD) });
 
     const conn = await mongoose.connect(mongoURI, {
       maxPoolSize: 10,
@@ -18,11 +13,11 @@ const connectDB = async () => {
       bufferCommands: false,
     });
 
-    logger.info(`📊 MongoDB Connected: ${conn.connection.host}`);
+    logger.info('Database connected');
     
     // Handle connection events
     mongoose.connection.on('error', (err) => {
-      logger.error('MongoDB connection error:', err);
+      logger.error('Database connection error', safeError(err, 'DATABASE_CONNECTION_ERROR'));
     });
 
     mongoose.connection.on('disconnected', () => {
@@ -41,11 +36,11 @@ const connectDB = async () => {
     });
 
   } catch (error) {
-    logger.error('Database connection failed:', error);
+    logger.error('Database connection failed', safeError(error, 'DATABASE_CONNECTION_FAILED'));
     // Don't exit the process, let the server continue without database
     // The app can still serve static files and basic functionality
     logger.warn('Server will continue without database connection. Please configure MONGODB_URI environment variable.');
   }
 };
 
-module.exports = connectDB; 
+module.exports = connectDB;

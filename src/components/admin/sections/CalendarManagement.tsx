@@ -192,8 +192,6 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
     try {
       setError(null);
       
-      console.log('Current eventForm state:', eventForm);
-      console.log('Event title value:', eventForm.title);
       
       // Prepare event data - remove empty fields to avoid validation errors
       const eventData: any = {
@@ -240,14 +238,10 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
       let response;
       if (isEditingEvent && editingEvent) {
         // Update existing event
-        console.log('Updating event with data:', eventData);
         response = await apiService.request(`/events/${editingEvent._id}`, 'PUT', eventData);
-        console.log('Update event response:', response);
       } else {
         // Create new event
-        console.log('Creating event with data:', eventData);
         response = await apiService.request('/events', 'POST', eventData);
-        console.log('Create event response:', response);
       }
       
       if (response.success) {
@@ -262,7 +256,6 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
         setError(response.error || response.message || `Failed to ${isEditingEvent ? 'update' : 'create'} event`);
       }
     } catch (error: any) {
-      console.error(`Error ${isEditingEvent ? 'updating' : 'creating'} event:`, error);
       setError(error.message || `Failed to ${isEditingEvent ? 'update' : 'create'} event`);
     }
   };
@@ -354,7 +347,6 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
         setError(result.message || 'Failed to upload file');
       }
     } catch (error: any) {
-      console.error('Error uploading file:', error);
       setError('Failed to upload file');
     } finally {
       setUploadingFile(false);
@@ -863,7 +855,6 @@ const CalendarManagement: React.FC<CalendarManagementProps> = ({ schoolBranding 
                 label="Event Title"
                 value={eventForm.title}
                 onChange={(e) => {
-                  console.log('Event title changed:', e.target.value);
                   setEventForm({ ...eventForm, title: e.target.value });
                 }}
                 required

@@ -45,7 +45,6 @@ class AIService {
   constructor() {
     // Frontend uses backend API, no direct OpenAI key needed
     localStorage.removeItem('openai_api_key');
-    console.log('AIService initialized - Using backend API for AI operations');
   }
 
   // Initialize with API key
@@ -55,7 +54,6 @@ class AIService {
 
   // Set API key manually (not needed for backend API usage)
   setApiKey(_apiKey?: string) {
-    console.log('AIService: Using backend API, direct API key not required');
   }
 
   // Voice to Text Transcription
@@ -136,7 +134,6 @@ class AIService {
         throw new Error(result.message || 'Report generation failed');
       }
     } catch (error) {
-      console.error('Error generating report:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Report generation failed'
@@ -196,7 +193,6 @@ class AIService {
       const result = await response.json();
       return result.data || [];
     } catch (error) {
-      console.error('Error fetching student insights:', error);
       return [];
     }
   }

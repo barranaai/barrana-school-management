@@ -1,5 +1,5 @@
 const nodemailer = require('nodemailer');
-const { logger } = require('./logger');
+const { logger, safeError } = require('./logger');
 
 const isEmailConfigured = () => {
   const user = process.env.SMTP_USER || process.env.EMAIL_USER;
@@ -222,7 +222,7 @@ const sendEmail = async ({ email, subject, html, text, template, data }) => {
 
     const info = await transporter.sendMail(mailOptions);
     
-    logger.info(`Email sent successfully to ${email}: ${info.messageId}`);
+    logger.info('Email delivery accepted', { channel: 'email', status: 'accepted' });
     
     return {
       success: true,
@@ -262,7 +262,7 @@ const verifyEmailConfig = async () => {
     logger.info('Email configuration verified successfully');
     return true;
   } catch (error) {
-    logger.error('Email configuration verification failed:', error);
+    logger.error('Email configuration verification failed', safeError(error, 'EMAIL_CONFIGURATION_FAILED'));
     return false;
   }
 };

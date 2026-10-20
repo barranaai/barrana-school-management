@@ -232,7 +232,7 @@ async function extractFromReceipt(absPath) {
   try {
     dataUrl = await imageToDataUrl(absPath);
   } catch (err) {
-    logger.warn('OCR: image preprocessing failed', { err: err.message, absPath });
+    logger.warn('OCR image preprocessing failed', { code: err.code || 'OCR_IMAGE_PREPROCESSING_FAILED' });
     return { ok: false, error: 'ocr_image_invalid' };
   }
 
@@ -258,10 +258,7 @@ async function extractFromReceipt(absPath) {
       ],
     });
   } catch (err) {
-    logger.error('OCR: OpenAI request failed', {
-      err: err.message,
-      file: path.basename(absPath),
-    });
+    logger.error('OCR provider request failed', { code: err.code || 'OCR_PROVIDER_FAILED' });
     return { ok: false, error: 'ocr_provider_error' };
   }
 
@@ -270,7 +267,7 @@ async function extractFromReceipt(absPath) {
   try {
     parsed = JSON.parse(rawText);
   } catch (err) {
-    logger.warn('OCR: JSON parse failed', { snippet: rawText.slice(0, 200) });
+    logger.warn('OCR response parsing failed');
     return { ok: false, error: 'ocr_invalid_json' };
   }
 
@@ -305,7 +302,7 @@ async function extractFromPdfReceipt(absPath) {
   try {
     pdfText = await extractPdfText(absPath);
   } catch (err) {
-    logger.warn('OCR: PDF text extraction failed', { err: err.message, absPath });
+    logger.warn('OCR PDF text extraction failed', { code: err.code || 'OCR_PDF_EXTRACTION_FAILED' });
     // Continue to vision fallback below.
   }
   if (pdfText && pdfText.length >= 10) {
@@ -328,10 +325,7 @@ async function extractFromPdfReceipt(absPath) {
         ],
       });
     } catch (err) {
-      logger.error('OCR: OpenAI request failed (pdf-text)', {
-        err: err.message,
-        file: path.basename(absPath),
-      });
+      logger.error('OCR PDF text provider request failed', { code: err.code || 'OCR_PROVIDER_FAILED' });
       return { ok: false, error: 'ocr_provider_error' };
     }
 
@@ -345,9 +339,7 @@ async function extractFromPdfReceipt(absPath) {
         rawText: rawText.slice(0, RAW_TEXT_MAX),
       };
     } catch (err) {
-      logger.warn('OCR: JSON parse failed (pdf-text), falling back to vision', {
-        snippet: rawText.slice(0, 200),
-      });
+      logger.warn('OCR PDF response parsing failed; falling back to vision');
       // Continue to vision fallback below.
     }
   }
@@ -357,10 +349,7 @@ async function extractFromPdfReceipt(absPath) {
   try {
     firstPageJpeg = await renderPdfFirstPageToJpeg(absPath);
   } catch (err) {
-    logger.warn('OCR: PDF first-page render failed', {
-      err: err.message,
-      file: path.basename(absPath),
-    });
+    logger.warn('OCR PDF first-page render failed', { code: err.code || 'OCR_PDF_RENDER_FAILED' });
     return { ok: false, error: 'ocr_pdf_no_text' };
   }
 
@@ -390,10 +379,7 @@ async function extractFromPdfReceipt(absPath) {
       ],
     });
   } catch (err) {
-    logger.error('OCR: OpenAI request failed (pdf-vision)', {
-      err: err.message,
-      file: path.basename(absPath),
-    });
+    logger.error('OCR PDF vision provider request failed', { code: err.code || 'OCR_PROVIDER_FAILED' });
     return { ok: false, error: 'ocr_provider_error' };
   }
 
@@ -402,7 +388,7 @@ async function extractFromPdfReceipt(absPath) {
   try {
     parsed = JSON.parse(rawText);
   } catch (err) {
-    logger.warn('OCR: JSON parse failed (pdf-vision)', { snippet: rawText.slice(0, 200) });
+    logger.warn('OCR PDF vision response parsing failed');
     return { ok: false, error: 'ocr_invalid_json' };
   }
 

@@ -55,7 +55,7 @@ router.get('/me/children', protect, authorize('parent'), async (req, res) => {
     // Get teacher info for each child
     const childrenWithTeachers = await Promise.all(children.map(async (child) => {
       if (child.classId) {
-        logger.info(`Looking for teacher for class: ${child.classId._id} (${child.classId.name})`);
+        logger.info('Looking up assigned teacher for parent child record');
         
         // Get the class with assigned teachers populated
         const classData = await Class.findById(child.classId._id)
@@ -72,7 +72,7 @@ router.get('/me/children', protect, authorize('parent'), async (req, res) => {
           const teacherAssignment = primaryTeacher || classData.assignedTeachers[0];
           const teacher = teacherAssignment.teacherId;
           
-          logger.info(`Teacher found: ${teacher ? `${teacher.firstName} ${teacher.lastName} (${teacherAssignment.role})` : 'None'}`);
+          logger.info('Assigned teacher lookup completed', { found: Boolean(teacher) });
 
           return {
             ...child,
@@ -82,7 +82,7 @@ router.get('/me/children', protect, authorize('parent'), async (req, res) => {
             } : null
           };
         } else {
-          logger.info(`No teachers assigned to class: ${child.classId.name}`);
+          logger.info('No assigned teacher found for parent child record');
         }
       }
       return child;
@@ -141,7 +141,7 @@ router.get('/me/reports', protect, authorize('parent'), async (req, res) => {
       return parentReportView(report);
     }).filter(Boolean);
 
-    logger.info(`Returning ${reportsWithPdf.length} reports to parent ${req.user.email}`);
+    logger.info('Parent report query completed', { count: reportsWithPdf.length });
 
     // Disable caching
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -200,14 +200,14 @@ router.get('/me/reports/:id', protect, authorize('parent'), async (req, res) => 
 // @access  Private (Parent only)
 router.get('/me/reports/:id/pdf', protect, authorize('parent'), async (req, res) => {
   try {
-    logger.info(`Parent ${req.user.email} requesting PDF for report ${req.params.id}`);
+    logger.info('Parent report PDF requested');
     
     const report = await Report.findOne({ _id: req.params.id, schoolId: req.user.schoolId })
       .populate('studentId', 'parentEmail parentId schoolId role firstName lastName')
       .lean();
 
     if (!report || !(await canGuardianReadReport(req.user, report))) {
-      logger.warn(`Report ${req.params.id} not found`);
+      logger.warn('Parent report PDF unavailable');
       return res.status(404).json({
         success: false,
         message: 'Report not found'
@@ -261,7 +261,7 @@ router.get('/me/events', protect, authorize('parent'), async (req, res) => {
     // 1. All parents (targetAudience.allParents)
     // 2. Specific grades that include parent's children's grades
     // 3. Specific classes that include parent's children's classes
-    logger.info(`Fetching events for school: ${req.user.schoolId}, grades: ${grades}, classIds: ${classIds}`);
+    logger.info('Parent event query started', { gradeCount: grades.length, classCount: classIds.length });
     
     // Query based on actual Event model structure
     const events = await Event.find({
@@ -278,7 +278,7 @@ router.get('/me/events', protect, authorize('parent'), async (req, res) => {
       .sort({ startDate: 1 })
       .lean();
 
-    logger.info(`Found ${events.length} events for parent`);
+    logger.info('Parent event query completed', { count: events.length });
 
     // Disable caching
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -352,7 +352,7 @@ router.post('/me/fcm-token', protect, authorize('parent'), async (req, res) => {
       }
     });
 
-    logger.info(`FCM token registered for parent ${req.user._id}`, {
+    logger.info('Parent push token registered', {
       device,
       platform: deviceInfo.platform
     });

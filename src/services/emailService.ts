@@ -381,11 +381,6 @@ This email was sent by Barrana.ai's automated system
   private async simulateEmailSending(request: EmailRequest): Promise<void> {
     return new Promise((resolve) => {
       setTimeout(() => {
-        console.log('Email sent:', {
-          to: request.to,
-          subject: request.subject,
-          timestamp: new Date().toISOString()
-        });
         resolve();
       }, 1000); // Simulate network delay
     });

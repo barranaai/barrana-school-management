@@ -38,25 +38,14 @@ class MediaService {
       formData.append('media', file);
       formData.append('reportId', reportId);
 
-      console.log('Uploading media file:', {
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
-        reportId
-      });
 
       // Use temporary upload endpoint if reportId starts with 'temp_'
       const endpoint = reportId.startsWith('temp_') ? '/temp-media' : `/${reportId}/media`;
       const fullUrl = `${this.baseURL}/reports${endpoint}`;
       
-      console.log('Upload endpoint:', fullUrl);
       
       const token = localStorage.getItem('token');
-      console.log('🔑 Token available:', !!token, token ? `${token.substring(0, 20)}...` : 'none');
 
-      console.log('📤 Starting axios upload request...');
-      const startTime = Date.now();
-      
       const response = await axios.post(fullUrl, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -64,18 +53,12 @@ class MediaService {
         },
         timeout: 60000, // 60 second timeout
         onUploadProgress: (progressEvent) => {
-          console.log(`📊 Upload progress: ${progressEvent.loaded}/${progressEvent.total} bytes`);
           if (onProgress && progressEvent.total) {
             const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             onProgress(progress);
           }
         }
       });
-      
-      const endTime = Date.now();
-      console.log(`✅ Upload completed in ${endTime - startTime}ms`);
-
-      console.log('Upload response:', response.data);
       
       // Handle different response structures
       let mediaData;
@@ -93,7 +76,6 @@ class MediaService {
         mediaData = response.data;
       }
       
-      console.log('Processed media data:', mediaData);
       
       // Ensure the response has an id field
       if (mediaData && !mediaData.id) {
@@ -102,22 +84,11 @@ class MediaService {
       
       // Ensure the response has a url field
       if (mediaData && !mediaData.url) {
-        console.error('❌ Media data missing URL:', mediaData);
         throw new Error('Upload response missing URL field');
       }
       
       return mediaData;
     } catch (error: any) {
-      console.error('❌ Upload error in mediaService:', error);
-      console.error('📋 Upload error details:', {
-        message: error.message,
-        code: error.code,
-        status: error.response?.status,
-        responseData: error.response?.data,
-        timeout: error.code === 'ECONNABORTED',
-        fileName: file.name,
-        fileSize: file.size
-      });
       
       if (error.code === 'ECONNABORTED') {
         throw new Error(`Upload timeout for ${file.name}. File might be too large or connection is slow.`);
@@ -129,11 +100,6 @@ class MediaService {
 
   // Upload multiple media files with retry mechanism
   async uploadMultipleMedia(files: File[], reportId: string, onProgress?: (fileId: string, progress: number) => void): Promise<UploadedMedia[]> {
-    console.log('Starting multiple media upload:', {
-      fileCount: files.length,
-      reportId,
-      files: files.map(f => ({ name: f.name, size: f.size, type: f.type }))
-    });
 
     const uploadPromises = files.map(async (file) => {
       const fileId = Math.random().toString(36).substr(2, 9);
@@ -148,7 +114,6 @@ class MediaService {
           return await this.uploadMedia(file, reportId, progressCallback);
         } catch (error: any) {
           lastError = error;
-          console.error(`Error uploading file ${file.name} (${2 - retries + 1} attempt):`, error);
           
           // Don't retry for certain errors
           if (error.response?.status === 401 || error.response?.status === 413 || error.response?.status === 400) {
@@ -159,7 +124,6 @@ class MediaService {
           if (retries >= 0) {
             // Wait before retrying (exponential backoff)
             const delay = Math.pow(2, 2 - retries) * 1000;
-            console.log(`Retrying upload for ${file.name} in ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
@@ -170,7 +134,6 @@ class MediaService {
 
     try {
       const results = await Promise.all(uploadPromises);
-      console.log('Multiple upload completed:', results);
       
       // Ensure each result has an id field
       const processedResults = results.map(result => {
@@ -182,7 +145,6 @@ class MediaService {
       
       return processedResults;
     } catch (error) {
-      console.error('Multiple upload failed:', error);
       throw error;
     }
   }
@@ -198,7 +160,6 @@ class MediaService {
 
       return response.data.success;
     } catch (error) {
-      console.error('Error deleting media:', error);
       throw new Error('Failed to delete media file');
     }
   }
@@ -224,7 +185,6 @@ class MediaService {
         return [];
       }
     } catch (error) {
-      console.error('Error fetching report media:', error);
       return [];
     }
   }

@@ -1,5 +1,5 @@
 const admin = require('firebase-admin');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 const path = require('path');
 const fs = require('fs');
 
@@ -14,7 +14,6 @@ const initializeFirebase = () => {
     
     if (!fs.existsSync(serviceAccountPath)) {
       logger.warn('Firebase service account not found. Push notifications disabled.');
-      logger.warn(`Expected path: ${serviceAccountPath}`);
       logger.warn('To enable push notifications:');
       logger.warn('1. Download service account JSON from Firebase Console');
       logger.warn('2. Place it at backend/config/firebase-service-account.json');
@@ -29,13 +28,11 @@ const initializeFirebase = () => {
       projectId: serviceAccount.project_id
     });
 
-    logger.info('✅ Firebase Admin SDK initialized successfully', {
-      projectId: serviceAccount.project_id
-    });
+    logger.info('Firebase Admin SDK initialized successfully');
 
     return firebaseApp;
   } catch (error) {
-    logger.error('Failed to initialize Firebase Admin SDK:', error);
+    logger.error('Firebase initialization failed', safeError(error, 'FIREBASE_INITIALIZATION_FAILED'));
     logger.warn('Push notifications will be disabled');
     return null;
   }
@@ -196,7 +193,7 @@ const sendMultipleNotifications = async (tokens, notification, data = {}) => {
       invalidTokens
     };
   } catch (error) {
-    logger.error('Error sending batch push notifications:', error);
+    logger.error('Batch push delivery failed', safeError(error, 'BATCH_PUSH_FAILED'));
     return { success: false, error: error.message };
   }
 };
@@ -211,7 +208,7 @@ const sendMultipleNotifications = async (tokens, notification, data = {}) => {
 const sendNotificationToUser = async (user, notification, data = {}) => {
   try {
     if (!user.fcmTokens || user.fcmTokens.length === 0) {
-      logger.info(`User ${user._id} has no FCM tokens. Skipping push notification.`);
+    logger.info('Push notification skipped because the recipient has no registered device');
       return { success: true, skipped: true, reason: 'no_tokens' };
     }
 
@@ -224,12 +221,12 @@ const sendNotificationToUser = async (user, notification, data = {}) => {
       await User.findByIdAndUpdate(user._id, {
         $pull: { fcmTokens: { token: { $in: result.invalidTokens } } }
       });
-      logger.info(`Removed ${result.invalidTokens.length} invalid FCM tokens from user ${user._id}`);
+    logger.info('Invalid push tokens removed', { count: result.invalidTokens.length });
     }
 
     return result;
   } catch (error) {
-    logger.error('Error sending notification to user:', error);
+    logger.error('Push notification delivery failed', safeError(error, 'PUSH_DELIVERY_FAILED'));
     return { success: false, error: error.message };
   }
 };
@@ -266,7 +263,7 @@ const sendNotificationToUsers = async (users, notification, data = {}) => {
       failureCount
     };
   } catch (error) {
-    logger.error('Error sending notifications to users:', error);
+    logger.error('User push delivery failed', safeError(error, 'PUSH_DELIVERY_FAILED'));
     return { success: false, error: error.message };
   }
 };
@@ -287,7 +284,7 @@ const subscribeToTopic = async (token, topic) => {
     logger.info(`Token subscribed to topic: ${topic}`);
     return { success: true };
   } catch (error) {
-    logger.error('Error subscribing to topic:', error);
+    logger.error('Push topic subscription failed', safeError(error, 'PUSH_TOPIC_SUBSCRIBE_FAILED'));
     return { success: false, error: error.message };
   }
 };
@@ -308,7 +305,7 @@ const unsubscribeFromTopic = async (token, topic) => {
     logger.info(`Token unsubscribed from topic: ${topic}`);
     return { success: true };
   } catch (error) {
-    logger.error('Error unsubscribing from topic:', error);
+    logger.error('Push topic unsubscription failed', safeError(error, 'PUSH_TOPIC_UNSUBSCRIBE_FAILED'));
     return { success: false, error: error.message };
   }
 };
@@ -340,10 +337,10 @@ const sendTopicNotification = async (topic, notification, data = {}) => {
     };
 
     const response = await admin.messaging().send(message);
-    logger.info(`Topic notification sent to ${topic}`, { messageId: response });
+    logger.info('Push topic notification accepted', { channel: 'push', status: 'accepted' });
     return { success: true, messageId: response };
   } catch (error) {
-    logger.error('Error sending topic notification:', error);
+    logger.error('Push topic notification failed', safeError(error, 'PUSH_TOPIC_DELIVERY_FAILED'));
     return { success: false, error: error.message };
   }
 };

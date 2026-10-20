@@ -246,7 +246,7 @@ router.get('/:id/students', protect, authorize('teacher', 'school_admin', 'super
       schoolId: teacher.schoolId
     }).select('-password -emailVerificationToken -emailVerificationExpires -passwordResetToken -passwordResetExpires');
 
-    logger.info(`Fetched ${students.length} students for teacher ${teacherId}`);
+    logger.info('Teacher student query completed', { count: students.length });
 
     res.json({
       success: true,
@@ -338,30 +338,7 @@ router.get('/:id/reports', protect, authorize('teacher', 'school_admin', 'super_
       return reportObj;
     });
 
-    // Debug: Log populated student data
-    console.log('🔍 Debug - Teacher students found:', teacherStudents.length);
-    console.log('🔍 Debug - Class to grade mapping:', classToGradeMap);
-    console.log('🔍 Debug - Teacher students sample:', teacherStudents.slice(0, 2).map(s => ({
-      id: s._id,
-      name: `${s.firstName} ${s.lastName}`,
-      studentGrade: s.studentGrade,
-      studentClass: s.studentClass,
-      classGrade: classToGradeMap[s.studentClass],
-      role: s.role
-    })));
-    
-    console.log('🔍 Debug - Reports found:', reports.length);
-    if (reportsWithGrade.length > 0) {
-      console.log('🔍 Debug - First report student data:', {
-        studentId: reportsWithGrade[0].studentId,
-        studentType: typeof reportsWithGrade[0].studentId,
-        studentClass: reportsWithGrade[0].studentId?.studentClass,
-        grade: reportsWithGrade[0].studentId?.grade,
-        studentFields: reportsWithGrade[0].studentId ? Object.keys(reportsWithGrade[0].studentId) : 'null'
-      });
-    }
-
-    logger.info(`Fetched ${reports.length} reports for teacher ${teacherId}`);
+    logger.info('Teacher report query completed', { count: reports.length });
 
     res.json({
       success: true,
@@ -480,9 +457,7 @@ router.post('/', [
 
     await teacher.save();
 
-    logger.info(`Teacher account created successfully:`, {
-      email: email,
-      schoolId: schoolId,
+    logger.info('Teacher account created successfully', {
       passwordGenerated: true,
       passwordLength: generatedPassword.length,
       isEmailVerified: teacher.isEmailVerified,
@@ -502,9 +477,9 @@ router.post('/', [
         schoolId: schoolId,
         schoolBranding: school?.branding || {}
       });
-      logger.info(`Welcome email sent to teacher: ${email}`);
+      logger.info('Teacher welcome email accepted', { channel: 'email' });
     } catch (emailError) {
-      logger.error(`Failed to send welcome email to teacher ${email}:`, emailError);
+      logger.error('Teacher welcome email failed', emailError);
       // Don't fail the request if email fails
     }
 
@@ -617,7 +592,7 @@ router.put('/:id', [
       { new: true, runValidators: true }
     ).select('-password -emailVerificationToken -emailVerificationExpires -passwordResetToken -passwordResetExpires');
 
-    logger.info(`Teacher updated: ${updatedTeacher.email}`);
+    logger.info('Teacher account updated');
 
     res.json({
       success: true,
@@ -657,7 +632,7 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), require
     teacher.isActive = false;
     await teacher.save();
 
-    logger.info(`Teacher deactivated: ${teacher.email}`);
+    logger.info('Teacher account deactivated');
 
     res.json({
       success: true,

@@ -192,10 +192,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
       setLoading(true);
       
       // Debug: Log user and schoolId
-      console.log('🔍 Debug - User:', user);
-      console.log('🔍 Debug - User Role:', user?.role);
-      console.log('🔍 Debug - SchoolId:', user?.schoolId);
-      console.log('🔍 Debug - SchoolId type:', typeof user?.schoolId);
       
       // Extract schoolId properly
       let schoolId = '';
@@ -204,27 +200,18 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
       } else if (user?.schoolId && typeof user.schoolId === 'object' && user.schoolId._id) {
         schoolId = user.schoolId._id;
       } else {
-        console.error('❌ No valid schoolId found');
         return;
       }
       
-      console.log('🔍 Debug - Final schoolId:', schoolId);
       
       // Fetch all reports for the school
-      console.log('🔍 Debug - About to call getAllSchoolReports with schoolId:', schoolId);
-      console.log('🔍 Debug - User role and permissions:', user?.role);
       
       let response = await apiService.getAllSchoolReports(schoolId);
-      console.log('🔍 Debug - API Response:', response);
-      console.log('🔍 Debug - Response success:', response?.success);
-      console.log('🔍 Debug - Response error:', response?.error);
       
       // If the school-specific endpoint fails (e.g., permission denied for teachers), 
       // fallback to the general reports endpoint with schoolId filter
       if (!response.success && (response.error?.includes('403') || response.error?.includes('denied') || response.error?.includes('Forbidden'))) {
-        console.log('🔍 Debug - School endpoint failed, trying general reports endpoint...');
         response = await apiService.getReports(true); // Get all school reports
-        console.log('🔍 Debug - Fallback response:', response);
       }
       
       if (response.success) {
@@ -249,7 +236,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
                 media: media
               };
             } catch (error) {
-              console.error(`Error fetching media for report ${report._id}:`, error);
               return {
                 ...report,
                 media: []
@@ -259,12 +245,9 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
         );
 
         setReports(reportsWithMedia);
-        console.log('✅ Reports loaded successfully:', reportsWithMedia.length);
       } else {
-        console.error('Failed to load reports:', response.message);
       }
     } catch (error) {
-      console.error('Error loading reports:', error);
     } finally {
       setLoading(false);
     }
@@ -282,7 +265,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
         setClassOptions(uniqueSorted);
       }
     } catch (err) {
-      console.error('Failed to load classes for filter:', err);
     }
   };
 
@@ -316,7 +298,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
         setTeacherOptions(uniqueSorted);
       }
     } catch (err) {
-      console.error('Failed to load teachers for filter:', err);
     }
   };
 
@@ -515,12 +496,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
   const canEditReport = (report: ExtendedReport) => {
     // Only allow editing if report is not sent to parents
     const canEdit = report.status !== 'sent' && report.status !== 'approved';
-    console.log('🔍 Debug - canEditReport:', {
-      reportId: report._id,
-      status: report.status,
-      canEdit,
-      userRole: user?.role
-    });
     return canEdit;
   };
 
@@ -678,7 +653,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
       }
       
     } catch (error) {
-      console.error('Error sending email:', error);
       toast.error('Failed to send email. Please try again.');
     }
   };
@@ -718,11 +692,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
       // Show loading toast
       const loadingToast = toast.loading('Saving report changes...');
       
-      console.log('🔍 Debug - Updating report:', {
-        reportId: editingReport._id,
-        contentLength: editContent.trim().length,
-        currentStatus: editingReport.status
-      });
       
       // Call API to update report
       const response = await apiService.updateReport(editingReport._id, {
@@ -730,7 +699,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
         // Note: Not updating status since we're only editing content
       });
       
-      console.log('🔍 Debug - Update response:', response);
       
       // Dismiss loading toast
       toast.dismiss(loadingToast);
@@ -744,7 +712,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
         // Close the edit dialog
         handleCloseEditDialog();
       } else {
-        console.error('❌ Update failed:', response);
         
         // More specific error messages
         let errorMessage = 'Failed to update report. Please try again.';
@@ -762,7 +729,6 @@ const AllReports: React.FC<AllReportsProps> = ({ schoolBranding }) => {
       }
       
     } catch (error) {
-      console.error('❌ Error updating report:', error);
       toast.error('Failed to update report. Please try again.');
     } finally {
       setIsSaving(false);

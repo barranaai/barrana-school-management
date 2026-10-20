@@ -380,9 +380,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     // Debug logging for voiceRecording conversion
     if ((apiReport as any).voiceRecording) {
-      console.log('🔄 DataContext convertApiReport - Original voiceRecording:', (apiReport as any).voiceRecording);
-      console.log('🔄 DataContext convertApiReport - Converted voiceRecording:', converted.voiceRecording);
-      console.log('🔄 DataContext convertApiReport - Recordings array length:', (apiReport as any).voiceRecording?.recordings?.length || 0);
     }
     
     return converted;
@@ -466,23 +463,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // CRUD operations for students
   const addStudent = async (student: Omit<Student, '_id'>): Promise<StudentOperationResult> => {
     try {
-      console.log('DataContext - addStudent called with:', student);
       const response = await apiService.createStudent(student);
-      console.log('DataContext - createStudent API response:', response);
       
       if (response.success && response.data) {
-        console.log('DataContext - Student created successfully, converting data...');
         const convertedStudent = convertApiStudent(response.data);
-        console.log('DataContext - Converted student:', convertedStudent);
         setStudents(prev => {
           const newStudents = [...prev, convertedStudent];
-          console.log('DataContext - Updated students array length:', newStudents.length);
           return newStudents;
         });
-        console.log('DataContext - Student added to state successfully');
         return { success: true, data: convertedStudent };
       } else {
-        console.error('DataContext - Failed to create student:', response);
         const errorMessage = response.message || response.error || 'Failed to add student';
         setError(errorMessage);
         
@@ -495,7 +485,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
       }
     } catch (err) {
-      console.error('DataContext - Error in addStudent:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to add student';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -504,24 +493,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const updateStudent = async (id: string, updates: Partial<Student>) => {
     try {
-      console.log('DataContext - updateStudent called with:', { id, updates });
       const response = await apiService.updateStudent(id, updates);
-      console.log('DataContext - updateStudent API response:', response);
       
       if (response.success && response.data) {
         setStudents(prev => prev.map(student => 
           student._id === id ? convertApiStudent(response.data!) : student
         ));
-        console.log('✅ DataContext - Student updated successfully in state');
       } else {
         const errorMessage = response.error || response.message || 'Failed to update student';
-        console.error('❌ DataContext - Update failed:', errorMessage);
         setError(errorMessage);
         throw new Error(errorMessage);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update student';
-      console.error('❌ DataContext - Update error:', err);
       setError(errorMessage);
       throw err; // Re-throw to allow component to handle
     }
@@ -547,10 +531,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Load all data in parallel
       const schoolId = typeof user?.schoolId === 'string' ? user.schoolId : (user?.schoolId as any)?._id;
       
-      console.log('DataContext - About to call getSchool with schoolId:', schoolId);
-      console.log('DataContext - User object:', user);
-      console.log('DataContext - User schoolId type:', typeof user?.schoolId);
-      console.log('DataContext - User schoolId value:', user?.schoolId);
 
          // Load data with individual error handling for each API call
          // Use appropriate classes API based on user role
@@ -561,8 +541,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
            ? apiService.getTeacherCurrentParticipants()
            : apiService.getStudents();
          
-         console.log('DataContext - User role:', user?.role);
-         console.log('DataContext - Using classes API call:', user?.role === 'teacher' ? 'getTeacherAssignedClasses' : 'getClasses');
 
          const [studentsResponse, teachersResponse, reportsResponse, classesResponse, schoolResponse] = await Promise.allSettled([
            studentsApiCall,
@@ -584,55 +562,37 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               if (studentsResult.success && studentsResult.data && Array.isArray(studentsResult.data)) {
           setStudents(studentsResult.data.map(convertApiStudent));
         } else {
-          console.log('DataContext - Students response not successful or not an array:', studentsResult);
           setStudents([]);
         }
 
         if (teachersResult.success && teachersResult.data && Array.isArray(teachersResult.data)) {
-          console.log('DataContext - Loading teachers, API returned:', teachersResult.data.length, 'teachers');
           const convertedTeachers = teachersResult.data.map(convertApiTeacher);
-          console.log('DataContext - Converted teachers:', convertedTeachers);
           setTeachers(convertedTeachers);
         } else {
-          console.log('DataContext - Teachers response not successful or not an array:', teachersResult);
           setTeachers([]);
         }
 
         if (reportsResult.success && reportsResult.data && Array.isArray(reportsResult.data)) {
           setReports(reportsResult.data.map(convertApiReport));
         } else {
-          console.log('DataContext - Reports response not successful or not an array:', reportsResult);
           setReports([]);
         }
 
         if (classesResult.success && classesResult.data && Array.isArray(classesResult.data)) {
-          console.log('DataContext - Loading classes, API returned:', classesResult.data.length, 'classes');
           const convertedClasses = classesResult.data.map(convertApiClass);
-          console.log('DataContext - Converted classes:', convertedClasses);
           setClasses(convertedClasses);
         } else {
-          console.log('DataContext - Classes response not successful or not an array:', classesResult);
           setClasses([]);
         }
 
         // Handle school data
-        console.log('DataContext - School response:', schoolResult);
-        console.log('DataContext - School response success:', schoolResult.success);
-        console.log('DataContext - School response data:', schoolResult.data);
-        console.log('DataContext - School response error:', (schoolResult as any).error);
         
         if (schoolResult.success && schoolResult.data) {
-          console.log('DataContext - Setting school data:', schoolResult.data);
-          console.log('DataContext - School gradeLevels:', schoolResult.data.gradeLevels);
-          console.log('DataContext - School gradeLevels length:', schoolResult.data.gradeLevels?.length);
           setSchoolData(schoolResult.data);
         } else {
-          console.log('DataContext - School response failed or no data');
-          console.log('DataContext - SchoolId used for API call:', schoolId);
           
           // If school data loading failed, set an empty school data to prevent infinite loading
           if (schoolId) {
-            console.warn('DataContext - Failed to load school data for schoolId:', schoolId);
             setSchoolData(null);
           }
         }
@@ -641,13 +601,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setParents([]);
 
     } catch (err) {
-      console.error('DataContext - Error loading data:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
       setError(errorMessage);
       
       // If it's an authentication error, don't set school data to null
       if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
-        console.log('DataContext - Authentication error detected, not clearing school data');
       } else {
         setSchoolData(null);
       }
@@ -668,7 +626,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         await refreshData();
       } catch (error) {
-        console.error('DataContext - Error loading data:', error);
       }
     };
 
@@ -682,29 +639,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // CRUD operations for teachers
   const addTeacher = async (teacher: Omit<Teacher, '_id'>) => {
     try {
-      console.log('DataContext - addTeacher called with:', teacher);
       const response = await apiService.createTeacher(teacher);
-      console.log('DataContext - createTeacher API response:', response);
-      console.log('DataContext - response.generatedPassword:', response.generatedPassword);
-      console.log('DataContext - response keys:', Object.keys(response));
       
       if (response.success && response.data) {
-        console.log('DataContext - Teacher created successfully, refreshing data...');
         // Optimistically add the newly created teacher to the list for immediate UI feedback
         setTeachers(prev => [convertApiTeacher(response.data!), ...prev]);
         // Then refresh all data to ensure complete consistency
         await refreshData();
-        console.log('DataContext - Data refresh completed after adding teacher');
         // Return the full response including generatedPassword
-        console.log('DataContext - Returning response with generatedPassword:', response.generatedPassword);
         return response;
       } else {
-        console.error('DataContext - Failed to create teacher:', response);
         setError(response.error || 'Failed to add teacher');
         return response;
       }
     } catch (err) {
-      console.error('DataContext - Error in addTeacher:', err);
       setError(err instanceof Error ? err.message : 'Failed to add teacher');
       throw err;
     }
@@ -757,10 +705,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // School data from authenticated user
   const schoolId = typeof user?.schoolId === 'string' ? user.schoolId : (user?.schoolId as any)?._id;
   
-  console.log('DataContext - User object:', user);
-  console.log('DataContext - User schoolId type:', typeof user?.schoolId);
-  console.log('DataContext - User schoolId value:', user?.schoolId);
-  console.log('DataContext - Extracted schoolId:', schoolId);
   
   const school = {
     id: schoolId || '',
@@ -775,8 +719,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     workspaceProfile: schoolData?.workspaceProfile
   };
   
-  console.log('DataContext - schoolData state:', schoolData);
-  console.log('DataContext - constructed school object:', school);
   
 
   

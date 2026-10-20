@@ -199,16 +199,12 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
   const { students, addStudent, updateStudent, deleteStudent, classes, school, isLoading, refreshData } = useData();
   
-  console.log('StudentManagement - students from DataContext:', students);
-  console.log('StudentManagement - students length:', students.length);
   
 
 
   // Get available grades from school data and format them for display
   const availableGrades = school.gradeLevels || [];
   
-  console.log('StudentManagement - school object:', school);
-  console.log('StudentManagement - availableGrades:', availableGrades);
   
   // Use centralized grade display utilities for consistency across the application
   // This ensures all components use the same grade format, preventing mismatches
@@ -220,8 +216,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     ? availableGrades.map(formatGradeForDisplay) 
     : [];
   
-  console.log('StudentManagement - grades array:', grades);
-  console.log('StudentManagement - school loading status:', isLoading);
   
   // Show loading message if school data is not loaded yet
   const isSchoolDataLoading = !school.id || (school.name === 'Loading...' && availableGrades.length === 0);
@@ -237,14 +231,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     cls.schoolId === school.id
   );
   
-  console.log('StudentManagement - classes from DataContext:', classes);
-  console.log('StudentManagement - classes length:', classes.length);
-  console.log('StudentManagement - school.id for filtering:', school.id);
-  console.log('StudentManagement - availableClasses (filtered):', availableClasses);
-  console.log('StudentManagement - availableClasses length:', availableClasses.length);
-  console.log('StudentManagement - formData.grade:', formData.grade);
-  console.log('StudentManagement - school.gradeLevels:', school.gradeLevels);
-  console.log('StudentManagement - availableGrades:', availableGrades);
   
 
   
@@ -254,12 +240,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         // Convert the form grade back to raw format for comparison
         const formDataGradeRaw = convertDisplayToRawGrade(formData.grade);
         
-        console.log('StudentManagement - Grade matching:', {
-          formDataGrade: formData.grade,
-          formDataGradeRaw: formDataGradeRaw,
-          classGrade: cls.grade,
-          className: cls.name
-        });
         
         // Check multiple possible matches
         const isMatch = cls.grade === formData.grade || 
@@ -267,7 +247,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                        cls.grade?.toLowerCase() === formData.grade?.toLowerCase() ||
                        cls.grade?.toLowerCase() === formDataGradeRaw?.toLowerCase();
         
-        console.log('StudentManagement - Grade match result:', isMatch);
         
         return isMatch;
       })
@@ -275,9 +254,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     
 
     
-  console.log('StudentManagement - filteredClasses:', filteredClasses);
-  console.log('StudentManagement - filteredClasses length:', filteredClasses.length);
-  console.log('StudentManagement - formData.grade for filtering:', formData.grade);
   
   const statuses = ['active', 'pending', 'inactive'];
 
@@ -423,11 +399,8 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       // Find student by either id or _id
       const student = students.find(s => (s.id === studentId) || (s._id === studentId) || ((s as any)._id === studentId));
       
-      console.log('🔍 Looking for student with ID:', studentId);
-      console.log('🔍 Available students:', students.map(s => ({ id: s.id, _id: (s as any)._id, name: s.firstName })));
       
       if (student) {
-        console.log('✅ Found student for editing:', student);
         setSelectedStudentData(student);
 
         if (type === 'view') {
@@ -473,7 +446,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           notes: student.notes || (student as any).notes || '',
         });
       } else {
-        console.error('❌ Student not found with ID:', studentId);
         toast.error('Participant not found. Please refresh the page.');
         return;
       }
@@ -514,13 +486,11 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
    * treats the value as the type the matching field expects.
    */
   const handleFormChange = (field: string, value: unknown) => {
-    console.log(`StudentManagement - handleFormChange: ${field} =`, value);
     setFormData(prev => {
       const newData = {
         ...prev,
         [field]: value,
       } as typeof prev;
-      console.log('StudentManagement - Updated formData:', newData);
       return newData;
     });
     
@@ -554,7 +524,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   };
 
   const handleSaveStudent = async () => {
-    console.log('StudentManagement - handleSaveStudent called');
     if (dialogType === 'add') {
       // Generate avatar initials from name (with null safety)
       const firstName = formData.firstName || '';
@@ -617,9 +586,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         }
       }
 
-      console.log('StudentManagement - About to call addStudent with:', studentData);
-      console.log('StudentManagement - School ID:', school.id);
-      console.log('StudentManagement - User role:', (window as any).authUser?.role);
       
       const result = await addStudent(studentData);
       
@@ -701,7 +667,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       setFieldErrors({}); // Clear validation errors
     } else if (dialogType === 'edit' && selectedStudentData) {
       try {
-        console.log('📝 Current formData state:', formData);
         
         // Validate required fields
         if (!formData.firstName || !formData.lastName) {
@@ -750,11 +715,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           }
         }
 
-        console.log('StudentManagement - About to update student with:', {
-          studentId: selectedStudentData._id || selectedStudentData.id,
-          updateData,
-          originalStudentData: selectedStudentData
-        });
 
         // Use _id with fallback to id for consistent ID handling
         const studentId = selectedStudentData._id || selectedStudentData.id;
@@ -766,7 +726,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         await refreshData();
         
       } catch (error) {
-        console.error('❌ Error updating student:', error);
         toast.error('Failed to update participant. Please try again.');
         return; // Don't close dialog on error
       }
@@ -798,7 +757,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       // Refresh the students list
       await refreshData();
     } catch (error) {
-      console.error('Error deactivating participants:', error);
       toast.error('Failed to deactivate some participants. Please try again.');
     }
   };

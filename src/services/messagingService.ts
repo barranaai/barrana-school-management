@@ -142,13 +142,11 @@ class MessagingService {
         });
 
         this.socket.on('connect', () => {
-          console.log('✅ Socket.io connected');
           this.reconnectAttempts = 0;
           resolve(this.socket!);
         });
 
         this.socket.on('connect_error', (error) => {
-          console.error('❌ Socket.io connection error:', error);
           this.reconnectAttempts++;
           
           if (this.reconnectAttempts >= this.maxReconnectAttempts) {
@@ -157,7 +155,6 @@ class MessagingService {
         });
 
         this.socket.on('disconnect', (reason) => {
-          console.log('🔌 Socket.io disconnected:', reason);
           
           if (reason === 'io server disconnect') {
             // Server initiated disconnect, try to reconnect manually
@@ -166,12 +163,10 @@ class MessagingService {
         });
 
         this.socket.on('reconnect', (attemptNumber) => {
-          console.log(`🔄 Socket.io reconnected after ${attemptNumber} attempts`);
           this.reconnectAttempts = 0;
         });
 
       } catch (error) {
-        console.error('Error creating socket connection:', error);
         reject(error);
       }
     });
@@ -181,7 +176,6 @@ class MessagingService {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
-      console.log('🔌 Socket.io manually disconnected');
     }
   }
 
@@ -266,7 +260,6 @@ class MessagingService {
       
       return data.files || [];
     } catch (error) {
-      console.error('Error uploading attachments:', error);
       throw error;
     }
   }
@@ -305,7 +298,6 @@ class MessagingService {
       
       return data;
     } catch (error) {
-      console.error('Error fetching conversations:', error);
       throw error;
     }
   }
@@ -343,7 +335,6 @@ class MessagingService {
       
       return data;
     } catch (error) {
-      console.error('Error fetching conversation messages:', error);
       throw error;
     }
   }
@@ -391,7 +382,6 @@ class MessagingService {
       
       return data;
     } catch (error) {
-      console.error('Error creating conversation:', error);
       throw error;
     }
   }
@@ -418,7 +408,6 @@ class MessagingService {
       
       return data;
     } catch (error) {
-      console.error('Error sending message:', error);
       throw error;
     }
   }
@@ -443,7 +432,6 @@ class MessagingService {
       
       return data;
     } catch (error) {
-      console.error('Error marking conversation as read:', error);
       throw error;
     }
   }
@@ -462,7 +450,6 @@ class MessagingService {
       
       return data;
     } catch (error) {
-      console.error('Error fetching unread count:', error);
       throw error;
     }
   }

@@ -101,7 +101,7 @@ router.post('/upload-attachment', protect, authorize('school_admin', 'super_admi
       url: `/uploads/event-attachments/${req.file.filename}`
     };
 
-    logger.info(`Event attachment uploaded: ${req.file.originalname} (${req.file.size} bytes)`);
+    logger.info('Event attachment uploaded', { sizeBytes: req.file.size });
 
     res.json({
       success: true,
@@ -262,7 +262,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
     // Create event
     const event = await Event.create(eventData);
 
-    logger.info(`Event created: ${event._id} by user ${req.user._id}`);
+    logger.info('Event created');
 
     // If it's a recurring event, generate instances
     let recurringInstancesCount = 0;
@@ -270,14 +270,14 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
       try {
         const instances = await recurringEventService.createRecurringInstances(event);
         recurringInstancesCount = instances.length;
-        logger.info(`Created ${recurringInstancesCount} recurring instances for event ${event._id}`);
+        logger.info('Recurring event instances created', { count: recurringInstancesCount });
       } catch (error) {
         logger.error('Error creating recurring instances:', error);
         // Don't fail the main event creation if recurring instances fail
       }
     }
 
-    logger.info(`Found ${recipients.length} recipients for event ${event._id}`);
+    logger.info('Event recipients resolved', { count: recipients.length });
 
     // Send immediate reminders and push notifications
     if (recipients.length > 0) {
@@ -298,7 +298,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
           event.reminders.immediate.recipientCount = successCount;
           await event.save();
 
-          logger.info(`Sent ${successCount}/${recipients.length} immediate reminders for event ${event._id}`);
+          logger.info('Immediate event reminder batch completed', { successCount, recipientCount: recipients.length });
           
           // Send push notifications to parents
           try {
@@ -379,7 +379,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
                     }
                     return { success: true };
                   } catch (error) {
-                    logger.error(`Error creating notification for parent ${parent._id}:`, error);
+                    logger.error('Unable to create parent event notification', error);
                     return { success: false, error: error.message };
                   }
                 });
@@ -387,9 +387,9 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
                 const notifResults = await Promise.allSettled(notificationPromises);
                 const notifSuccessCount = notifResults.filter(r => r.status === 'fulfilled' && r.value?.success).length;
                 
-                logger.info(`Created ${notifSuccessCount}/${parentUsers.length} in-app notifications for event ${event._id}`);
+                logger.info('Event in-app notification batch completed', { successCount: notifSuccessCount, recipientCount: parentUsers.length });
               } else {
-                logger.info(`No parents with FCM tokens found for event ${event._id}`);
+                logger.info('No event recipients have registered push devices');
               }
             }
           } catch (pushError) {
@@ -483,7 +483,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireAct
           updatedEvent._id,
           updateData
         );
-        logger.info(`Updated ${updatedInstancesCount} future instances for recurring event ${updatedEvent._id}`);
+        logger.info('Future recurring event instances updated', { count: updatedInstancesCount });
       } catch (error) {
         logger.error('Error updating recurring instances:', error);
       }
@@ -518,7 +518,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireAct
             };
             await updatedEvent.save();
             
-            logger.info(`Event reminders reset for updated event: ${updatedEvent._id}`);
+            logger.info('Event reminders reset after update');
           }
         }
       } catch (notificationError) {
@@ -527,7 +527,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireAct
       }
     }
 
-    logger.info(`Event updated: ${event._id} by user ${req.user._id}. Changes: ${JSON.stringify(changes)}`);
+    logger.info('Event updated', { changedFieldCount: Object.keys(changes).length });
 
     res.json({
       success: true,
@@ -568,7 +568,7 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), require
       if (recipients.length > 0) {
         // Send deletion notification
         await notificationService.sendEventDeletionNotification(event, recipients);
-        logger.info(`Deletion notifications sent to ${recipients.length} recipients for event ${event._id}`);
+        logger.info('Event deletion notification batch completed', { recipientCount: recipients.length });
       }
     } catch (notificationError) {
       logger.error('Error sending deletion notifications:', notificationError);
@@ -580,7 +580,7 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), require
     if (event.isRecurring && !event.isRecurringInstance) {
       try {
         deletedInstancesCount = await recurringEventService.deleteRecurringInstances(event._id);
-        logger.info(`Deleted ${deletedInstancesCount} future instances for recurring event ${event._id}`);
+        logger.info('Future recurring event instances deleted', { count: deletedInstancesCount });
       } catch (error) {
         logger.error('Error deleting recurring instances:', error);
       }
@@ -591,7 +591,7 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), require
     event.isCancelled = true;
     await event.save({ validateBeforeSave: false });
 
-    logger.info(`Event deleted: ${event._id} by user ${req.user._id}`);
+    logger.info('Event deleted');
 
     res.json({
       success: true,

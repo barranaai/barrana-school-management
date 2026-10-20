@@ -95,7 +95,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), async (req, 
       createdBy: req.user._id
     });
 
-    logger.info(`Parent group created: ${group._id} by user ${req.user._id}`);
+    logger.info('Parent group created');
 
     res.status(201).json({
       success: true,
@@ -140,7 +140,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), async (req
       { new: true, runValidators: true }
     ).populate('members.parentId', 'firstName lastName email phone');
 
-    logger.info(`Parent group updated: ${group._id} by user ${req.user._id}`);
+    logger.info('Parent group updated');
 
     res.json({
       success: true,
@@ -207,7 +207,7 @@ router.post('/:id/members', protect, authorize('school_admin', 'super_admin'), a
     // Populate the group data before sending response
     await group.populate('members.parentId', 'firstName lastName email phone');
 
-    logger.info(`Added ${addedCount} member(s) to group ${group._id}`);
+    logger.info('Parent group members added', { count: addedCount });
 
     res.json({
       success: true,
@@ -242,7 +242,7 @@ router.delete('/:id/members/:parentId', protect, authorize('school_admin', 'supe
     group.removeMember(req.params.parentId);
     await group.save();
 
-    logger.info(`Removed member ${req.params.parentId} from group ${group._id}`);
+    logger.info('Parent group member removed');
 
     res.json({
       success: true,
@@ -285,7 +285,7 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), async (
     group.isActive = false;
     await group.save();
 
-    logger.info(`Parent group deleted: ${group._id} by user ${req.user._id}`);
+    logger.info('Parent group deleted');
 
     res.json({
       success: true,

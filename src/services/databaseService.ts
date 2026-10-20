@@ -42,7 +42,6 @@ class DatabaseService {
       
       if (healthResponse.success) {
         this.isConnected = true;
-        console.log('✅ Database service initialized successfully');
         return {
           success: true,
           data: true
@@ -51,7 +50,6 @@ class DatabaseService {
         throw new Error('Health check failed');
       }
     } catch (error) {
-      console.error('❌ Database service initialization failed:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Initialization failed'
@@ -489,7 +487,6 @@ class DatabaseService {
 
   async close(): Promise<void> {
     this.isConnected = false;
-    console.log('Database service connection closed');
   }
 }
 

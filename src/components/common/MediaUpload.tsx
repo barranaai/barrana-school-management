@@ -60,15 +60,12 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
 
   // Handle file selection
   const handleFileSelect = useCallback((files: FileList | null) => {
-    console.log('🔍 handleFileSelect called with files:', files);
     if (!files) {
-      console.log('🔍 No files provided to handleFileSelect');
       return;
     }
 
     const newFiles: MediaFile[] = [];
     const fileArray = Array.from(files);
-    console.log('🔍 File array:', fileArray.map(f => ({ name: f.name, size: f.size, type: f.type })));
 
     for (const file of fileArray) {
       // Check if we've reached the maximum number of files
@@ -106,10 +103,8 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
     }
 
     if (newFiles.length > 0) {
-      console.log('🔍 Setting new media files:', newFiles.map(f => ({ id: f.id, name: f.name, type: f.type })));
       setMediaFiles(prev => [...prev, ...newFiles]);
     } else {
-      console.log('🔍 No new files to add');
     }
   }, [mediaFiles.length, uploadedMedia.length, maxFiles, acceptedTypes]);
 
@@ -141,21 +136,13 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
 
   // Upload files
   const uploadFiles = async () => {
-    console.log('🔍 uploadFiles called with:', { reportId, mediaFilesCount: mediaFiles.length });
     if (!reportId) {
-      console.log('🔍 No reportId provided, cannot upload');
       return;
     }
     if (mediaFiles.length === 0) {
-      console.log('🔍 No media files to upload');
       return;
     }
 
-    console.log('Starting upload process:', {
-      reportId,
-      mediaFilesCount: mediaFiles.length,
-      mediaFiles: mediaFiles.map(mf => ({ name: mf.name, size: mf.size, type: mf.type }))
-    });
 
     setIsUploading(true);
     const filesToUpload = mediaFiles.map(mf => mf.file);
@@ -173,8 +160,6 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
         }
       );
 
-      console.log('Upload completed successfully:', uploaded);
-      console.log('🔍 Uploaded media URLs:', uploaded.map(m => ({ id: m.id, url: m.url, originalName: m.originalName })));
 
       // Clean up preview URLs
       mediaFiles.forEach(mf => {
@@ -185,20 +170,10 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
 
       // Debug: Check each uploaded media object
       uploaded.forEach((media, index) => {
-        console.log(`🔍 Uploaded media ${index + 1}:`, {
-          id: media.id,
-          url: media.url,
-          originalName: media.originalName,
-          mimeType: media.mimeType,
-          size: media.size,
-          hasUrl: !!media.url,
-          urlType: typeof media.url
-        });
       });
 
       setUploadedMedia(prev => {
         const newMedia = [...prev, ...uploaded];
-        console.log('🔍 Updated uploadedMedia state:', newMedia.map(m => ({ id: m.id, url: m.url, hasUrl: !!m.url })));
         return newMedia;
       });
       setMediaFiles([]);
@@ -209,47 +184,30 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
 
       toast.success(`${uploaded.length} file(s) uploaded successfully!`);
     } catch (error: any) {
-      console.error('❌ Upload error occurred:', error);
-      console.error('📋 Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        code: error.code,
-        stack: error.stack
-      });
       
       let errorMessage = 'Failed to upload files. Please try again.';
       
       if (error.code === 'ECONNABORTED') {
         errorMessage = 'Upload timed out. Please check your internet connection and try again.';
-        console.error('⏰ Upload timeout detected');
       } else if (error.response?.status === 401) {
         errorMessage = 'Authentication failed. Please log in again.';
-        console.error('🔐 Authentication error detected');
       } else if (error.response?.status === 413) {
         errorMessage = 'File too large. Maximum file size is 50MB.';
-        console.error('📏 File size error detected');
       } else if (error.response?.status === 400 && error.response?.data?.message?.includes('Invalid file type')) {
         errorMessage = 'Invalid file type. Only images and videos are allowed.';
-        console.error('📎 File type error detected');
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
-        console.error('📨 Server error message:', errorMessage);
       } else if (error.message) {
         errorMessage = error.message;
-        console.error('💬 General error message:', errorMessage);
       }
       
-      console.error('🚨 Displaying error to user:', errorMessage);
       toast.error(errorMessage);
       
       // Reset any stuck progress indicators
       setMediaFiles(prev => prev.map(mf => ({ ...mf, uploadProgress: 0 })));
       
     } finally {
-      console.log('🔄 Setting upload state to false');
       setIsUploading(false);
-      console.log('✅ Upload process completed (success or error)');
     }
   };
 
@@ -264,7 +222,6 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
         }
         toast.success('File deleted successfully');
       } catch (error) {
-        console.error('Delete error:', error);
         toast.error('Failed to delete file');
       }
     } else {
@@ -279,16 +236,6 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
 
   // Open preview dialog
   const openPreview = (media: MediaFile | UploadedMedia) => {
-    console.log('🔍 Opening preview for media:', {
-      media,
-      url: media.url,
-      absoluteUrl: getMediaUrl(media.url || ''),
-      isImage: isImage(media),
-      type: 'type' in media ? media.type : 'mimeType' in media ? media.mimeType : 'unknown',
-      hasUrl: !!media.url,
-      urlType: typeof media.url,
-      mediaKeys: Object.keys(media)
-    });
     setPreviewDialog({ open: true, media });
   };
 
@@ -323,20 +270,11 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
   const testMediaUrl = async (url: string) => {
     try {
       const fullUrl = getMediaUrl(url);
-      console.log('🔍 Testing media URL:', fullUrl);
       
       const response = await fetch(fullUrl, { method: 'HEAD' });
-      console.log('🔍 Media URL test result:', {
-        url: fullUrl,
-        status: response.status,
-        statusText: response.statusText,
-        contentType: response.headers.get('content-type'),
-        cors: response.headers.get('access-control-allow-origin')
-      });
       
       return response.ok;
     } catch (error) {
-      console.error('❌ Media URL test failed:', error);
       return false;
     }
   };
@@ -345,17 +283,14 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
   const getMediaUrl = (url: string) => {
     if (!url) return '';
     
-    console.log('🔍 getMediaUrl called with:', url);
     
     // If it's already an absolute URL, return as is
     if (url.startsWith('http://') || url.startsWith('https://')) {
-      console.log('🔍 Returning absolute URL as is:', url);
       return url;
     }
     
     // If it's a blob URL, return as is
     if (url.startsWith('blob:')) {
-      console.log('🔍 Returning blob URL as is:', url);
       return url;
     }
     
@@ -368,13 +303,11 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
     // If it's a relative URL starting with /, make it absolute
     if (url.startsWith('/')) {
       const fullUrl = `${baseUrl}${url}`;
-      console.log('🔍 Converting relative URL to absolute:', fullUrl);
       return fullUrl;
     }
     
     // Default case: assume it's a relative URL without leading slash
     const fullUrl = `${baseUrl}/${url}`;
-    console.log('🔍 Converting to absolute URL (default case):', fullUrl);
     return fullUrl;
   };
 
@@ -456,12 +389,8 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
                       alt={media.name}
                       sx={{ objectFit: 'cover' }}
                       onLoad={() => {
-                        console.log('✅ CardMedia image loaded successfully:', getMediaUrl(media.url || ''));
                       }}
                       onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-                        console.error('❌ CardMedia error for local image:', getMediaUrl(media.url || ''));
-                        console.error('❌ Original URL:', media.url);
-                        console.error('❌ Error details:', e);
                       }}
                     />
                   ) : (
@@ -471,15 +400,10 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
                       src={getMediaUrl(media.url || '')}
                       sx={{ objectFit: 'cover' }}
                       onLoadStart={() => {
-                        console.log('🎬 CardMedia video loading started:', getMediaUrl(media.url || ''));
                       }}
                       onCanPlay={() => {
-                        console.log('✅ CardMedia video can play:', getMediaUrl(media.url || ''));
                       }}
                       onError={(e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
-                        console.error('❌ CardMedia error for local video:', getMediaUrl(media.url || ''));
-                        console.error('❌ Original URL:', media.url);
-                        console.error('❌ Error details:', e);
                       }}
                     />
                   )}
@@ -530,12 +454,8 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
                       alt={media.originalName}
                       sx={{ objectFit: 'cover' }}
                       onLoad={() => {
-                        console.log('✅ CardMedia uploaded image loaded successfully:', getMediaUrl(media.url || ''));
                       }}
                       onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-                        console.error('❌ CardMedia error for uploaded image:', getMediaUrl(media.url || ''));
-                        console.error('❌ Original URL:', media.url);
-                        console.error('❌ Error details:', e);
                       }}
                     />
                   ) : (
@@ -545,15 +465,10 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
                       src={getMediaUrl(media.url)}
                       sx={{ objectFit: 'cover' }}
                       onLoadStart={() => {
-                        console.log('🎬 CardMedia uploaded video loading started:', getMediaUrl(media.url || ''));
                       }}
                       onCanPlay={() => {
-                        console.log('✅ CardMedia uploaded video can play:', getMediaUrl(media.url || ''));
                       }}
                       onError={(e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
-                        console.error('❌ CardMedia error for uploaded video:', getMediaUrl(media.url || ''));
-                        console.error('❌ Original URL:', media.url);
-                        console.error('❌ Error details:', e);
                       }}
                     />
                   )}
@@ -608,7 +523,6 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
                   variant="outlined"
                   color="error"
                   onClick={() => {
-                    console.log('🛑 Emergency reset triggered by user');
                     setIsUploading(false);
                     setMediaFiles(prev => prev.map(mf => ({ ...mf, uploadProgress: 0 })));
                     toast.success('Upload cancelled');
@@ -650,13 +564,6 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
           {previewDialog.media && (() => {
             const isImageMedia = isImage(previewDialog.media);
             const mediaUrl = getMediaUrl(previewDialog.media?.url || '');
-            console.log('🔍 Preview dialog rendering:', {
-              media: previewDialog.media,
-              isImage: isImageMedia,
-              url: mediaUrl,
-              originalUrl: previewDialog.media?.url,
-              mimeType: 'mimeType' in previewDialog.media ? previewDialog.media.mimeType : 'type' in previewDialog.media ? previewDialog.media.type : 'unknown'
-            });
             
             // Test the media URL accessibility
             if (previewDialog.media?.url) {
@@ -677,12 +584,8 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
                       : 'Media File'}
                     style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain' }}
                     onLoad={() => {
-                      console.log('✅ Image loaded successfully:', mediaUrl);
                     }}
                     onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-                      console.error('❌ Image preview error:', mediaUrl);
-                      console.error('❌ Original URL:', previewDialog.media?.url);
-                      console.error('❌ Error details:', e);
                       // Show fallback content
                       const target = e.target as HTMLImageElement;
                       target.style.display = 'none';
@@ -703,15 +606,10 @@ const MediaUpload: React.FC<MediaUploadProps> = ({
                     controls
                     style={{ maxWidth: '100%', maxHeight: '60vh' }}
                     onLoadStart={() => {
-                      console.log('🎬 Video loading started:', mediaUrl);
                     }}
                     onCanPlay={() => {
-                      console.log('✅ Video can play:', mediaUrl);
                     }}
                     onError={(e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
-                      console.error('❌ Video preview error:', mediaUrl);
-                      console.error('❌ Original URL:', previewDialog.media?.url);
-                      console.error('❌ Error details:', e);
                       // Show fallback content
                       const target = e.target as HTMLVideoElement;
                       target.style.display = 'none';

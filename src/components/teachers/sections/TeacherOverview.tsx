@@ -136,7 +136,6 @@ const TeacherOverview: React.FC<TeacherOverviewProps> = ({ schoolBranding }) => 
           }
         }
       } catch (error) {
-        console.error('Error fetching due reports:', error);
       } finally {
         setLoading(false);
       }

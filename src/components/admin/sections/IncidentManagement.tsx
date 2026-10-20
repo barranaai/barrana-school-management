@@ -147,7 +147,7 @@ const IncidentManagement: React.FC<Props> = ({ schoolBranding }) => {
       if (incRes.success && Array.isArray(incRes.data)) setIncidents(incRes.data);
       if (statsRes.success && statsRes.data) setStats(statsRes.data);
     } catch (err) {
-      console.error('Admin: load incidents error', err);
+      console.error('Unable to load incidents');
     } finally {
       setLoading(false);
     }

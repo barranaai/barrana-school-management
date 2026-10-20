@@ -141,7 +141,6 @@ const IncidentReporting: React.FC<Props> = ({ schoolBranding }) => {
       const res = await apiService.getIncidents({ limit: 100 });
       if (res.success && Array.isArray(res.data)) setIncidents(res.data);
     } catch (err) {
-      console.error('Failed to load incidents', err);
     } finally {
       setLoading(false);
     }

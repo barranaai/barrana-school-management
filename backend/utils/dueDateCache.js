@@ -37,7 +37,7 @@ class DueDateCache {
         });
       }
     } catch (error) {
-      console.warn('⚠️ Redis not available, falling back to memory cache:', error.message);
+      console.warn('Redis unavailable; using in-memory due-date cache');
       this.redisClient = null;
     }
   }
@@ -123,7 +123,7 @@ class DueDateCache {
             source = 'redis';
           }
         } catch (redisError) {
-          console.warn('Redis cache read error:', redisError.message);
+          console.warn('Redis due-date cache read failed; using in-memory cache');
         }
       }
       
@@ -210,7 +210,7 @@ class DueDateCache {
           const ttlSeconds = expiration.diff(moment(), 'seconds');
           await this.redisClient.setEx(cacheKey, ttlSeconds, JSON.stringify(cacheableResult));
         } catch (redisError) {
-          console.warn('Redis cache write error:', redisError.message);
+          console.warn('Redis due-date cache write failed; using in-memory cache');
         }
       }
       
@@ -341,7 +341,7 @@ class DueDateCache {
           await this.redisClient.del(keys);
         }
       } catch (redisError) {
-        console.warn('Redis cache clear error:', redisError.message);
+        console.warn('Redis due-date cache clear failed');
       }
     }
     

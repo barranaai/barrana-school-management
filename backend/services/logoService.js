@@ -73,12 +73,9 @@ const uploadSchoolLogo = async (req, res) => {
       });
     }
     
-    logger.info(`Logo uploaded and saved to database for school ${schoolId}`, {
-      filename: req.file.filename,
-      originalName: req.file.originalname,
+    logger.info('School logo uploaded and saved', {
       size: req.file.size,
-      mimetype: req.file.mimetype,
-      logoUrl
+      mimetype: req.file.mimetype
     });
 
     res.json({
@@ -167,9 +164,7 @@ const deleteSchoolLogo = async (req, res) => {
         { new: true }
       );
       
-      logger.info(`Logo deleted successfully from file system and database for school ${schoolId}`, {
-        filename: logoFile
-      });
+      logger.info('School logo deleted successfully');
 
       res.json({
         success: true,
@@ -197,4 +192,4 @@ module.exports = {
   uploadSchoolLogo,
   getSchoolLogo,
   deleteSchoolLogo
-}; 
+};

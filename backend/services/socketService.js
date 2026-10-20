@@ -49,7 +49,7 @@ class SocketService {
         socket.user = user;
         next();
       } catch (error) {
-        logger.error('Socket authentication error:', error);
+        logger.error('Socket authentication failed', { category: error?.name || 'Error' });
         next(new Error('Authentication error'));
       }
     });
@@ -65,7 +65,7 @@ class SocketService {
 
   handleConnection(socket) {
     const user = socket.user;
-    logger.info(`🔌 User connected: ${user.firstName} ${user.lastName} (${user._id}) - Socket: ${socket.id}`);
+    logger.info('Socket user connected');
 
     // Store user connection
     this.connectedUsers.set(user._id.toString(), socket.id);
@@ -89,7 +89,7 @@ class SocketService {
 
     // Handle disconnection
     socket.on('disconnect', () => {
-      logger.info(`🔌 User disconnected: ${user.firstName} ${user.lastName} (${user._id})`);
+      logger.info('Socket user disconnected');
       this.connectedUsers.delete(user._id.toString());
       this.broadcastUserStatus(user._id, 'offline');
     });
@@ -110,9 +110,9 @@ class SocketService {
         }
       }
 
-      logger.info(`User ${userId} joined ${joined} conversation rooms`);
+      logger.info('Socket conversation rooms joined', { count: joined });
     } catch (error) {
-      logger.error('Error joining user conversations:', error);
+      logger.error('Unable to join socket conversation rooms', { category: error?.name || 'Error' });
     }
   }
 
@@ -128,7 +128,7 @@ class SocketService {
 
   handleLeaveConversation(socket, conversationId) {
     socket.leave(`conversation:${conversationId}`);
-    logger.info(`User ${socket.user._id} left conversation ${conversationId}`);
+    logger.info('Socket conversation room left');
   }
 
   async handleSendMessage(socket, data) {
@@ -225,12 +225,12 @@ class SocketService {
         // Always send push notification for new messages
         await this.sendMessagePushNotification(recipientUser, user, content, conversationId);
       } catch (notifError) {
-        logger.error('Error creating notification for message:', notifError);
+        logger.error('Unable to create message notification', { category: notifError?.name || 'Error' });
       }
 
-      logger.info(`Message sent in conversation ${conversationId} by ${user._id}`);
+      logger.info('Conversation message accepted');
     } catch (error) {
-      logger.error('Error handling send message:', error);
+      logger.error('Unable to handle conversation message', { category: error?.name || 'Error' });
       socket.emit('message_error', {
         tempId: data.tempId,
         error: error.message
@@ -301,7 +301,7 @@ class SocketService {
         }
       });
       
-      logger.info(`Removed message notifications for conversation ${conversationId} from user ${user._id}`);
+      logger.info('Conversation message notifications removed');
 
       // Notify other participants
       socket.to(`conversation:${conversationId}`).emit('messages_read', {
@@ -310,9 +310,9 @@ class SocketService {
         readAt: new Date()
       });
 
-      logger.info(`Messages marked as read in conversation ${conversationId} by ${user._id}`);
+      logger.info('Conversation messages marked as read');
     } catch (error) {
-      logger.error('Error handling mark read:', error);
+      logger.error('Unable to mark conversation messages as read', { category: error?.name || 'Error' });
     }
   }
 
@@ -344,10 +344,10 @@ class SocketService {
           }
         );
 
-        logger.info(`Push notification sent for message to ${recipient.email}`);
+        logger.info('Message push notification accepted', { channel: 'push' });
       }
     } catch (error) {
-      logger.error('Error sending message push notification:', error);
+      logger.error('Unable to send message push notification', { category: error?.name || 'Error' });
     }
   }
 

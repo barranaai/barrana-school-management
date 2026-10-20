@@ -172,8 +172,6 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
     ? school.gradeLevels
     : ['preschool', 'kindergarten', 'grade1', 'grade2', 'grade3', 'grade4', 'grade5', 'grade6', 'grade7', 'grade8', 'grade9', 'grade10', 'grade11', 'grade12'];
 
-  console.log('ClassManagement - school object:', school);
-  console.log('ClassManagement - availableGrades:', availableGrades);
 
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'success') => {
     setSnackbar({
@@ -264,21 +262,12 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
   const formatGradeForDisplay = formatGradeDisplay;
   const formatGradeForDatabase = convertDisplayToRaw;
 
-  console.log('ClassManagement - availableGrades (raw):', availableGrades);
   const grades = availableGrades.length > 0
     ? availableGrades.map(formatGradeForDisplay)
     : [];
 
-  console.log('ClassManagement - grades array (converted):', grades);
 
   // Debug: Test formatGradeForDisplay function
-  console.log('ClassManagement - formatGradeForDisplay test:', {
-    'preschool': formatGradeForDisplay('preschool'),
-    'grade1': formatGradeForDisplay('grade1'),
-    'grade5': formatGradeForDisplay('grade5'),
-    'Grade 1': formatGradeForDisplay('Grade 1'), // Should return as is
-    'Preschool': formatGradeForDisplay('Preschool'), // Should return as is
-  });
 
   const semesters = ['fall', 'spring', 'summer'];
 
@@ -496,7 +485,6 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
 
       handleCloseClassDialog();
     } catch (error) {
-      console.error('Error saving class:', error);
       showSnackbar('Error saving class. Please try again.', 'error');
     }
   };
@@ -517,7 +505,6 @@ const ClassManagement: React.FC<ClassManagementProps> = ({ schoolBranding }) => 
           showSnackbar(`Error deleting class: ${response.error}`, 'error');
         }
       } catch (error) {
-        console.error('Error deleting class:', error);
         showSnackbar('Error deleting class. Please try again.', 'error');
       }
       setClassToDelete(null);

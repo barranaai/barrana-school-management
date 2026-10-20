@@ -63,7 +63,7 @@ const generateRecurringInstances = async (parentEvent) => {
     
     // Safety check to prevent infinite loops
     if (occurrenceCount > 1000) {
-      logger.warn(`Stopped generating recurring instances after 1000 occurrences for event ${parentEvent._id}`);
+      logger.warn('Stopped recurring-event generation at the safety limit', { limit: 1000 });
       break;
     }
   }
@@ -129,14 +129,14 @@ const createRecurringInstances = async (parentEvent) => {
     const instances = await generateRecurringInstances(parentEvent);
     
     if (instances.length === 0) {
-      logger.warn(`No instances generated for recurring event ${parentEvent._id}`);
+      logger.warn('No recurring-event instances were generated');
       return [];
     }
     
     // Create all instances in the database
     const createdInstances = await Event.insertMany(instances);
     
-    logger.info(`Created ${createdInstances.length} recurring instances for event ${parentEvent._id}`);
+    logger.info('Recurring-event instances created', { count: createdInstances.length });
     
     return createdInstances;
   } catch (error) {
@@ -165,7 +165,7 @@ const updateRecurringInstances = async (parentEventId, updateData) => {
       updateData
     );
     
-    logger.info(`Updated ${result.modifiedCount} future instances for parent event ${parentEventId}`);
+    logger.info('Future recurring-event instances updated', { count: result.modifiedCount });
     
     return result.modifiedCount;
   } catch (error) {
@@ -196,7 +196,7 @@ const deleteRecurringInstances = async (parentEventId) => {
       }
     );
     
-    logger.info(`Deleted ${result.modifiedCount} future instances for parent event ${parentEventId}`);
+    logger.info('Future recurring-event instances deleted', { count: result.modifiedCount });
     
     return result.modifiedCount;
   } catch (error) {
@@ -234,7 +234,7 @@ const addRecurringException = async (parentEventId, exceptionDate) => {
       }
     );
     
-    logger.info(`Added exception and deleted instance for date ${exceptionDate} in event ${parentEventId}`);
+    logger.info('Recurring-event exception added and matching instance deleted');
   } catch (error) {
     logger.error('Error adding recurring exception:', error);
     throw error;
