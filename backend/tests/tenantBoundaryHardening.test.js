@@ -66,9 +66,31 @@ const schoolDocument = overrides => ({
   toObject() { const copy = { ...this }; delete copy.toObject; return copy; }
 });
 
+test('School serialization removes provider credentials from JSON and ordinary objects', () => {
+  const SchoolModel = require('../models/School');
+  const school = new SchoolModel({
+    name: 'Serialization Test',
+    slug: 'serialization-test',
+    subscription: { plan: 'basic' },
+    communication: {
+      whatsapp: { twilioAccountSid: 'model-sid', twilioAuthToken: 'model-token' },
+      sms: { twilioAccountSid: 'model-sms-sid', twilioAuthToken: 'model-sms-token' }
+    }
+  });
+  const json = JSON.stringify(school);
+  const object = JSON.stringify(school.toObject());
+  for (const secret of ['model-sid', 'model-token', 'model-sms-sid', 'model-sms-token']) {
+    assert.equal(json.includes(secret), false);
+    assert.equal(object.includes(secret), false);
+  }
+});
+
 function schoolHarness() {
   const updates = [];
   const School = {
+    find() {
+      return { populate: async () => [schoolDocument()] };
+    },
     findById() {
       const document = schoolDocument();
       return {
@@ -120,8 +142,62 @@ test('super admin school response and update capability remain available', async
   const h = schoolHarness();
   const read = await request(h.app).get(`/${schoolA}`).set('x-role', 'super_admin');
   assert.equal(read.status, 200); assert.equal(read.body.data.subscription.plan, 'enterprise');
+  assert.equal(read.body.data.communication.whatsapp.credentialsConfigured, true);
+  for (const secret of ['secret-sid', 'secret-token', 'sms-secret', 'sms-token']) {
+    assert.equal(JSON.stringify(read.body).includes(secret), false);
+  }
   const update = await request(h.app).put(`/${schoolA}`).set('x-role', 'super_admin').send({ subscription: { plan: 'premium' } });
   assert.equal(update.status, 200); assert.equal(h.updates[0].update.$set.subscription.plan, 'premium');
+});
+
+test('super admin school collection never serializes provider credentials', async () => {
+  const response = await request(schoolHarness().app).get('/').set('x-role', 'super_admin');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.data[0].communication.sms.credentialsConfigured, true);
+  for (const secret of ['secret-sid', 'secret-token', 'sms-secret', 'sms-token']) {
+    assert.equal(JSON.stringify(response.body).includes(secret), false);
+  }
+});
+
+test('real School serialization preserves credential status without returning credentials', async () => {
+  const SchoolModel = require('../models/School');
+  const document = new SchoolModel({
+    _id: schoolA,
+    name: 'Real Serialization Organization',
+    slug: 'real-serialization-organization',
+    subscription: { plan: 'basic' },
+    communication: {
+      whatsapp: { enabled: true, twilioAccountSid: 'real-model-sid', twilioAuthToken: 'real-model-token' },
+      sms: { enabled: true, twilioAccountSid: 'real-sms-sid', twilioAuthToken: 'real-sms-token' }
+    }
+  });
+  const School = {
+    find() { return { populate: async () => [document] }; },
+    findById() {
+      return {
+        populate: async () => document,
+        then(resolve, reject) { return Promise.resolve(document).then(resolve, reject); }
+      };
+    }
+  };
+  const router = loadRoute('schools.js', {
+    '../models/School': School,
+    '../models/User': {}, '../models/Report': {},
+    '../middleware/auth': auth,
+    '../utils/logger': { logger },
+    bcryptjs: { hash: async () => 'hash' },
+    '../services/logoService': { upload: { single: () => (req, res, next) => next() }, uploadSchoolLogo() {}, getSchoolLogo() {}, deleteSchoolLogo() {} },
+    '../services/emailService': { sendWelcomeEmail() {} }
+  });
+
+  const response = await request(appFor(router)).get(`/${schoolA}`).set('x-role', 'super_admin');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.data.communication.whatsapp.credentialsConfigured, true);
+  assert.equal(response.body.data.communication.sms.credentialsConfigured, true);
+  const body = JSON.stringify(response.body);
+  for (const secret of ['real-model-sid', 'real-model-token', 'real-sms-sid', 'real-sms-token']) {
+    assert.equal(body.includes(secret), false);
+  }
 });
 
 test('school admin communication update cannot change or receive provider credentials', async () => {
@@ -138,6 +214,23 @@ test('school admin communication update cannot change or receive provider creden
   });
   assert.equal(JSON.stringify(response.body).includes('secret'), false);
   assert.equal(JSON.stringify(response.body).includes('replacement'), false);
+});
+
+test('super admin communication credentials are write-only and blank fields preserve stored values', async () => {
+  const h = schoolHarness();
+  const response = await request(h.app).put(`/${schoolA}/communication`).set('x-role', 'super_admin').send({
+    whatsapp: { enabled: true, twilioAccountSid: 'new-sid', twilioAuthToken: 'new-token' },
+    sms: { enabled: true, twilioAccountSid: '   ', twilioAuthToken: '' }
+  });
+  assert.equal(response.status, 200);
+  assert.equal(h.updates[0].update.$set['communication.whatsapp.twilioAccountSid'], 'new-sid');
+  assert.equal(h.updates[0].update.$set['communication.whatsapp.twilioAuthToken'], 'new-token');
+  assert.equal(h.updates[0].update.$set['communication.sms.twilioAccountSid'], undefined);
+  assert.equal(h.updates[0].update.$set['communication.sms.twilioAuthToken'], undefined);
+  const json = JSON.stringify(response.body);
+  for (const secret of ['new-sid', 'new-token', 'secret-sid', 'secret-token', 'sms-secret', 'sms-token']) {
+    assert.equal(json.includes(secret), false);
+  }
 });
 
 function messagesHarness({ crossTenantRecipient = false, crossTenantStudent = false } = {}) {

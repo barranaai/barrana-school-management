@@ -71,7 +71,7 @@ class CalculationLogger {
       console.group(`${emoji} [Frontend Calculation] ${operation}`);
       console.log('📅 Timestamp:', logEntry.timestamp);
       console.log('🆔 Calculation ID:', calculationId);
-      console.log('📊 Data:', data);
+      console.log('📊 Calculation data recorded');
       console.groupEnd();
     }
     
@@ -307,7 +307,7 @@ class CalculationLogger {
       
       return response.ok;
     } catch (error) {
-      console.warn('Failed to send logs to backend:', error);
+      console.warn('Failed to send calculation logs to backend');
       return false;
     }
   }

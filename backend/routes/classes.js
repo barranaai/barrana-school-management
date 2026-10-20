@@ -310,7 +310,7 @@ router.post('/', protect, authorize('school_admin', 'super_admin'), requireActiv
       .populate('levelIds', 'name programId')
       .populate('createdBy', 'firstName lastName');
 
-    logger.info(`Class created: ${name} at school ${schoolId}`);
+    logger.info('Class created');
 
     res.status(201).json({
       success: true,
@@ -457,7 +457,7 @@ router.put('/:id', protect, authorize('school_admin', 'super_admin'), requireAct
      .populate('levelIds', 'name programId')
      .populate('createdBy', 'firstName lastName');
 
-    logger.info(`Class updated: ${updatedClass.name}`);
+    logger.info('Class updated');
 
     res.json({
       success: true,
@@ -496,7 +496,7 @@ router.delete('/:id', protect, authorize('school_admin', 'super_admin'), require
     // Soft delete by setting isActive to false
     await Class.findByIdAndUpdate(req.params.id, { isActive: false });
 
-    logger.info(`Class deleted: ${classData.name}`);
+    logger.info('Class deleted');
 
     res.json({
       success: true,
@@ -585,7 +585,7 @@ router.post('/:id/teachers', protect, authorize('school_admin', 'super_admin'), 
       .populate('programId', 'name')
       .populate('createdBy', 'firstName lastName');
 
-    logger.info(`Teacher ${teacherId} assigned to class ${classData.name}`);
+    logger.info('Teacher assigned to class');
 
     res.json({
       success: true,
@@ -632,7 +632,7 @@ router.delete('/:id/teachers/:teacherId', protect, authorize('school_admin', 'su
       .populate('programId', 'name')
       .populate('createdBy', 'firstName lastName');
 
-    logger.info(`Teacher ${req.params.teacherId} removed from class ${classData.name}`);
+    logger.info('Teacher removed from class');
 
     res.json({
       success: true,

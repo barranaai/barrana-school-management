@@ -12,9 +12,6 @@ import ForgotPassword from './components/auth/ForgotPassword';
 import ResetPassword from './components/auth/ResetPassword';
 
 function App() {
-  console.log('🚀 Full App component loaded successfully!');
-  console.log('Environment:', process.env.NODE_ENV);
-  console.log('API URL:', process.env.REACT_APP_API_URL);
   
   return (
     <div className="App">

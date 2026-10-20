@@ -187,7 +187,7 @@ const storage = multer.diskStorage({
       }
       cb(null, uploadDir);
     } catch (error) {
-      console.warn('Could not create upload directory:', error.message);
+      logger.warn('Could not create report upload directory', { code: error.code || 'UPLOAD_DIRECTORY_FAILED' });
       // Use temp directory as fallback
       cb(null, '/tmp');
     }
@@ -204,16 +204,14 @@ const storage = multer.diskStorage({
 const tempStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadDir = reportMediaUploadDir();
-    console.log('Temp storage destination:', uploadDir);
     // Create directory if it doesn't exist
     try {
       if (!fs.existsSync(uploadDir)) {
-        console.log('Creating upload directory:', uploadDir);
         fs.mkdirSync(uploadDir, { recursive: true });
       }
       cb(null, uploadDir);
     } catch (error) {
-      console.warn('Could not create temp upload directory:', error.message);
+      logger.warn('Could not create temporary report upload directory', { code: error.code || 'UPLOAD_DIRECTORY_FAILED' });
       // Use temp directory as fallback
       cb(null, '/tmp');
     }
@@ -223,7 +221,6 @@ const tempStorage = multer.diskStorage({
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
     const filename = `temp-media-${uniqueSuffix}${ext}`;
-    console.log('Temp storage filename:', filename);
     cb(null, filename);
   }
 });
@@ -675,13 +672,6 @@ router.get('/due-status', protect, authorize('teacher', 'school_admin', 'super_a
       ? `${existingReportInPeriod.teacherId.firstName} ${existingReportInPeriod.teacherId.lastName}`
       : null;
 
-    console.log('🔍 Due status check - existing report info:', {
-      hasExistingReport: hasExistingReportInPeriod,
-      existingTeacherId: existingReportInPeriod?.teacherId,
-      existingTeacherName,
-      existingReportId: existingReportInPeriod?._id
-    });
-
     res.json({
       success: true,
       data: {
@@ -781,12 +771,7 @@ router.get('/test-media/:filename', developmentOnly, protect, async (req, res) =
     const { filename } = req.params;
     const filePath = path.join(__dirname, '..', 'uploads', 'media', filename);
     
-    console.log('Testing media file access:', {
-      filename,
-      filePath,
-      exists: fs.existsSync(filePath)
-    });
-    
+    logger.info('Development media access check', { exists: fs.existsSync(filePath) });
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({
         success: false,
@@ -811,7 +796,7 @@ router.get('/test-media/:filename', developmentOnly, protect, async (req, res) =
     });
     
   } catch (error) {
-    console.error('Error testing media file:', error);
+    logger.error('Development media access check failed', loggerUtils.safeError(error, 'MEDIA_ACCESS_CHECK_FAILED'));
     res.status(500).json({
       success: false,
       message: 'Error testing media file',
@@ -925,13 +910,6 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), r
             ? `${existingReportInPeriod.teacherId.firstName} ${existingReportInPeriod.teacherId.lastName}`
             : 'Another teacher';
           
-          console.log('🔍 Report creation blocked - existing report found:', {
-            existingTeacherId: existingReportInPeriod.teacherId,
-            existingTeacherName,
-            existingReportId: existingReportInPeriod._id,
-            frequency
-          });
-          
           return res.status(403).json({
             success: false,
             message: `A ${frequency.toLowerCase()} report has already been generated for this student in the current period by ${existingTeacherName}.`,
@@ -1038,13 +1016,6 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), r
       endDate: new Date()
     };
 
-    // Debug logging
-    console.log('🔍 Backend - Voice Recording Data:', JSON.stringify(voiceRecording, null, 2));
-    console.log('🔍 Backend - Recordings Array in Input:', voiceRecording?.recordings);
-    console.log('🔍 Backend - Recordings Array Length:', voiceRecording?.recordings?.length || 0);
-    console.log('🔍 Backend - Attachments Data:', JSON.stringify(attachments, null, 2));
-    console.log('🔍 Backend - Attachments Array Length:', attachments?.length || 0);
-    
     // Create report
     const report = await Report.create({
       title,
@@ -1065,16 +1036,6 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), r
 
     // If there are temporary media files, transfer them to the permanent report
     if (attachments && attachments.length > 0) {
-      console.log('🔍 Transferring temporary media to permanent report:', {
-        reportId: report._id,
-        attachmentsCount: attachments.length,
-        attachments: attachments.map(att => ({ 
-          filename: att.filename, 
-          originalName: att.originalName,
-          isTemporary: att.isTemporary 
-        }))
-      });
-      
       // Update the report with the transferred media
       const updatedReport = await Report.findByIdAndUpdate(
         report._id,
@@ -1087,28 +1048,16 @@ router.post('/', protect, authorize('teacher', 'school_admin', 'super_admin'), r
         { new: true }
       );
       
-      console.log('✅ Media transferred successfully:', {
-        reportId: updatedReport._id,
-        finalAttachmentsCount: updatedReport.attachments?.length || 0
+      logger.info('Report media transfer completed', {
+        service: 'reports',
+        attachmentsCount: updatedReport.attachments?.length || 0
       });
     }
-    
-    // Debug logging after creation
-    console.log('🔍 Backend - Created Report Voice Recording:', JSON.stringify(report.voiceRecording, null, 2));
-    console.log('🔍 Backend - Created Report Recordings Array:', report.voiceRecording?.recordings);
-    console.log('🔍 Backend - Created Report Recordings Length:', report.voiceRecording?.recordings?.length || 0);
-    console.log('🔍 Backend - Created Report Attachments:', JSON.stringify(report.attachments, null, 2));
-    console.log('🔍 Backend - Created Report Attachments Length:', report.attachments?.length || 0);
 
     const populatedReport = await Report.findById(report._id)
       .populate('studentId', 'firstName lastName grade studentClass class parentEmail')
       .populate('teacherId', 'firstName lastName')
       .populate('templateId', 'name reportFrequency');
-
-    // Debug logging after population
-    console.log('🔍 Backend - Populated Report Voice Recording:', JSON.stringify(populatedReport.voiceRecording, null, 2));
-    console.log('🔍 Backend - Populated Report Recordings Array:', populatedReport.voiceRecording?.recordings);
-    console.log('🔍 Backend - Populated Report Recordings Length:', populatedReport.voiceRecording?.recordings?.length || 0);
 
     // Send push notification and create in-app notification for parent (don't wait for it)
     setImmediate(async () => {
@@ -1529,11 +1478,7 @@ router.get('/test-media/:filename', developmentOnly, protect, async (req, res) =
     const { filename } = req.params;
     const filePath = path.join(__dirname, '../uploads/media', filename);
     
-    console.log('Testing media file access:', {
-      filename,
-      filePath,
-      exists: require('fs').existsSync(filePath)
-    });
+    logger.info('Development media access check', { exists: require('fs').existsSync(filePath) });
     
     if (require('fs').existsSync(filePath)) {
       const stats = require('fs').statSync(filePath);
@@ -1555,7 +1500,7 @@ router.get('/test-media/:filename', developmentOnly, protect, async (req, res) =
       });
     }
   } catch (error) {
-    console.error('Test media access error:', error);
+    logger.error('Development media access check failed', loggerUtils.safeError(error, 'MEDIA_ACCESS_CHECK_FAILED'));
     res.status(500).json({
       success: false,
       message: 'Test media access failed',
@@ -1569,8 +1514,7 @@ router.get('/test-media/:filename', developmentOnly, protect, async (req, res) =
 // @access  Public (for testing)
 router.post('/test-temp-media', developmentOnly, protect, requireActiveOrganization, tempUploadWithErrorHandling, async (req, res) => {
   try {
-    console.log('=== TEST TEMP MEDIA UPLOAD ===');
-    console.log('Files received:', req.files ? req.files.length : 0);
+    logger.info('Development temporary media upload received', { fileCount: req.files ? req.files.length : 0 });
     
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
@@ -1594,7 +1538,7 @@ router.post('/test-temp-media', developmentOnly, protect, requireActiveOrganizat
     });
 
   } catch (error) {
-    console.error('Test temp upload error:', error);
+    logger.error('Development temporary media upload failed', loggerUtils.safeError(error, 'TEMP_MEDIA_UPLOAD_FAILED'));
     res.status(500).json({
       success: false,
       message: 'Test temp upload failed',
@@ -1608,10 +1552,7 @@ router.post('/test-temp-media', developmentOnly, protect, requireActiveOrganizat
 // @access  Public (for testing)
 router.post('/test-upload', developmentOnly, protect, requireActiveOrganization, upload.array('media', 1), async (req, res) => {
   try {
-    console.log('Test upload request:', {
-      filesCount: req.files ? req.files.length : 0,
-      files: req.files ? req.files.map(f => ({ name: f.originalname, size: f.size, type: f.mimetype })) : []
-    });
+    logger.info('Development media upload received', { fileCount: req.files ? req.files.length : 0 });
 
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
@@ -1635,7 +1576,7 @@ router.post('/test-upload', developmentOnly, protect, requireActiveOrganization,
     });
 
   } catch (error) {
-    console.error('Test upload error:', error);
+    logger.error('Development media upload failed', loggerUtils.safeError(error, 'MEDIA_UPLOAD_FAILED'));
     res.status(500).json({
       success: false,
       message: 'Test upload failed',
@@ -1703,7 +1644,7 @@ router.post('/:reportId/media', protect, authorize('teacher', 'school_admin', 's
 
     await report.save();
 
-    logger.info(`Media uploaded for report ${reportId}`, {
+    logger.info('Report media uploaded', {
       service: 'reports',
       user: req.user._id,
       reportId,
@@ -1830,7 +1771,7 @@ router.delete('/:reportId/media/:mediaId', protect, authorize('teacher', 'school
     report.attachments.splice(mediaIndex, 1);
     await report.save();
 
-    logger.info(`Media deleted from report ${reportId}`, {
+    logger.info('Report media deleted', {
       service: 'reports',
       user: req.user._id,
       reportId,
@@ -1868,7 +1809,7 @@ router.post('/check-due', protect, authorize('teacher'), requireActiveOrganizati
   try {
     const { checkDueReports } = require('../services/reminderScheduler');
     
-    logger.info(`Manual due report check triggered by teacher ${req.user._id}`, {
+    logger.info('Manual due-report check triggered', {
       service: 'reports',
       user: req.user._id
     });
@@ -1905,7 +1846,7 @@ router.get('/due', protect, authorize('teacher'), async (req, res) => {
   try {
     const { calculateDueReportsForTeacher } = require('../services/dueReportsCalculator');
     
-    logger.info(`📊 Getting due reports for teacher ${req.user._id}`, {
+    logger.info('Getting due reports for teacher', {
       service: 'reports',
       user: req.user._id
     });

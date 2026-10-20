@@ -16,16 +16,40 @@ const pickDefined = (source, fields) => fields.reduce((result, field) => {
   if (source && source[field] !== undefined) result[field] = source[field];
   return result;
 }, {});
-const safeCommunication = communication => ({
-  whatsapp: pickDefined(communication?.whatsapp, ['enabled', 'phoneNumber', 'displayName']),
-  email: pickDefined(communication?.email, ['enabled', 'fromName', 'fromEmail', 'replyTo']),
-  sms: pickDefined(communication?.sms, ['enabled', 'phoneNumber'])
+const normalizedCredential = value => typeof value === 'string' && value.trim() ? value.trim() : undefined;
+const communicationCredentialStatus = communication => ({
+  whatsapp: Boolean(
+    communication?.whatsapp?.twilioAccountSid && communication?.whatsapp?.twilioAuthToken
+  ),
+  sms: Boolean(
+    communication?.sms?.twilioAccountSid && communication?.sms?.twilioAuthToken
+  )
 });
+const safeCommunication = (communication, credentialStatus = communicationCredentialStatus(communication)) => ({
+  whatsapp: {
+    ...pickDefined(communication?.whatsapp, ['enabled', 'phoneNumber', 'displayName']),
+    credentialsConfigured: credentialStatus.whatsapp
+  },
+  email: pickDefined(communication?.email, ['enabled', 'fromName', 'fromEmail', 'replyTo']),
+  sms: {
+    ...pickDefined(communication?.sms, ['enabled', 'phoneNumber']),
+    credentialsConfigured: credentialStatus.sms
+  }
+});
+const superAdminSchoolView = school => {
+  const credentialStatus = communicationCredentialStatus(school?.communication);
+  const value = toPlainObject(school);
+  return {
+    ...value,
+    communication: safeCommunication(value.communication, credentialStatus)
+  };
+};
 const organizationSchoolView = school => {
+  const credentialStatus = communicationCredentialStatus(school?.communication);
   const value = toPlainObject(school);
   return pickDefined({
     ...value,
-    communication: safeCommunication(value.communication)
+    communication: safeCommunication(value.communication, credentialStatus)
   }, [
     '_id', 'name', 'slug', 'accountType', 'organizationType', 'customOrganizationTypeLabel', 'terminologyProfile',
     'workspaceProfile', 'contactPerson', 'address', 'schoolType', 'gradeLevels',
@@ -44,7 +68,7 @@ const teacherSchoolView = school => {
   ]);
 };
 const schoolViewFor = (user, school) => {
-  if (user?.role === 'super_admin') return school;
+  if (user?.role === 'super_admin') return superAdminSchoolView(school);
   return user?.role === 'teacher' ? teacherSchoolView(school) : organizationSchoolView(school);
 };
 const schoolAdminUpdate = body => {
@@ -98,7 +122,7 @@ router.get('/', protect, authorize('super_admin'), async (req, res) => {
     
     res.json({
       success: true,
-      data: schools
+      data: schools.map(superAdminSchoolView)
     });
   } catch (error) {
     logger.error('Error fetching schools:', error);
@@ -308,7 +332,7 @@ router.post('/', [
     let schoolAdminInvitation = null;
     try {
       schoolAdminInvitation = await generateSchoolAdminInvitation(contactPerson, school._id);
-      logger.info(`School admin account created for ${contactPerson.email} at school ${school.name}`);
+      logger.info('School administrator account created');
     } catch (error) {
       logger.error('Failed to create school admin account', { errorName: error?.name || 'Error' });
     }
@@ -325,7 +349,7 @@ router.post('/', [
           activationUrl
         });
         invitationSent = true;
-        logger.info(`Welcome email sent successfully to ${contactPerson.email} for school ${school.name}`);
+        logger.info('School administrator welcome email accepted', { channel: 'email' });
       }
     } catch (error) {
       logger.error('Failed to send school administrator invitation', { errorName: error?.name || 'Error' });
@@ -334,7 +358,7 @@ router.post('/', [
     res.status(201).json({
       success: true,
       message: 'School created successfully',
-      data: school,
+      data: superAdminSchoolView(school),
       schoolAdmin: schoolAdminInvitation ? {
         email: schoolAdminInvitation.user.email,
         firstName: schoolAdminInvitation.user.firstName,
@@ -530,7 +554,7 @@ router.put('/:id/branding', protect, authorize('school_admin', 'super_admin'), a
       { new: true, runValidators: true }
     );
 
-    logger.info(`School branding updated for school ${req.params.id} by user ${req.user._id}`);
+    logger.info('School branding updated');
 
     res.json({
       success: true,
@@ -610,8 +634,10 @@ router.put('/:id/communication', protect, authorize('school_admin', 'super_admin
     if (whatsapp) {
       if (whatsapp.enabled !== undefined) updateData['communication.whatsapp.enabled'] = whatsapp.enabled;
       if (whatsapp.phoneNumber !== undefined) updateData['communication.whatsapp.phoneNumber'] = whatsapp.phoneNumber;
-      if (req.user.role === 'super_admin' && whatsapp.twilioAccountSid !== undefined) updateData['communication.whatsapp.twilioAccountSid'] = whatsapp.twilioAccountSid;
-      if (req.user.role === 'super_admin' && whatsapp.twilioAuthToken !== undefined) updateData['communication.whatsapp.twilioAuthToken'] = whatsapp.twilioAuthToken;
+      const accountSid = normalizedCredential(whatsapp.twilioAccountSid);
+      const authToken = normalizedCredential(whatsapp.twilioAuthToken);
+      if (req.user.role === 'super_admin' && accountSid) updateData['communication.whatsapp.twilioAccountSid'] = accountSid;
+      if (req.user.role === 'super_admin' && authToken) updateData['communication.whatsapp.twilioAuthToken'] = authToken;
       if (whatsapp.displayName !== undefined) updateData['communication.whatsapp.displayName'] = whatsapp.displayName;
     }
     
@@ -625,8 +651,10 @@ router.put('/:id/communication', protect, authorize('school_admin', 'super_admin
     if (sms) {
       if (sms.enabled !== undefined) updateData['communication.sms.enabled'] = sms.enabled;
       if (sms.phoneNumber !== undefined) updateData['communication.sms.phoneNumber'] = sms.phoneNumber;
-      if (req.user.role === 'super_admin' && sms.twilioAccountSid !== undefined) updateData['communication.sms.twilioAccountSid'] = sms.twilioAccountSid;
-      if (req.user.role === 'super_admin' && sms.twilioAuthToken !== undefined) updateData['communication.sms.twilioAuthToken'] = sms.twilioAuthToken;
+      const accountSid = normalizedCredential(sms.twilioAccountSid);
+      const authToken = normalizedCredential(sms.twilioAuthToken);
+      if (req.user.role === 'super_admin' && accountSid) updateData['communication.sms.twilioAccountSid'] = accountSid;
+      if (req.user.role === 'super_admin' && authToken) updateData['communication.sms.twilioAuthToken'] = authToken;
     }
 
     const updatedSchool = await School.findByIdAndUpdate(
@@ -635,15 +663,13 @@ router.put('/:id/communication', protect, authorize('school_admin', 'super_admin
       { new: true, runValidators: true }
     );
 
-    logger.info(`School communication settings updated for school ${req.params.id} by user ${req.user._id}`);
+    logger.info('School communication settings updated');
 
     res.json({
       success: true,
       message: 'Communication settings updated successfully',
       data: {
-        communication: req.user.role === 'super_admin'
-          ? updatedSchool.communication
-          : safeCommunication(updatedSchool.communication)
+        communication: safeCommunication(updatedSchool.communication)
       }
     });
   } catch (error) {

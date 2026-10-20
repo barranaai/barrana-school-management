@@ -233,7 +233,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           setReportTemplates(response.data);
         }
       } catch (error) {
-        console.error('❌ Error loading report templates:', error);
       }
     };
 
@@ -244,17 +243,13 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   useEffect(() => {
     const fetchDueReports = async () => {
       try {
-        console.log('📊 Fetching due reports from centralized backend calculator...');
         const response = await apiService.getDueReports();
         
         if (response.success && response.data) {
-          console.log('✅ Due reports fetched:', response.data);
           setDueReportsFromBackend(response.data.dueReports);
         } else {
-          console.error('❌ Failed to fetch due reports:', response.error);
         }
       } catch (error) {
-        console.error('❌ Error fetching due reports:', error);
       }
     };
 
@@ -348,11 +343,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
   // Helper function to calculate due date for current period based on school settings
   const calculateDueDateForFrequency = (frequency: ReportFrequency, currentDate: Date): Date => {
-    console.log('🔍 Frontend calculateDueDateForFrequency called', {
-      frequency,
-      currentDate: currentDate.toISOString(),
-      schoolSettings: school?.settings
-    });
     
     // Get school settings for frequency configuration
     const schoolSettings = school?.settings || {};
@@ -363,13 +353,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     // Date objects lose timezone info and use device's local timezone
     const now = moment(currentDate).tz(timezone);
     
-    console.log('🔍 Frontend frequency config', {
-      frequency,
-      frequencyConfig,
-      enabled: frequencyConfig?.enabled,
-      timezone,
-      nowInSchoolTZ: now.format('YYYY-MM-DD HH:mm:ss z')
-    });
     
     if (frequencyConfig?.enabled) {
       
@@ -577,12 +560,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           return now.toDate(); // Convert moment back to Date
       }
       
-      console.log('🔍 Frontend calculated due date (enabled config)', {
-        frequency,
-        dueDate: dueDate.toISOString(), // moment has .toISOString()
-        dueTime: frequencyConfig.dueTime,
-        timezone
-      });
       
       return dueDate.toDate(); // Convert moment back to Date for compatibility
     } else {
@@ -622,11 +599,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           break;
       }
       
-      console.log('🔍 Frontend calculated due date (fallback)', {
-        frequency,
-        fallbackDueDate: fallbackDueDate.toISOString(),
-        timezone
-      });
       
       return fallbackDueDate.toDate(); // Convert back to Date
     }
@@ -702,16 +674,13 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         frontendResult.frequency
       );
       
-      console.log('🔍 Frontend vs Backend comparison:', comparison);
       
       // Log any differences found
       if (comparison.differences.length > 0) {
-        console.warn('⚠️ Calculation differences found:', comparison.differences);
       }
       
       return comparison;
     } catch (error) {
-      console.error('Error debugging due calculations:', error);
       return null;
     }
     */
@@ -721,7 +690,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   // SIMPLIFIED: Use backend calculator as single source of truth
   // All complex logic moved to backend/services/dueReportsCalculator.js
   const dueReports = useMemo<DueReport[]>(() => {
-    console.log('🎯 Using due reports from centralized backend:', dueReportsFromBackend.length);
 
     // Convert backend format to frontend format. The backend guarantees
     // `frequency` is one of the canonical ReportFrequency values, so the
@@ -852,27 +820,21 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
   // Auto-select template based on student's grade (only due templates)
   const autoSelectTemplateForStudent = async (student: any) => {
-    console.log('🔍 autoSelectTemplateForStudent called:', { student: student?.name, grade: student?.grade });
-    console.log('🔍 Available templates:', reportTemplates.length);
     
     if (!student || !reportTemplates.length) {
-      console.log('🔍 No student or templates available');
       return;
     }
     
     try {
       // Get templates that are actually due (not just available) - uses cross-teacher filtering
       const dueTemplates = await getDueTemplatesForStudent(student);
-      console.log('🔍 Due templates for student (cross-teacher filtered):', dueTemplates.length);
       
       if (dueTemplates.length > 0) {
         // Don't auto-select template - let user choose manually for proper key points extraction
-        console.log('🔍 Due templates available:', dueTemplates.map(t => t.name));
         setSelectedTemplate(null);
         setKeyPoints([]);
         toast.success(`${dueTemplates.length} due template(s) available for Grade ${formatGradeForDisplay(student.grade)}. Please select one to continue.`);
       } else {
-        console.log('🔍 No due templates for grade:', student.grade);
         const availableTemplates = await getAvailableTemplatesForStudent(student);
         const existingReports = getExistingReportInfo(student) || [];
         
@@ -888,11 +850,9 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         setKeyPoints([]);
       }
     } catch (error) {
-      console.error('🔍 Error in autoSelectTemplateForStudent:', error);
       // Fallback to local template selection (also no auto-selection)
       const localDueTemplates = getLocalDueTemplatesForStudent(student);
       if (localDueTemplates.length > 0) {
-        console.log('🔍 Local due templates available:', localDueTemplates.map(t => t.name));
         setSelectedTemplate(null);
         setKeyPoints([]);
         toast.success(`${localDueTemplates.length} template(s) available. Please select one to continue.`);
@@ -939,7 +899,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         setRecordingTime(prev => prev + 1);
       }, 1000);
     } catch (error) {
-      console.error('Error accessing microphone:', error);
       toast.error('Error accessing microphone. Please check permissions.');
     }
   };
@@ -1027,7 +986,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         toast.error('All transcriptions failed. Please check your audio quality and try again.');
       }
     } catch (error) {
-      console.error('Transcription error:', error);
       toast.error('Transcription failed. Please try again.');
     } finally {
       setIsTranscribing(false);
@@ -1080,7 +1038,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         throw new Error(response.error || 'Report generation failed');
       }
     } catch (error) {
-      console.error('Report generation error:', error);
       toast.error('Report generation failed. Please try again.');
     } finally {
       setIsGeneratingReport(false);
@@ -1169,7 +1126,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         transcription: string;
       }> = [];
       if (recordings.length > 0) {
-        console.log('🎤 Uploading audio files...');
         uploadedRecordings = await uploadAudioFiles(recordings, studentId);
       }
 
@@ -1240,10 +1196,8 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
               createdAt: createResponse.data.createdAt
             });
             
-            console.log('✅ Notification sent to school admins for report approval');
           }
         } catch (notificationError) {
-          console.error('❌ Error sending notification to school admins:', notificationError);
           // Don't fail the entire operation if notification fails
         }
         
@@ -1280,7 +1234,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         throw new Error(createResponse.message || createResponse.error || 'Failed to save report draft');
       }
     } catch (error) {
-      console.error('Error saving report draft:', error);
       
       // Handle specific error cases
       let errorMessage = 'Failed to save report draft. Please try again.';
@@ -1318,7 +1271,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         transcription: string;
       }> = [];
       if (recordings.length > 0) {
-        console.log('🎤 Uploading audio files for final report...');
         uploadedRecordings = await uploadAudioFiles(recordings, selectedStudent._id || selectedStudent.id);
       }
 
@@ -1412,7 +1364,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         throw new Error(createResponse.message || 'Failed to create report');
       }
     } catch (error) {
-      console.error('Error sending report:', error);
       toast.error('Failed to send report. Please try again.');
     } finally {
       setIsSending(false);
@@ -1439,26 +1390,14 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
   // Media upload handlers
   const handleMediaUploaded = (media: UploadedMedia[]) => {
-    console.log('🎯 Media uploaded successfully:', media);
-    console.log('🔍 Media details:', media.map(m => ({
-      id: m.id,
-      url: m.url,
-      originalName: m.originalName,
-      hasUrl: !!m.url,
-      urlType: typeof m.url,
-      keys: Object.keys(m),
-      isTemporary: m.isTemporary
-    })));
     
     // Validate media objects before adding
     const validMedia = media.filter(m => {
       if (!m.url) {
-        console.error('❌ Media item missing URL:', m);
         toast.error(`Failed to upload ${m.originalName}: Missing URL`);
         return false;
       }
       if (!m.originalName) {
-        console.error('❌ Media item missing originalName:', m);
         toast.error('Failed to upload file: Missing filename');
         return false;
       }
@@ -1471,13 +1410,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
     
     setUploadedMedia(prev => {
       const newMedia = [...prev, ...validMedia];
-      console.log('🔍 Updated uploadedMedia in StudentManagement:', newMedia.map(m => ({ 
-        id: m.id, 
-        url: m.url, 
-        hasUrl: !!m.url,
-        originalName: m.originalName,
-        isTemporary: m.isTemporary
-      })));
       
       if (validMedia.length > 0) {
         toast.success(`${validMedia.length} file(s) uploaded successfully!`);
@@ -1488,7 +1420,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   };
 
   const handleMediaDeleted = (mediaId: string) => {
-    console.log('Media deleted:', mediaId);
     const deletedMedia = uploadedMedia.find(m => m.id === mediaId);
     
     setUploadedMedia(prev => prev.filter(m => m.id !== mediaId));
@@ -1507,7 +1438,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
   // Check due status for a student and template
   const checkDueStatus = async (studentId: string | null | undefined, templateId: string | null | undefined) => {
     if (!studentId || !templateId) {
-      console.error('Cannot check due status: studentId or templateId is null');
       return { due: false, nextDueDate: null, lastReportDate: null, timezone: 'UTC', frequency: 'Unknown' };
     }
     
@@ -1522,7 +1452,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       }));
       return dueStatus;
     } catch (error) {
-      console.error('Error checking due status:', error);
       // If we can't check due status, assume it's due (fail open)
       return { due: true, nextDueDate: null, lastReportDate: null, timezone: 'UTC', frequency: 'Unknown' };
     }
@@ -1538,10 +1467,8 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
 
   // SIMPLIFIED: Use centralized backend calculator to check if report can be generated
   const openReportDialog = async (student: any) => {
-    console.log('🔍 openReportDialog called for student:', student);
     
     if (!student || !student._id) {
-      console.error('Cannot open report dialog: student is null or missing _id');
       toast.error('Student information is missing. Please try again.');
       return;
     }
@@ -1571,12 +1498,10 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           blockReasons.push(result.data.reason);
         }
       } catch (error) {
-        console.error(`Error checking if can generate for template ${template.name}:`, error);
       }
     }
     
     if (!canGenerateAny) {
-      console.log('🚫 Report dialog blocked - cannot generate any templates');
       const reason = blockReasons.length > 0 
         ? blockReasons[0] 
         : 'Cannot generate report at this time. Please check if reports have already been generated.';
@@ -1584,7 +1509,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       return;
     }
     
-    console.log('✅ Can generate report - opening dialog');
     setSelectedStudent(student);
     
     await autoSelectTemplateForStudent(student);
@@ -1662,12 +1586,10 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
             updatedAt: new Date()
           } as any));
       } else {
-        console.error('Failed to get available templates:', response.error);
         // Fallback to local filtering if API fails
         return getLocalAvailableTemplatesForStudent(student);
       }
     } catch (error) {
-      console.error('Error getting available templates:', error);
       // Fallback to local filtering if API fails
       return getLocalAvailableTemplatesForStudent(student);
     }
@@ -1735,12 +1657,10 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           dueTemplateIds.includes(template._id)
         );
       } else {
-        console.error('Failed to get available templates for due check:', response.error);
         // Fallback to local filtering if API fails
         return getLocalDueTemplatesForStudent(student);
       }
     } catch (error) {
-      console.error('Error getting due templates:', error);
       // Fallback to local filtering if API fails
       return getLocalDueTemplatesForStudent(student);
     }
@@ -1805,7 +1725,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         
         for (const student of teacherStudents) {
           if (!student || !student._id) {
-            console.warn('Skipping student with null _id:', student);
             continue;
           }
           
@@ -1816,7 +1735,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
           
           for (const template of applicableTemplates) {
             if (!template || !template._id) {
-              console.warn('Skipping template with null _id:', template);
               continue;
             }
             
@@ -1828,7 +1746,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         
         await Promise.all(dueChecks);
       } catch (error) {
-        console.error('Error pre-checking due status:', error);
       } finally {
         setIsCheckingDueStatus(false);
       }
@@ -1851,14 +1768,12 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
         toast.success('No new due reports found');
       }
     } catch (error) {
-      console.error('Error checking due reports:', error);
       toast.error('Failed to check due reports');
     }
   };
 
   // Force refresh due reports calculation
   const forceRefreshDueReports = () => {
-    console.log('🔍 Force refreshing due reports calculation');
     // This will trigger the useMemo to recalculate
     setSearchTerm(prev => prev); // Force a re-render
   };
@@ -1888,7 +1803,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error checking due reports';
-      console.error('❌ Error checking due reports:', error);
       toast.error(message, { id: 'checking-due-reports' });
     } finally {
       setChecking(false);
@@ -2634,7 +2548,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                                 startIcon={<Assessment />}
                                 onClick={(e) => {
                                   e.stopPropagation(); // Prevent row click
-                                  console.log('🔘 Generate Report button clicked for student:', student.name);
                                   openReportDialog(student);
                                 }}
                                 disabled={false} // Template availability will be checked when dialog opens
@@ -3187,8 +3100,6 @@ const StudentManagement: React.FC<StudentManagementProps> = ({ schoolBranding })
                     // Extract key points from the selected template
                     const extractedKeyPoints = extractKeyPointsFromTemplate(template.content || '');
                     setKeyPoints(extractedKeyPoints);
-                    console.log('🔍 Template selected:', template.name, 'Key points extracted:', extractedKeyPoints);
-                    console.log('🔍 Template content:', template.content);
                   }
                 }}
                 label="Report Template"

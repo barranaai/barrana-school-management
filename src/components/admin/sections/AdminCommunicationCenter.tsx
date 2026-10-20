@@ -178,7 +178,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
 
       // Check if browser supports notifications
       if (!('Notification' in window)) {
-        console.warn('Browser does not support notifications');
         return;
       }
 
@@ -211,7 +210,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         setTimeout(() => notification.close(), 5000);
       }
     } catch (error) {
-      console.error('Error showing browser notification:', error);
     }
   };
 
@@ -236,21 +234,16 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         setLoading(true);
         setConnectionError(null);
         
-        console.log('🔄 Admin connecting to messaging service...');
         
         // Connect to Socket.io
         await messagingService.connect();
-        console.log('✅ Admin messaging service connected');
 
         // Initialize Firebase push notifications
         try {
           await notificationService.initializePushNotifications((payload) => {
-            console.log('🔔 Admin push notification received in foreground:', payload);
             showBrowserNotification(payload);
           });
-          console.log('✅ Push notifications initialized for admin messaging');
         } catch (notifError) {
-          console.warn('Push notifications not available:', notifError);
         }
 
         // Fetch conversations
@@ -260,7 +253,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         setupSocketListeners();
         
       } catch (error: any) {
-        console.error('❌ Error initializing admin messaging:', error);
         setConnectionError(error?.message || 'Failed to connect to messaging service');
       } finally {
         setLoading(false);
@@ -293,10 +285,8 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       const response = await messagingService.getConversations();
       if (response.success) {
         setConversations(response.data);
-        console.log('📋 Admin loaded conversations:', response.data.length);
       }
     } catch (error) {
-      console.error('Error loading conversations:', error);
     }
   };
 
@@ -306,7 +296,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       const response = await messagingService.getConversationMessages(conversationId);
       if (response.success) {
         setMessages(response.data);
-        console.log('💬 Loaded messages:', response.data.length);
         
         // Scroll to bottom
         setTimeout(() => scrollToBottom(), 100);
@@ -316,7 +305,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         messagingService.markAsRead(conversationId);
       }
     } catch (error) {
-      console.error('Error loading messages:', error);
     }
   };
 
@@ -324,7 +312,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
   const setupSocketListeners = () => {
     // New message received
     messagingService.onNewMessage((message: Message) => {
-      console.log('📨 Admin received new message:', message);
       
       // Show browser notification if message is from someone else
       if (message.senderId !== user?._id) {
@@ -374,7 +361,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
 
     // Message read
     messagingService.onMessageRead((data) => {
-      console.log('✅ Messages marked as read:', data);
       if (selectedConversation && data.conversationId === selectedConversation._id) {
         setMessages(prev => prev.map(msg => 
           msg.senderId === user?._id ? { ...msg, isRead: true } : msg
@@ -384,7 +370,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
 
     // Error handling
     messagingService.onMessageError((error) => {
-      console.error('❌ Message error:', error);
       showSnackbar('Failed to send message. Please try again.', 'error');
       setSending(false);
     });
@@ -497,7 +482,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         setSending(false);
       }, 500);
     } catch (error: any) {
-      console.error('Error sending message:', error);
       showSnackbar(error.message || 'Failed to send message', 'error');
       setSending(false);
     }
@@ -637,18 +621,13 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       // Determine which parents to send to
       let targetParentIds: string[] = [];
       
-      console.log('Recipient type:', recipientType);
-      console.log('Selected recipients:', selectedRecipients);
-      console.log('Parents data:', parents);
       
       if (recipientType === 'all') {
         // Send to all parents
         targetParentIds = parents.map(p => p._id);
-        console.log('All parents selected - sending to:', targetParentIds.length, 'parents');
       } else if (recipientType === 'selected') {
         // Send to selected parents
         targetParentIds = selectedRecipients;
-        console.log('Selected parents:', targetParentIds.length);
       } else {
         showSnackbar('This recipient filter is not available. Choose all parents or selected parents.', 'error');
         setSending(false);
@@ -666,9 +645,7 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
       if (attachments.length > 0) {
         try {
           uploadedAttachments = await messagingService.uploadAttachments(attachments);
-          console.log('Attachments uploaded:', uploadedAttachments);
         } catch (error) {
-          console.error('Error uploading attachments:', error);
           showSnackbar('Failed to upload attachments', 'error');
           setSending(false);
           return;
@@ -702,12 +679,10 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
             failCount++;
           }
         } catch (error) {
-          console.error('Error sending to parent:', parentId, error);
           failCount++;
         }
       }
 
-      console.log(`Messages sent: ${successCount} success, ${failCount} failed`);
 
       // Reset all fields
       setNewConversationDialog(false);
@@ -740,7 +715,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
         showSnackbar('Failed to send messages to any parent', 'error');
       }
     } catch (error) {
-      console.error('Error creating conversation:', error);
       showSnackbar('Failed to create conversation', 'error');
     } finally {
       setSending(false);
@@ -782,7 +756,6 @@ const AdminCommunicationCenter: React.FC<AdminCommunicationCenterProps> = ({ sch
           setParentGroups(groupsData.data);
         }
       } catch (error) {
-        console.error('Error loading data:', error);
       }
     };
 

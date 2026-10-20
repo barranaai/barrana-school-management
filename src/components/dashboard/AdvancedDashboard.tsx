@@ -92,7 +92,7 @@ const AdvancedDashboard: React.FC = () => {
       setSystemStatus(statusData);
       setLastUpdate(new Date());
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('Unable to load dashboard data');
     } finally {
       setLoading(false);
     }

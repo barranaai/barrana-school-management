@@ -20,9 +20,7 @@ let messaging;
 try {
   app = initializeApp(firebaseConfig);
   messaging = getMessaging(app);
-  console.log('✅ Firebase initialized successfully');
 } catch (error) {
-  console.error('❌ Firebase initialization failed:', error);
 }
 
 /**
@@ -32,7 +30,6 @@ try {
 export const requestFirebaseNotificationPermission = async (): Promise<string | null> => {
   try {
     if (!messaging) {
-      console.warn('Firebase messaging not initialized');
       return null;
     }
 
@@ -40,7 +37,6 @@ export const requestFirebaseNotificationPermission = async (): Promise<string | 
     const permission = await Notification.requestPermission();
     
     if (permission === 'granted') {
-      console.log('✅ Notification permission granted');
       
       // Get FCM token
       const token = await getToken(messaging, {
@@ -48,18 +44,14 @@ export const requestFirebaseNotificationPermission = async (): Promise<string | 
       });
       
       if (token) {
-        console.log('✅ FCM Token obtained:', token.substring(0, 20) + '...');
         return token;
       } else {
-        console.warn('❌ No FCM token obtained');
         return null;
       }
     } else {
-      console.warn('❌ Notification permission denied');
       return null;
     }
   } catch (error) {
-    console.error('Error getting FCM token:', error);
     return null;
   }
 };
@@ -70,12 +62,10 @@ export const requestFirebaseNotificationPermission = async (): Promise<string | 
  */
 export const onMessageListener = (callback: (payload: any) => void) => {
   if (!messaging) {
-    console.warn('Firebase messaging not initialized');
     return () => {};
   }
 
   return onMessage(messaging, (payload) => {
-    console.log('🔔 Foreground message received:', payload);
     callback(payload);
   });
 };

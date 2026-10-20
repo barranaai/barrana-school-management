@@ -6,6 +6,7 @@ const vm = require('node:vm');
 const crypto = require('node:crypto');
 const publication = require('../utils/reportPublication');
 const log = { info() {}, warn() {}, error() {} };
+const safeError = (error, fallback = 'OPERATION_FAILED') => ({ name: error?.name || 'Error', code: error?.code || fallback });
 function load(relative, dependencies, env = {}) {
   const file = path.resolve(__dirname, relative);
   const box = { module: { exports: {} }, Buffer, Date, console, __dirname: path.dirname(file), process: { env }, require(name) {
@@ -20,7 +21,7 @@ function emailHarness(env, mode = 'accepted') {
   const calls = { transport: [], logs: [] };
   const api = load('../services/emailService.js', {
     nodemailer: { createTransport: () => ({ async sendMail(data) { calls.transport.push(data); if (mode === 'throw') throw Error('transport unavailable'); return { accepted: mode === 'rejected' ? [] : ['parent@test.local'], messageId: 'provider-1' }; } }) },
-    path, fs: { existsSync: () => false }, '../utils/logger': { logger: log },
+    path, fs: { existsSync: () => false }, '../utils/logger': { logger: log, safeError },
     './logoService': {}, './notificationLogger': { async logEmail(data) { calls.logs.push(data); } },
     './whatsappService': {}
   }, env);

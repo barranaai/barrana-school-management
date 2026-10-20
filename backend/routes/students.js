@@ -186,20 +186,6 @@ router.post('/', [
       isActive,
     } = req.body;
     
-    // Debug logging
-    console.log('Backend - Received student data:', {
-      firstName,
-      lastName,
-      email,
-      studentGrade,
-      parentName,
-      parentEmail,
-      parentPhone,
-      studentClass,
-      schoolId,
-      schoolIdType: typeof req.user.schoolId
-    });
-
     // Check if email already exists (only if email is provided and not empty)
     if (email && email.trim()) {
       const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -227,9 +213,9 @@ router.post('/', [
         
         if (foundClass) {
           classId = foundClass._id;
-          logger.info(`Found class for student: ${studentClass} -> ${classId}`);
+          logger.info('Student class lookup completed', { found: true });
         } else {
-          logger.warn(`Class not found for student: ${studentClass}`);
+          logger.warn('Student class lookup completed', { found: false });
         }
       } catch (error) {
         logger.error('Error finding class for student:', error);
@@ -268,7 +254,7 @@ router.post('/', [
 
     const student = await User.create(studentData);
 
-    logger.info(`Student account created: ${student.firstName} ${student.lastName} at school ${req.user.schoolId}`);
+    logger.info('Student account created');
 
     // Sync enrollment count on the class
     if (classId) {
@@ -308,10 +294,10 @@ router.post('/', [
           parentPhone: parentPhone
         });
 
-        logger.info(`Parent account created: ${parentEmail} for student ${student.firstName} ${student.lastName}`);
+        logger.info('Parent account created and linked to student');
         // Guardian login access is established through the existing password-reset flow.
       } else {
-        logger.info(`Parent account already exists: ${parentEmail} - student added to existing parent`);
+        logger.info('Existing parent account linked to student');
       }
 
       // Link student to parent account
@@ -463,10 +449,10 @@ router.put('/:id', [
         
         if (foundClass) {
           req.body.classId = foundClass._id;
-          logger.info(`Found class for student update: ${req.body.studentClass} -> ${foundClass._id}`);
+          logger.info('Student class update lookup completed', { found: true });
         } else {
           req.body.classId = null;
-          logger.warn(`Class not found for student update: ${req.body.studentClass}`);
+          logger.warn('Student class update lookup completed', { found: false });
         }
       } catch (error) {
         logger.error('Error finding class for student update:', error);
@@ -546,7 +532,7 @@ router.put('/:id', [
           const isE164 = /^\+[1-9]\d{7,14}$/.test(req.body.parentPhone);
           if (isE164) {
             parentUpdateData['preferences.notifications.whatsapp'] = true;
-            logger.info(`WhatsApp enabled for parent with phone: ${req.body.parentPhone}`);
+            logger.info('WhatsApp enabled for parent', { channel: 'whatsapp' });
           }
         }
         if (req.body.parentEmail) {
@@ -563,9 +549,9 @@ router.put('/:id', [
           );
           
           if (updatedParent) {
-            logger.info(`Parent account updated for ${parentEmail}: ${JSON.stringify(parentUpdateData)}`);
+            logger.info('Parent account updated');
           } else {
-            logger.warn(`Parent account not found for email: ${parentEmail}`);
+            logger.warn('Parent account not found during student update');
           }
         }
       } catch (parentUpdateError) {

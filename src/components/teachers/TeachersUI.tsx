@@ -172,7 +172,6 @@ const TeachersUI: React.FC = () => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
     } catch (error) {
-      console.error('Error accessing microphone:', error);
       alert('Error accessing microphone. Please check permissions.');
     }
   };
@@ -275,7 +274,6 @@ const TeachersUI: React.FC = () => {
         throw new Error(response.error || 'Report generation failed');
       }
     } catch (error) {
-      console.error('Report generation error:', error);
       toast.error('Report generation failed. Please try again.');
     } finally {
       setIsGeneratingReport(false);

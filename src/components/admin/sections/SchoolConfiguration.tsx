@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useData } from '../../../contexts/DataContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { REPORT_FREQUENCIES } from '../../../constants/reportFrequencies';
@@ -119,6 +119,28 @@ interface SchoolConfigurationProps {
   initialSection?: 'existing' | 'programs' | 'standard-packages';
 }
 
+interface CommunicationChannelCredentials {
+  credentialsConfigured?: boolean;
+}
+
+interface CommunicationFormState {
+  whatsapp: CommunicationChannelCredentials & {
+    enabled: boolean;
+    phoneNumber: string;
+    displayName: string;
+  };
+  email: {
+    enabled: boolean;
+    fromName: string;
+    fromEmail: string;
+    replyTo: string;
+  };
+  sms: CommunicationChannelCredentials & {
+    enabled: boolean;
+    phoneNumber: string;
+  };
+}
+
 const SchoolConfiguration: React.FC<SchoolConfigurationProps> = (props) => {
   const { user } = useAuth();
   const [section, setSection] = useState(props.initialSection || 'existing');
@@ -140,12 +162,15 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
     secondaryColor: '#dc004e'
   });
   const [isSavingBranding, setIsSavingBranding] = useState(false);
-  const [communicationForm, setCommunicationForm] = useState({
+  const whatsappAccountSidRef = useRef<HTMLInputElement>(null);
+  const whatsappAuthTokenRef = useRef<HTMLInputElement>(null);
+  const smsAccountSidRef = useRef<HTMLInputElement>(null);
+  const smsAuthTokenRef = useRef<HTMLInputElement>(null);
+  const [communicationForm, setCommunicationForm] = useState<CommunicationFormState>({
     whatsapp: {
       enabled: false,
       phoneNumber: '',
-      twilioAccountSid: '',
-      twilioAuthToken: '',
+      credentialsConfigured: false,
       displayName: ''
     },
     email: {
@@ -157,8 +182,7 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
     sms: {
       enabled: false,
       phoneNumber: '',
-      twilioAccountSid: '',
-      twilioAuthToken: ''
+      credentialsConfigured: false
     }
   });
   const [isSavingCommunication, setIsSavingCommunication] = useState(false);
@@ -241,21 +265,14 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
 
   // Debug logging
   useEffect(() => {
-    console.log('🔍 ReportConfiguration - Component mounted');
-    console.log('🔍 ReportConfiguration - Auth state:', { isAuthenticated, user, token });
-    console.log('🔍 ReportConfiguration - School data:', school);
   }, [isAuthenticated, user, token, school]);
 
   // Load report templates
   useEffect(() => {
     const loadReportTemplates = async () => {
       try {
-        console.log('🔍 ReportConfiguration - Loading report templates...');
-        console.log('🔍 ReportConfiguration - Authentication state:', { isAuthenticated, token });
-        console.log('🔍 ReportConfiguration - School ID:', school?.id);
         
         if (!isAuthenticated || !token) {
-          console.error('❌ ReportConfiguration - Not authenticated or no token');
           setError('Authentication required. Please log in to access report templates.');
           setIsLoading(false);
           return;
@@ -266,21 +283,16 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
         
         // Determine schoolId
         const schoolId = isSuperAdmin ? selectedSchoolId : school?.id;
-        console.log('🔍 ReportConfiguration - Calling service with schoolId:', schoolId);
         
         const response = await reportTemplateService.getReportTemplates(schoolId);
-        console.log('🔍 ReportConfiguration - Service response:', response);
         
         if (response.success && response.data) {
-          console.log('✅ ReportConfiguration - Templates loaded successfully:', response.data);
           setReportTemplates(response.data);
           setError(null); // Clear any previous errors
         } else {
-          console.error('❌ ReportConfiguration - Service returned error:', response);
           setError(response.message || 'Failed to load report templates');
         }
       } catch (err) {
-        console.error('❌ ReportConfiguration - Error loading report templates:', err);
         setError('Error loading report templates. Please check your connection and try again.');
       } finally {
         setIsLoading(false);
@@ -309,7 +321,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
           setSelectedSchoolId(list[0]._id);
         }
       } catch (e) {
-        console.error('Failed to load schools for super admin', e);
       }
     };
     loadSchools();
@@ -322,21 +333,15 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
   useEffect(() => {
     const loadSelectedSchoolDetails = async () => {
       if (!isSuperAdmin || !selectedSchoolId) {
-        console.log('🐛 Skipping school details load - isSuperAdmin:', isSuperAdmin, 'selectedSchoolId:', selectedSchoolId);
         return;
       }
       try {
-        console.log('🐛 Loading school details for selectedSchoolId:', selectedSchoolId);
         const resp = await apiService.getSchools();
-        console.log('🐛 All schools response:', resp.data);
         const school = (resp.data || []).find((s: any) => (s._id || s.id) === selectedSchoolId);
         setSelectedSchoolRequiresGrade(!!(school?.workspaceProfile?.capabilities?.requiresAcademicReportGrade ?? school?.workspaceProfile?.capabilities?.requiresAcademicGroupFields));
-        console.log('🐛 Found selected school:', school);
         if (school && school.gradeLevels) {
-          console.log('🐛 Setting school grades:', school.gradeLevels);
           setSelectedSchoolGrades(school.gradeLevels);
         } else {
-          console.log('🐛 No grades found for school, using empty array');
           // Fallback to default grades if school has no specific grades
           setSelectedSchoolGrades([]);
         }
@@ -348,7 +353,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
           setLocalSchoolSettings({});
         }
       } catch (e) {
-        console.error('🐛 Failed to load school details', e);
         setSelectedSchoolGrades([]);
         setLocalSchoolSettings({});
       }
@@ -361,24 +365,16 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
   // Load school logo on component mount
   useEffect(() => {
     if (isAuthenticated && school?.id) {
-      console.log('Loading school logo for school ID:', school.id);
       loadSchoolLogo();
     }
   }, [isAuthenticated, school?.id]);
 
   // Initialize local school settings for school admins
   useEffect(() => {
-    console.log('🔵 SchoolConfiguration - Initializing local settings');
-    console.log('   isSchoolAdmin:', isSchoolAdmin);
-    console.log('   school?.id:', school?.id);
-    console.log('   school?.settings:', school?.settings);
-    console.log('   school?.settings?.reportFrequencies?.Daily:', school?.settings?.reportFrequencies?.Daily);
     
     if (isSchoolAdmin && school?.settings && Object.keys(school.settings).length > 0) {
-      console.log('✅ Setting local school settings from school.settings');
       setLocalSchoolSettings(school.settings);
     } else {
-      console.log('⚠️  Not setting local settings - missing isSchoolAdmin or school.settings or settings is empty');
     }
     // Re-run only when the serialized settings change; school?.settings as a
     // raw object would change identity on every render.
@@ -435,13 +431,8 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       setIsSubmitting(true);
       
       // DEBUG: Log form data
-      console.log('🐛 DEBUG - Form Data:', formData);
-      console.log('🐛 DEBUG - Selected School ID:', selectedSchoolId);
-      console.log('🐛 DEBUG - Is Super Admin:', isSuperAdmin);
-      console.log('🐛 DEBUG - Current School:', school);
       
       const validation = reportTemplateService.validateTemplateData(formData);
-      console.log('🐛 DEBUG - Validation Result:', validation);
       
       if (!validation.isValid) {
         setError(validation.errors.join(', '));
@@ -456,10 +447,8 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
 
       // Include schoolId when super admin uses this screen
       const payload = isSuperAdmin ? { ...formData, schoolId: selectedSchoolId } : (school?.id ? { ...formData, schoolId: school.id } : formData);
-      console.log('🐛 DEBUG - Final Payload:', payload);
       
       const response = await reportTemplateService.createReportTemplate(payload as any);
-      console.log('🐛 DEBUG - API Response:', response);
       
       if (response.success && response.data) {
         setReportTemplates(prev => [response.data!, ...prev]);
@@ -467,12 +456,10 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
         resetForm();
         // Show success message
       } else {
-        console.error('🐛 DEBUG - API Error Response:', response);
         setError(response.message || response.error || 'Failed to create template');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error creating template';
-      console.error('🐛 DEBUG - Catch Error:', err);
       setError(msg);
     } finally {
       setIsSubmitting(false);
@@ -512,7 +499,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       }
     } catch (err) {
       setError('Error updating template');
-      console.error('Error updating template:', err);
     } finally {
       setIsSubmitting(false);
     }
@@ -534,7 +520,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       }
     } catch (err) {
       setError('Error deleting template');
-      console.error('Error deleting template:', err);
     }
   };
 
@@ -556,7 +541,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       // Show specific message if backend prevented disabling the last active template
       const message = err instanceof Error ? err.message : 'Error toggling template status';
       setError(message.includes('At least one report frequency') ? message : 'Error toggling template status');
-      console.error('Error toggling template status:', err);
     }
   };
 
@@ -690,30 +674,20 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
   const loadSchoolBranding = async () => {
     const schoolId = getCurrentSchoolId();
     if (!schoolId) {
-      console.log('Cannot load branding: school ID is missing');
       return;
     }
     
     try {
-      console.log('Loading branding for school:', schoolId);
       const response = await apiService.request(`/schools/${schoolId}`, 'GET');
-      console.log('Load branding response:', response);
       
       if (response.success && response.data.branding) {
-        console.log('Branding data:', response.data.branding);
         setBrandingForm({
           primaryColor: response.data.branding.primaryColor || '#1976d2',
           secondaryColor: response.data.branding.secondaryColor || '#dc004e'
         });
-        console.log('Branding form updated with:', {
-          primaryColor: response.data.branding.primaryColor || '#1976d2',
-          secondaryColor: response.data.branding.secondaryColor || '#dc004e'
-        });
       } else {
-        console.log('No branding data found, using defaults');
       }
     } catch (error) {
-      console.error('Error loading school branding:', error);
     }
   };
 
@@ -722,7 +696,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
     const schoolId = getCurrentSchoolId();
     if (!schoolId) {
       setError('School ID not found. Please select a school first.');
-      console.error('Cannot save branding: school ID is missing');
       return;
     }
     
@@ -731,16 +704,12 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       setError(null);
       setSuccess(null);
       
-      console.log('Saving branding for school:', schoolId);
-      console.log('Branding data:', brandingForm);
       
       const response = await apiService.request(`/schools/${schoolId}/branding`, 'PUT', brandingForm);
       
-      console.log('Save branding response:', response);
       
       if (response.success) {
         setSuccess('Branding settings saved successfully!');
-        console.log('Branding saved successfully');
         // Reload branding to confirm
         await loadSchoolBranding();
         // Don't close dialog immediately so user can see success message
@@ -749,10 +718,8 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
         }, 1500);
       } else {
         setError(response.message || 'Failed to save branding settings');
-        console.error('Failed to save branding:', response);
       }
     } catch (error: any) {
-      console.error('Error saving branding:', error);
       setError(error.message || 'Failed to save branding settings');
     } finally {
       setIsSavingBranding(false);
@@ -763,20 +730,28 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
   const loadCommunicationSettings = async () => {
     const schoolId = getCurrentSchoolId();
     if (!schoolId) {
-      console.log('Cannot load communication settings: school ID is missing');
       return;
     }
     
     try {
       const response = await apiService.request(`/schools/${schoolId}`, 'GET');
-      console.log('Load communication response:', response);
       
       if (response.success && response.data.communication) {
-        console.log('Communication data:', response.data.communication);
-        setCommunicationForm(response.data.communication);
+        const communication = response.data.communication;
+        setCommunicationForm(previous => ({
+          whatsapp: {
+            ...previous.whatsapp,
+            ...communication.whatsapp
+          },
+          email: { ...previous.email, ...communication.email },
+          sms: {
+            ...previous.sms,
+            ...communication.sms
+          }
+        }));
       }
     } catch (error) {
-      console.error('Error loading communication settings:', error);
+      setError('Unable to load communication settings. Please try again.');
     }
   };
 
@@ -785,7 +760,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
     const schoolId = getCurrentSchoolId();
     if (!schoolId) {
       setError('School ID not found. Please select a school first.');
-      console.error('School ID is missing - cannot save communication settings');
       return;
     }
     
@@ -794,26 +768,41 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       setError(null);
       setSuccess(null);
       
-      console.log('Saving communication settings for school:', schoolId);
-      console.log('Communication data:', communicationForm);
       
-      const response = await apiService.request(`/schools/${schoolId}/communication`, 'PUT', communicationForm);
+      const whatsappSid = whatsappAccountSidRef.current?.value.trim() || '';
+      const whatsappToken = whatsappAuthTokenRef.current?.value.trim() || '';
+      const smsSid = smsAccountSidRef.current?.value.trim() || '';
+      const smsToken = smsAuthTokenRef.current?.value.trim() || '';
+      const communicationUpdate = {
+        whatsapp: {
+          ...communicationForm.whatsapp,
+          ...(whatsappSid ? { twilioAccountSid: whatsappSid } : {}),
+          ...(whatsappToken ? { twilioAuthToken: whatsappToken } : {})
+        },
+        email: communicationForm.email,
+        sms: {
+          ...communicationForm.sms,
+          ...(smsSid ? { twilioAccountSid: smsSid } : {}),
+          ...(smsToken ? { twilioAuthToken: smsToken } : {})
+        }
+      };
+
+      const response = await apiService.request(`/schools/${schoolId}/communication`, 'PUT', communicationUpdate);
       
-      console.log('Save communication response:', response);
       
       if (response.success) {
+        for (const credentialInput of [whatsappAccountSidRef, whatsappAuthTokenRef, smsAccountSidRef, smsAuthTokenRef]) {
+          if (credentialInput.current) credentialInput.current.value = '';
+        }
         setSuccess('Communication settings saved successfully!');
-        console.log('Communication settings saved successfully');
         await loadCommunicationSettings();
         setTimeout(() => {
           setOpenCommunicationDialog(false);
         }, 1500);
       } else {
         setError(response.message || 'Failed to save communication settings');
-        console.error('Failed to save communication settings:', response);
       }
     } catch (error: any) {
-      console.error('Error saving communication settings:', error);
       setError(error.message || 'Failed to save communication settings');
     } finally {
       setIsSavingCommunication(false);
@@ -831,30 +820,19 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
 
   // Logo upload functions
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('🖼️ Logo upload triggered');
-    console.log('Event:', event);
-    console.log('Files:', event.target.files);
     
     const file = event.target.files?.[0];
     
     if (!file) {
-      console.log('❌ No file selected');
       return;
     }
     
     const schoolId = getCurrentSchoolId();
     if (!schoolId) {
-      console.error('❌ School ID is missing');
       setError('School ID not found. Please select a school first.');
       return;
     }
 
-    console.log('📁 File selected:', {
-      name: file.name,
-      size: file.size,
-      type: file.type
-    });
-    console.log('🏫 School ID:', schoolId);
 
     try {
       setIsUploadingLogo(true);
@@ -865,7 +843,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       formData.append('logo', file);
 
       const apiUrl = `${process.env.REACT_APP_API_URL || 'http://localhost:5050/api'}/schools/${schoolId}/logo`;
-      console.log('📤 Uploading to:', apiUrl);
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -876,20 +853,15 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       });
 
       const result = await response.json();
-      console.log('📥 Upload response:', result);
 
       if (result.success) {
-        console.log('✅ Logo uploaded successfully!');
-        console.log('🖼️ Logo URL:', result.data.logoUrl);
         setSchoolLogo(result.data.logoUrl);
         setSuccess('School logo uploaded successfully!');
       } else {
         setError(result.message || 'Failed to upload logo');
-        console.error('❌ Upload failed:', result);
       }
     } catch (error: any) {
       setError(error.message || 'Error uploading logo');
-      console.error('❌ Upload error:', error);
     } finally {
       setIsUploadingLogo(false);
       // Reset file input
@@ -920,14 +892,11 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       if (result.success) {
         setSchoolLogo(null);
         setSuccess('School logo deleted successfully');
-        console.log('Logo deleted successfully');
       } else {
         setError(result.message || 'Failed to delete logo');
-        console.error('Failed to delete logo:', result.message);
       }
     } catch (error: any) {
       setError(error.message || 'Error deleting logo');
-      console.error('Error deleting logo:', error);
     }
   };
 
@@ -945,11 +914,9 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
       const result = await response.json();
 
       if (result.success && result.data.logoUrl) {
-        console.log('Logo URL received:', result.data.logoUrl);
         setSchoolLogo(result.data.logoUrl);
       }
     } catch (error) {
-      console.error('Error loading school logo:', error);
     }
   };
 
@@ -1294,31 +1261,9 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                     Configure timezone, working days, holidays, and report due dates for each frequency type.
                   </Typography>
                   
-                  {/* Debug section for settings */}
-                  <Alert severity="info" sx={{ mb: 2, fontSize: '0.8em' }}>
-                    <Typography variant="caption" component="div" sx={{ mb: 1 }}>
-                      🐛 <strong>Settings Debug Info:</strong>
-                    </Typography>
-                    <Typography variant="caption" component="div">
-                      • School ID: {getCurrentSchoolId() || 'None'}
-                    </Typography>
-                    <Typography variant="caption" component="div">
-                      • Local Settings: {JSON.stringify(localSchoolSettings, null, 2).substring(0, 200)}...
-                    </Typography>
-                    <Typography variant="caption" component="div">
-                      • School Settings: {JSON.stringify(school?.settings, null, 2).substring(0, 200)}...
-                    </Typography>
-                  </Alert>
-                  
                   <FrequencyConfiguration
                     schoolSettings={localSchoolSettings}
                     onSettingsChange={async (updatedSettings) => {
-                      console.log('🔄 ReportConfiguration - Settings change triggered');
-                      console.log('🔄 Previous settings:', JSON.stringify(localSchoolSettings, null, 2));
-                      console.log('🔄 Updated settings:', JSON.stringify(updatedSettings, null, 2));
-                      console.log('🔄 Daily.workingDays comparison:');
-                      console.log('   Before:', localSchoolSettings?.reportFrequencies?.Daily?.workingDays);
-                      console.log('   After:', updatedSettings?.reportFrequencies?.Daily?.workingDays);
                       
                       // Store current settings for potential rollback
                       const previousSettings = { ...localSchoolSettings };
@@ -1326,26 +1271,18 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                       try {
                         const schoolId = getCurrentSchoolId();
                         if (!schoolId) {
-                          console.error('❌ No school ID available for settings update');
                           setError('No school ID available. Select a school (Super Admin) or ensure you are assigned to a school.');
                           return;
                         }
                         
-                        console.log('📤 Sending update to API for school ID:', schoolId);
-                        console.log('📤 Request payload:', JSON.stringify(updatedSettings, null, 2));
                         
                         // Update local state immediately for responsive UI
                         setLocalSchoolSettings(updatedSettings);
                         
                         const response = await schoolService.updateSchoolSettings(schoolId, updatedSettings);
                         
-                        console.log('📥 API Response:', response);
                         
                         if (response.success) {
-                          console.log('✅ School settings updated successfully');
-                          console.log('✅ Response data:', response.data);
-                          console.log('✅ Response data settings:', response.data?.settings);
-                          console.log('✅ Response Daily.workingDays:', response.data?.settings?.reportFrequencies?.Daily?.workingDays);
                           setSuccess('Settings saved successfully');
                           
                           // IMPORTANT: Force update the school in DataContext
@@ -1354,14 +1291,11 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                             setLocalSchoolSettings(response.data.settings);
                           }
                         } else {
-                          console.error('❌ Failed to update school settings');
-                          console.error('❌ Error:', response.error);
                           setError(response.error || 'Failed to update school settings');
                           // Revert local state on error
                           setLocalSchoolSettings(previousSettings);
                         }
                       } catch (error) {
-                        console.error('❌ Exception while updating school settings:', error);
                         setError('Failed to update school settings');
                         // Revert local state on error
                         setLocalSchoolSettings(previousSettings);
@@ -1465,11 +1399,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
 
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>School Logo</Typography>
-                {schoolLogo && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                    Debug: Logo URL = {schoolLogo}
-                  </Typography>
-                )}
                 {schoolLogo ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Box sx={{ position: 'relative' }}>
@@ -1484,8 +1413,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                           borderRadius: 4
                         }} 
                         onError={(e) => {
-                          console.error('Failed to load logo image:', schoolLogo);
-                          console.error('Full image URL:', `${(process.env.REACT_APP_API_URL || 'http://localhost:5050/api').replace('/api', '')}${schoolLogo}`);
                           e.currentTarget.style.display = 'none';
                           // Show error message
                           if (e.currentTarget.parentNode) {
@@ -1496,7 +1423,6 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                           }
                         }}
                         onLoad={() => {
-                          console.log('Logo image loaded successfully:', schoolLogo);
                         }}
                       />
                     </Box>
@@ -2231,12 +2157,9 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                       <TextField
                         fullWidth
                         label="Twilio Account SID"
-                        value={communicationForm.whatsapp.twilioAccountSid}
-                        onChange={(e) => setCommunicationForm({
-                          ...communicationForm,
-                          whatsapp: { ...communicationForm.whatsapp, twilioAccountSid: e.target.value }
-                        })}
-                        helperText="From your Twilio account dashboard"
+                        inputRef={whatsappAccountSidRef}
+                        defaultValue=""
+                        helperText={communicationForm.whatsapp.credentialsConfigured ? 'Credentials are configured. Enter a new SID only to replace them.' : 'From your Twilio account dashboard'}
                         placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                       />
                     </Grid>
@@ -2245,12 +2168,10 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                         fullWidth
                         type="password"
                         label="Twilio Auth Token"
-                        value={communicationForm.whatsapp.twilioAuthToken}
-                        onChange={(e) => setCommunicationForm({
-                          ...communicationForm,
-                          whatsapp: { ...communicationForm.whatsapp, twilioAuthToken: e.target.value }
-                        })}
-                        helperText="Keep this secure - from Twilio dashboard"
+                        inputRef={whatsappAuthTokenRef}
+                        defaultValue=""
+                        autoComplete="new-password"
+                        helperText={communicationForm.whatsapp.credentialsConfigured ? 'Stored token is hidden. Enter a new token only to replace it.' : 'Keep this secure - from Twilio dashboard'}
                         placeholder="••••••••••••••••••••••••••••••••"
                       />
                     </Grid>
@@ -2370,12 +2291,9 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                       <TextField
                         fullWidth
                         label="Twilio Account SID"
-                        value={communicationForm.sms.twilioAccountSid || communicationForm.whatsapp.twilioAccountSid}
-                        onChange={(e) => setCommunicationForm({
-                          ...communicationForm,
-                          sms: { ...communicationForm.sms, twilioAccountSid: e.target.value }
-                        })}
-                        helperText="Can use same Twilio account as WhatsApp"
+                        inputRef={smsAccountSidRef}
+                        defaultValue=""
+                        helperText={communicationForm.sms.credentialsConfigured ? 'Credentials are configured. Enter a new SID only to replace them.' : 'Can use the same Twilio account as WhatsApp'}
                         placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                       />
                     </Grid>
@@ -2384,12 +2302,10 @@ const ExistingSchoolConfiguration: React.FC<SchoolConfigurationProps> = ({ schoo
                         fullWidth
                         type="password"
                         label="Twilio Auth Token"
-                        value={communicationForm.sms.twilioAuthToken || communicationForm.whatsapp.twilioAuthToken}
-                        onChange={(e) => setCommunicationForm({
-                          ...communicationForm,
-                          sms: { ...communicationForm.sms, twilioAuthToken: e.target.value }
-                        })}
-                        helperText="Can use same Twilio token as WhatsApp"
+                        inputRef={smsAuthTokenRef}
+                        defaultValue=""
+                        autoComplete="new-password"
+                        helperText={communicationForm.sms.credentialsConfigured ? 'Stored token is hidden. Enter a new token only to replace it.' : 'Can use the same Twilio token as WhatsApp'}
                         placeholder="••••••••••••••••••••••••••••••••"
                       />
                     </Grid>

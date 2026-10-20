@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
 const path = require('path');
 const fs = require('fs');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 const { getSchoolLogo } = require('./logoService');
 const notificationLogger = require('./notificationLogger');
 
@@ -432,7 +432,7 @@ const createReportEmailTemplate = async (data) => {
           };
         }
       } catch (error) {
-        logger.warn('Error loading logo for email:', error.message);
+        logger.warn('Email logo unavailable', safeError(error, 'EMAIL_LOGO_UNAVAILABLE'));
       }
     }
   }
@@ -539,12 +539,7 @@ const sendWelcomeEmail = async (emailData) => {
     
     if (!transporter) {
       // Mock email service for development when credentials are not configured
-      logger.info('Mock email service: Welcome email would be sent in production', {
-        to: emailData.contactPersonEmail,
-        subject: `Welcome to Barrana.ai - Your School Dashboard is Ready!`,
-        schoolName: emailData.schoolName,
-        contactPersonName: emailData.contactPersonName
-      });
+      logger.info('Mock welcome email accepted', { channel: 'email', mode: 'mock' });
       
       return {
         success: true,
@@ -577,7 +572,7 @@ const sendWelcomeEmail = async (emailData) => {
 
     const result = await transporter.sendMail(mailOptions);
     
-    logger.info(`Welcome email sent successfully to ${contactPersonEmail} for school ${schoolName}`);
+    logger.info('Welcome email delivery accepted', { channel: 'email', status: 'accepted' });
     
     return {
       success: true,
@@ -619,7 +614,7 @@ const sendReportEmail = async (emailData) => {
           schoolBranding = school.branding;
         }
       } catch (error) {
-        logger.warn('Error fetching school branding, using defaults:', error.message);
+        logger.warn('School branding unavailable; using defaults', safeError(error, 'BRANDING_UNAVAILABLE'));
       }
     }
 
@@ -670,12 +665,12 @@ const sendReportEmail = async (emailData) => {
               path: filePath,
               contentType: att.mimeType
             });
-            logger.info(`Media attachment added to email: ${att.originalName || att.filename}`);
+            logger.info('Email attachment prepared', { channel: 'email', status: 'attached' });
           } else {
-            logger.warn(`Attachment file not found: ${filePath}`);
+            logger.warn('Email attachment unavailable', { channel: 'email', status: 'missing' });
           }
         } catch (error) {
-          logger.error(`Error processing attachment: ${att.filename}`, error);
+          logger.error('Email attachment processing failed', safeError(error, 'ATTACHMENT_PROCESSING_FAILED'));
         }
       }
     }
@@ -689,12 +684,12 @@ const sendReportEmail = async (emailData) => {
       attachments: emailAttachments
     };
 
-    logger.info(`[EMAIL-PDF] Step 4: Preparing to send email to ${parentEmail}`);
+    logger.info('[EMAIL-PDF] Step 4: Preparing delivery');
     logger.info(`[EMAIL-PDF]   Total attachments: ${emailAttachments.length}`);
     emailAttachments.forEach((att, i) => {
-      logger.info(`[EMAIL-PDF]   Attachment[${i}]: filename=${att.filename}, contentType=${att.contentType}, cid=${att.cid || 'none'}`);
+      logger.info('[EMAIL-PDF] Attachment prepared', { index: i, contentType: att.contentType, inline: Boolean(att.cid) });
     });
-    logger.info(`Sending email with ${emailAttachments.length} attachment(s) to ${parentEmail}`);
+    logger.info('Sending report email', { channel: 'email', attachmentsCount: emailAttachments.length });
 
     const result = await transporter.sendMail(mailOptions);
     const acceptedRecipients = (result.accepted || []).map(value => String(value.address || value).toLowerCase());
@@ -702,10 +697,11 @@ const sendReportEmail = async (emailData) => {
     transportAccepted = true;
     acceptedMessageId = result.messageId;
     const acceptedAt = new Date();
-    logger.info(`Email sent successfully to ${parentEmail} for student ${studentName}`, {
+    logger.info('Report email delivery accepted', {
       attachmentsCount: emailAttachments.length,
       pdfIncluded: !!pdfInfo,
-      messageId: result.messageId
+      channel: 'email',
+      status: 'accepted'
     });
     
     // Log to notification system
@@ -762,13 +758,13 @@ const sendReportEmail = async (emailData) => {
           });
           
           if (whatsappResult.success) {
-            logger.info(`WhatsApp notification sent to parent: ${emailData.parentPhoneNumber}`);
+            logger.info('WhatsApp notification accepted', { channel: 'whatsapp', status: 'accepted' });
           } else {
-            logger.warn(`WhatsApp notification failed: ${whatsappResult.error}`);
+            logger.warn('WhatsApp notification failed', { channel: 'whatsapp', status: 'failed' });
             
             // SMS Fallback: Try SMS if WhatsApp fails and SMS is enabled
             if (emailData.smsEnabled) {
-              logger.info(`Trying SMS fallback for ${emailData.parentPhoneNumber}...`);
+              logger.info('Trying SMS fallback', { channel: 'sms', status: 'attempting' });
               try {
                 const smsService = require('./smsService');
                 smsService.initialize();
@@ -791,19 +787,19 @@ const sendReportEmail = async (emailData) => {
                 });
                 
                 if (smsResult.success) {
-                  logger.info(`✅ SMS fallback successful for ${emailData.parentPhoneNumber}`);
+                  logger.info('SMS fallback accepted', { channel: 'sms', status: 'accepted' });
                 } else {
-                  logger.warn(`SMS fallback also failed: ${smsResult.error}`);
+                  logger.warn('SMS fallback failed', { channel: 'sms', status: 'failed' });
                 }
               } catch (smsError) {
-                logger.error('SMS fallback error (non-fatal):', smsError);
+                logger.error('SMS fallback error', safeError(smsError, 'SMS_FALLBACK_FAILED'));
               }
             }
           }
         }
       }
     } catch (whatsappError) {
-      logger.error('WhatsApp notification error (non-fatal):', whatsappError);
+      logger.error('WhatsApp notification error', safeError(whatsappError, 'WHATSAPP_NOTIFICATION_FAILED'));
       // Don't throw error - WhatsApp is optional
     }
     
@@ -820,7 +816,7 @@ const sendReportEmail = async (emailData) => {
     };
 
   } catch (error) {
-    logger.error('Error sending email:', error);
+    logger.error('Email delivery failed', safeError(error, 'EMAIL_DELIVERY_FAILED'));
     
     error.transportAccepted = transportAccepted;
     error.messageId = acceptedMessageId;
@@ -841,7 +837,7 @@ const testEmailConfiguration = async () => {
     return { success: true, message: 'Email configuration is valid' };
 
   } catch (error) {
-    logger.error('Email configuration test failed:', error);
+    logger.error('Email configuration test failed', safeError(error, 'EMAIL_CONFIGURATION_FAILED'));
     return { success: false, message: `Email configuration error: ${error.message}` };
   }
 };
@@ -999,15 +995,11 @@ const sendTeacherWelcomeEmail = async ({ teacherEmail, teacherName, temporaryPas
 
     const info = await transporter.sendMail(mailOptions);
     
-    logger.info('Teacher welcome email sent successfully', {
-      to: teacherEmail,
-      messageId: info.messageId,
-      schoolName: schoolName
-    });
+    logger.info('Teacher welcome email accepted', { channel: 'email', status: 'accepted' });
 
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    logger.error('Error sending teacher welcome email:', error);
+    logger.error('Teacher welcome email failed', safeError(error, 'TEACHER_WELCOME_EMAIL_FAILED'));
     throw error;
   }
 };
@@ -1017,4 +1009,4 @@ module.exports = {
   sendWelcomeEmail,
   testEmailConfiguration,
   sendTeacherWelcomeEmail
-}; 
+};

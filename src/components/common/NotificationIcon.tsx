@@ -45,7 +45,6 @@ const NotificationIcon: React.FC<NotificationIconProps> = ({ variant = 'default'
 
       // Listen for real-time notifications
       const handleNotification = (notification: Notification) => {
-        console.log('📡 Real-time notification received:', notification);
         setNotifications(prev => [notification, ...prev]);
         setUnreadCount(prev => prev + 1);
         
@@ -87,7 +86,7 @@ const NotificationIcon: React.FC<NotificationIconProps> = ({ variant = 'default'
         setUnreadCount(notificationService.getUnreadCount(response.data));
       }
     } catch (error) {
-      console.error('Error loading notifications:', error);
+      console.error('Unable to load notifications');
     } finally {
       setLoading(false);
     }
@@ -111,7 +110,7 @@ const NotificationIcon: React.FC<NotificationIconProps> = ({ variant = 'default'
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      console.error('Unable to mark notification as read');
       toast.error('Failed to mark notification as read');
     }
   };
@@ -124,7 +123,7 @@ const NotificationIcon: React.FC<NotificationIconProps> = ({ variant = 'default'
       setUnreadCount(0);
       toast.success('All notifications marked as read');
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      console.error('Unable to mark all notifications as read');
       toast.error('Failed to mark all notifications as read');
     } finally {
       setRefreshing(false);

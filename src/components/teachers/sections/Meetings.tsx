@@ -114,7 +114,6 @@ const Meetings: React.FC<Props> = ({ schoolBranding }) => {
       if (slotsRes.success && Array.isArray(slotsRes.data)) setSlots(slotsRes.data);
       if (meetingsRes.success && Array.isArray(meetingsRes.data)) setMeetings(meetingsRes.data);
     } catch (err) {
-      console.error('Teacher: load meetings error', err);
     } finally {
       setLoading(false);
     }

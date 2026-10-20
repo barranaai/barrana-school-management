@@ -1,5 +1,5 @@
 const twilio = require('twilio');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 
 class WhatsAppService {
   constructor() {
@@ -32,7 +32,7 @@ class WhatsAppService {
       logger.info('✅ Global WhatsApp service initialized successfully');
       return true;
     } catch (error) {
-      logger.error('❌ Failed to initialize global WhatsApp service:', error);
+      logger.error('WhatsApp initialization failed', safeError(error, 'WHATSAPP_INITIALIZATION_FAILED'));
       return false;
     }
   }
@@ -60,7 +60,7 @@ class WhatsAppService {
         !school.communication?.whatsapp?.twilioAccountSid || 
         !school.communication?.whatsapp?.twilioAuthToken || 
         !school.communication?.whatsapp?.phoneNumber) {
-      logger.info(`School ${school.name} doesn't have WhatsApp configured, using global client`);
+      logger.info('Organization WhatsApp is not configured; using the global client');
       return this.initialized ? { client: this.client, fromNumber: this.fromNumber } : null;
     }
 
@@ -75,10 +75,10 @@ class WhatsAppService {
       const schoolClient = { client, fromNumber };
       this.schoolClients.set(schoolId, schoolClient);
 
-      logger.info(`✅ Initialized WhatsApp client for school: ${school.name} (${fromNumber})`);
+      logger.info('Organization WhatsApp client initialized', { channel: 'whatsapp', status: 'ready' });
       return schoolClient;
     } catch (error) {
-      logger.error(`❌ Failed to initialize WhatsApp for school ${school.name}:`, error);
+      logger.error('Organization WhatsApp initialization failed', safeError(error, 'WHATSAPP_INITIALIZATION_FAILED'));
       // Fallback to global client
       return this.initialized ? { client: this.client, fromNumber: this.fromNumber } : null;
     }
@@ -173,7 +173,7 @@ class WhatsAppService {
             messageData.contentVariables = JSON.stringify(options.contentVariables);
           }
           
-          logger.info(`Sending WhatsApp template message to ${to} with contentSid: ${options.contentSid}`);
+          logger.info('Sending WhatsApp template message', { channel: 'whatsapp', mode: 'template' });
         } else {
           // Freeform message
           if (!message) {
@@ -181,7 +181,7 @@ class WhatsAppService {
           }
           
           if (message.length > 1600) {
-            logger.warn(`Message to ${to} is ${message.length} characters. WhatsApp limit is 1600. Truncating...`);
+            logger.warn('WhatsApp message exceeded provider length limit and was truncated', { channel: 'whatsapp' });
             message = message.substring(0, 1597) + '...';
           }
           
@@ -199,10 +199,10 @@ class WhatsAppService {
 
         const result = await client.messages.create(messageData);
 
-        logger.info(`✅ WhatsApp message sent to ${to} from ${fromNumber}:`, {
-          sid: result.sid,
+        logger.info('WhatsApp delivery accepted', {
           status: result.status,
           attempt: attempt,
+          channel: 'whatsapp',
           school: school ? school.name : 'Global'
         });
 
@@ -214,13 +214,13 @@ class WhatsAppService {
         };
       } catch (error) {
         lastError = error;
-        logger.warn(`⚠️  WhatsApp message attempt ${attempt}/${maxRetries} failed for ${to}:`, error.message);
+        logger.warn('WhatsApp delivery attempt failed', { channel: 'whatsapp', attempt, maxRetries, ...safeError(error, 'WHATSAPP_DELIVERY_FAILED') });
 
         // Don't retry on certain errors
         if (error.code === 21211 || // Invalid phone number
             error.code === 21614 || // Phone number not WhatsApp-enabled
             error.message.includes('Invalid phone number')) {
-          logger.error(`❌ Non-retryable error sending WhatsApp to ${to}:`, error.message);
+          logger.error('WhatsApp delivery rejected without retry', safeError(error, 'WHATSAPP_DELIVERY_REJECTED'));
           return {
             success: false,
             error: error.message,
@@ -237,7 +237,7 @@ class WhatsAppService {
       }
     }
 
-    logger.error(`❌ Failed to send WhatsApp message to ${to} after ${maxRetries} attempts:`, lastError?.message);
+    logger.error('WhatsApp delivery exhausted retries', { channel: 'whatsapp', attempts: maxRetries, ...safeError(lastError, 'WHATSAPP_DELIVERY_FAILED') });
     return {
       success: false,
       error: lastError?.message || 'Unknown error',
@@ -257,7 +257,7 @@ class WhatsAppService {
       const { student, parent, report, schoolName, school } = reportData;
 
       if (!parent.phoneNumber) {
-        logger.warn(`Parent ${parent.email} has no phone number for WhatsApp`);
+        logger.warn('WhatsApp recipient has no configured phone number', { channel: 'whatsapp' });
         return {
           success: false,
           error: 'No phone number available'
@@ -301,12 +301,7 @@ class WhatsAppService {
         "6": schoolName
       };
 
-      logger.info(`Sending WhatsApp report notification to ${parent.phoneNumber}:`, {
-        parentName,
-        studentName,
-        reportType: report.reportType,
-        templateSid
-      });
+      logger.info('Sending WhatsApp report notification', { channel: 'whatsapp', notificationType: 'report' });
       
       return await this.sendMessage(
         parent.phoneNumber,
@@ -318,7 +313,7 @@ class WhatsAppService {
         }
       );
     } catch (error) {
-      logger.error('Failed to send report notification via WhatsApp:', error);
+      logger.error('WhatsApp report notification failed', safeError(error, 'WHATSAPP_REPORT_NOTIFICATION_FAILED'));
       return {
         success: false,
         error: error.message
@@ -364,7 +359,7 @@ ${schoolName}`;
       const { event, parent, schoolName, reminderType } = eventData;
 
       if (!parent.phoneNumber) {
-        logger.warn(`Parent ${parent.email} has no phone number for WhatsApp`);
+        logger.warn('WhatsApp recipient has no configured phone number', { channel: 'whatsapp' });
         return {
           success: false,
           error: 'No phone number available'
@@ -375,7 +370,7 @@ ${schoolName}`;
       
       return await this.sendMessage(parent.phoneNumber, message);
     } catch (error) {
-      logger.error('Failed to send event notification via WhatsApp:', error);
+      logger.error('WhatsApp event notification failed', safeError(error, 'WHATSAPP_EVENT_NOTIFICATION_FAILED'));
       return {
         success: false,
         error: error.message
@@ -459,7 +454,7 @@ ${schoolName}`;
 
       return results;
     } catch (error) {
-      logger.error('Failed to send bulk WhatsApp messages:', error);
+      logger.error('Bulk WhatsApp delivery failed', safeError(error, 'WHATSAPP_BULK_DELIVERY_FAILED'));
       throw error;
     }
   }

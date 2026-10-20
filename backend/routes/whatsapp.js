@@ -122,7 +122,7 @@ router.put('/preferences', protect, async (req, res) => {
 
     await user.save();
 
-    logger.info(`User ${user._id} updated WhatsApp preferences`, {
+    logger.info('WhatsApp preferences updated', {
       phoneNumber: !!phoneNumber,
       whatsappEnabled,
       userId: user._id
@@ -201,7 +201,7 @@ Thank you for using Barrana.ai! 🎓✨`;
     const result = await whatsappService.sendMessage(phoneNumber, message);
 
     if (result.success) {
-      logger.info(`Test WhatsApp message sent to user ${user._id}`);
+      logger.info('Test WhatsApp message accepted', { channel: 'whatsapp' });
       res.json({
         success: true,
         message: 'Test message sent successfully! Please check your WhatsApp.',
@@ -211,7 +211,7 @@ Thank you for using Barrana.ai! 🎓✨`;
         }
       });
     } else {
-      logger.error(`Failed to send test WhatsApp to user ${user._id}:`, result.error);
+      logger.error('Test WhatsApp message failed', { code: result.error?.code || 'WHATSAPP_TEST_FAILED' });
       res.status(500).json({
         success: false,
         message: 'Failed to send test message',

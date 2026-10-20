@@ -14,7 +14,7 @@ const Message = require('../models/Message');
 const Report = require('../models/Report');
 const ReportTemplate = require('../models/ReportTemplate');
 const School = require('../models/School');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 const { sendEventReminder } = require('./notificationService');
 const { cleanupOldPDFs } = require('./pdfService');
 const { getCurrentDateInTimezone, isReportDue, calculateDueDate, getStartOfFrequencyPeriod } = require('../utils/dateUtils');
@@ -106,7 +106,7 @@ async function getEventRecipients(event) {
 
     return uniqueRecipients;
   } catch (error) {
-    logger.error('Error getting event recipients:', error);
+    logger.error('Unable to get event recipients', safeError(error, 'EVENT_RECIPIENT_LOOKUP_FAILED'));
     return [];
   }
 }
@@ -136,7 +136,7 @@ async function sendReminders(reminderType) {
         const recipients = await getEventRecipients(event);
         
         if (recipients.length === 0) {
-          logger.warn(`No recipients found for event ${event._id}`);
+          logger.warn('No recipients found for event reminder');
           continue;
         }
 
@@ -154,13 +154,13 @@ async function sendReminders(reminderType) {
         event.reminders[reminderType].recipientCount = successCount;
         await event.save();
 
-        logger.info(`Sent ${successCount}/${recipients.length} ${reminderType} reminders for event: ${event.title}`);
+        logger.info('Event reminder batch completed', { successCount, recipientCount: recipients.length, reminderType });
       }
     }
 
     logger.info(`Completed ${reminderType} reminder check`);
   } catch (error) {
-    logger.error(`Error in ${reminderType} reminder scheduler:`, error);
+    logger.error('Event reminder scheduler failed', { reminderType, ...safeError(error, 'REMINDER_SCHEDULER_FAILED') });
   }
 }
 
@@ -246,7 +246,7 @@ async function processScheduledMessages(dependencies = {}) {
         const conversation = message.conversationId;
         const authorizeDelivery = dependencies.authorizeScheduledMessageDelivery || authorizeScheduledMessageDelivery;
         if (!(await authorizeDelivery(message))) {
-          logger.warn(`Scheduled message ${message._id} was blocked because guardian communication access is no longer active`);
+          logger.warn('Scheduled message blocked because guardian communication access is no longer active');
           continue;
         }
         // Mark message as sent
@@ -282,7 +282,7 @@ async function processScheduledMessages(dependencies = {}) {
           recipientUser.notifications.push(notification);
           await recipientUser.save();
           
-          logger.info(`Created notification for scheduled message recipient ${message.recipientId._id || message.recipientId}`);
+          logger.info('Scheduled message notification created');
           
           // Send push notification
           try {
@@ -303,7 +303,7 @@ async function processScheduledMessages(dependencies = {}) {
             
             const sendPush = dependencies.sendPush || firebaseService.sendNotificationToUser.bind(firebaseService);
             await sendPush(recipientUser, pushNotification, pushData);
-            logger.info(`Push notification sent for scheduled message to recipient ${message.recipientId._id || message.recipientId}`);
+            logger.info('Scheduled message push notification accepted', { channel: 'push' });
           } catch (pushError) {
             logger.error('Error sending push notification for scheduled message:', pushError);
           }
@@ -322,9 +322,9 @@ async function processScheduledMessages(dependencies = {}) {
           logger.error('Error emitting socket event for scheduled message:', socketError);
         }
         
-        logger.info(`Scheduled message ${message._id} processed and sent successfully`);
+        logger.info('Scheduled message processed successfully');
       } catch (messageError) {
-        logger.error(`Error processing scheduled message ${message._id}:`, messageError);
+        logger.error('Scheduled message processing failed', safeError(messageError, 'SCHEDULED_MESSAGE_FAILED'));
       }
     }
   } catch (error) {
@@ -419,7 +419,7 @@ async function checkDueReports() {
 
                 // If a report already exists in this period, skip notification
                 if (existingReportInPeriod) {
-                  logger.info(`⏭️  Skipping notification: Report already exists for ${studentName} - ${template.name} (created by another teacher)`);
+                  logger.info('Due-report notification skipped because a report already exists');
                   continue;
                 }
 
@@ -473,7 +473,7 @@ async function checkDueReports() {
                   const io = getIO();
                   if (io) {
                     io.to(`user_${teacher._id}`).emit('notification', notification);
-                    logger.info(`📡 Real-time notification emitted to teacher ${teacher.firstName} ${teacher.lastName}`);
+                    logger.info('Due-report real-time notification emitted');
                   }
                 } catch (socketError) {
                   logger.error('Error emitting Socket.io notification:', socketError);
@@ -493,16 +493,16 @@ async function checkDueReports() {
                       templateId: String(template._id),
                       frequency
                     });
-                    logger.info(`📲 Push notification sent to teacher ${teacher.firstName} ${teacher.lastName}`);
+                    logger.info('Due-report push notification accepted', { channel: 'push' });
                   } catch (pushError) {
                     logger.error('Error sending push notification:', pushError);
                   }
                 }
 
-                logger.info(`✅ Created due report notification: ${template.name} for ${studentName} (Teacher: ${teacher.firstName} ${teacher.lastName})`);
+                logger.info('Due-report notification created');
               }
             } catch (err) {
-              logger.error(`Error checking due status for student ${student._id} template ${template._id}:`, err);
+              logger.error('Due-report notification check failed', safeError(err, 'DUE_REPORT_NOTIFICATION_CHECK_FAILED'));
               continue;
             }
           }
@@ -530,7 +530,7 @@ function initializeDueReportChecker() {
     try {
       await checkDueReports();
     } catch (error) {
-      logger.error('Error in scheduled due report check:', error);
+      logger.error('Scheduled due-report check failed', safeError(error, 'DUE_REPORT_SCHEDULE_FAILED'));
     }
   });
 

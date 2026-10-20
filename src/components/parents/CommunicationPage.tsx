@@ -92,7 +92,6 @@ const CommunicationPage: React.FC = () => {
 
       // Check if browser supports notifications
       if (!('Notification' in window)) {
-        console.warn('Browser does not support notifications');
         return;
       }
 
@@ -125,7 +124,6 @@ const CommunicationPage: React.FC = () => {
         setTimeout(() => notification.close(), 5000);
       }
     } catch (error) {
-      console.error('Error showing browser notification:', error);
     }
   };
 
@@ -136,21 +134,16 @@ const CommunicationPage: React.FC = () => {
         setLoading(true);
         setConnectionError(null);
         
-        console.log('🔄 Connecting to messaging service...');
         
         // Connect to Socket.io
         await messagingService.connect();
-        console.log('✅ Messaging service connected');
 
         // Initialize Firebase push notifications
         try {
           await notificationService.initializePushNotifications((payload) => {
-            console.log('🔔 Push notification received in foreground:', payload);
             showBrowserNotification(payload);
           });
-          console.log('✅ Push notifications initialized for messaging');
         } catch (notifError) {
-          console.warn('Push notifications not available:', notifError);
         }
 
         // Fetch conversations
@@ -160,7 +153,6 @@ const CommunicationPage: React.FC = () => {
         setupSocketListeners();
         
       } catch (error: any) {
-        console.error('❌ Error initializing messaging:', error);
         setConnectionError(error?.message || 'Failed to connect to messaging service');
       } finally {
         setLoading(false);
@@ -192,10 +184,8 @@ const CommunicationPage: React.FC = () => {
       const response = await messagingService.getConversations();
       if (response.success) {
         setConversations(response.data);
-        console.log('📋 Loaded conversations:', response.data.length);
       }
     } catch (error) {
-      console.error('Error loading conversations:', error);
     }
   };
 
@@ -205,7 +195,6 @@ const CommunicationPage: React.FC = () => {
       const response = await messagingService.getConversationMessages(conversationId);
       if (response.success) {
         setMessages(response.data);
-        console.log('💬 Loaded messages:', response.data.length);
         
         // Scroll to bottom
         setTimeout(() => scrollToBottom(), 100);
@@ -215,7 +204,6 @@ const CommunicationPage: React.FC = () => {
         messagingService.markAsRead(conversationId);
       }
     } catch (error) {
-      console.error('Error loading messages:', error);
     }
   };
 
@@ -223,7 +211,6 @@ const CommunicationPage: React.FC = () => {
   const setupSocketListeners = () => {
     // New message received
     messagingService.onNewMessage(async (message: Message) => {
-      console.log('📨 New message received:', message);
       
       // Show browser notification if message is from someone else
       if (message.senderId !== user?._id) {
@@ -269,7 +256,6 @@ const CommunicationPage: React.FC = () => {
           const newConversation = updatedConversations.find(conv => conv._id === message.conversationId);
           
           if (newConversation) {
-            console.log('📬 New conversation thread detected, auto-opening:', newConversation);
             
             // Auto-open the new conversation
             setSelectedConversation(newConversation);
@@ -304,7 +290,6 @@ const CommunicationPage: React.FC = () => {
 
     // Message read
     messagingService.onMessageRead((data) => {
-      console.log('✅ Messages marked as read:', data);
       // Update message read status in UI
       if (selectedConversation && data.conversationId === selectedConversation._id) {
         setMessages(prev => prev.map(msg => 
@@ -315,7 +300,6 @@ const CommunicationPage: React.FC = () => {
 
     // Error handling
     messagingService.onMessageError((error) => {
-      console.error('❌ Message error:', error);
       alert('Failed to send message. Please try again.');
       setSending(false);
     });
@@ -407,7 +391,6 @@ const CommunicationPage: React.FC = () => {
         setSending(false);
       }, 500);
     } catch (error: any) {
-      console.error('Error sending message:', error);
       alert(error.message || 'Failed to send message');
       setSending(false);
     }
@@ -463,7 +446,6 @@ const CommunicationPage: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error('Error creating conversation:', error);
       alert('Failed to create conversation');
     } finally {
       setSending(false);
@@ -486,7 +468,6 @@ const CommunicationPage: React.FC = () => {
           setRecipients(data.data || []);
         }
       } catch (error) {
-        console.error('Error loading recipients:', error);
       }
     };
 

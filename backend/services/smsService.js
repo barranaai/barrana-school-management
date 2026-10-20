@@ -1,5 +1,5 @@
 const twilio = require('twilio');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 
 class SMSService {
   constructor() {
@@ -32,7 +32,7 @@ class SMSService {
       logger.info('✅ Global SMS service initialized successfully');
       return true;
     } catch (error) {
-      logger.error('❌ Failed to initialize global SMS service:', error);
+      logger.error('SMS initialization failed', safeError(error, 'SMS_INITIALIZATION_FAILED'));
       return false;
     }
   }
@@ -78,7 +78,7 @@ class SMSService {
       logger.info(`✅ Initialized SMS client for school: ${school.name} (${fromNumber})`);
       return schoolClient;
     } catch (error) {
-      logger.error(`❌ Failed to initialize SMS for school ${school.name}:`, error);
+      logger.error('Organization SMS initialization failed', safeError(error, 'SMS_INITIALIZATION_FAILED'));
       // Fallback to global client
       return this.initialized ? { client: this.client, fromNumber: this.fromNumber } : null;
     }
@@ -169,7 +169,7 @@ class SMSService {
 
         // SMS has a 160 character limit for single message, 1600 for concatenated
         if (message.length > 1600) {
-          logger.warn(`Message to ${to} is ${message.length} characters. SMS limit is 1600. Truncating...`);
+          logger.warn('SMS exceeded provider length limit and was truncated', { channel: 'sms' });
           message = message.substring(0, 1597) + '...';
         }
 
@@ -199,13 +199,13 @@ class SMSService {
         };
       } catch (error) {
         lastError = error;
-        logger.warn(`⚠️  SMS attempt ${attempt}/${maxRetries} failed for ${to}:`, error.message);
+        logger.warn('SMS delivery attempt failed', { channel: 'sms', attempt, maxRetries, ...safeError(error, 'SMS_DELIVERY_FAILED') });
 
         // Don't retry on certain errors
         if (error.code === 21211 || // Invalid phone number
             error.code === 21614 || // Phone number not valid
             error.message.includes('Invalid phone number')) {
-          logger.error(`❌ Non-retryable error sending SMS to ${to}:`, error.message);
+          logger.error('SMS delivery rejected without retry', safeError(error, 'SMS_DELIVERY_REJECTED'));
           return {
             success: false,
             error: error.message,
@@ -222,7 +222,7 @@ class SMSService {
       }
     }
 
-    logger.error(`❌ Failed to send SMS to ${to} after ${maxRetries} attempts:`, lastError?.message);
+    logger.error('SMS delivery exhausted retries', { channel: 'sms', attempts: maxRetries, ...safeError(lastError, 'SMS_DELIVERY_FAILED') });
 
     return {
       success: false,
@@ -243,7 +243,7 @@ class SMSService {
       const { event, parent, schoolName, reminderType } = eventData;
 
       if (!parent.phoneNumber) {
-        logger.warn(`Parent ${parent.email} has no phone number for SMS`);
+        logger.warn('SMS recipient has no configured phone number', { channel: 'sms' });
         return {
           success: false,
           error: 'No phone number available'
@@ -254,7 +254,7 @@ class SMSService {
       
       return await this.sendMessage(parent.phoneNumber, message, { school: eventData.school });
     } catch (error) {
-      logger.error('Failed to send event notification via SMS:', error);
+      logger.error('SMS event notification failed', safeError(error, 'SMS_EVENT_NOTIFICATION_FAILED'));
       return {
         success: false,
         error: error.message
@@ -305,7 +305,7 @@ class SMSService {
       const { student, parent, report, schoolName, school } = reportData;
 
       if (!parent.phoneNumber) {
-        logger.warn(`Parent ${parent.email} has no phone number for SMS`);
+        logger.warn('SMS recipient has no configured phone number', { channel: 'sms' });
         return {
           success: false,
           error: 'No phone number available'
@@ -316,7 +316,7 @@ class SMSService {
       
       return await this.sendMessage(parent.phoneNumber, message, { school });
     } catch (error) {
-      logger.error('Failed to send report notification via SMS:', error);
+      logger.error('SMS report notification failed', safeError(error, 'SMS_REPORT_NOTIFICATION_FAILED'));
       return {
         success: false,
         error: error.message

@@ -50,7 +50,7 @@ class VoiceService {
       });
       return response.data.data;
     } catch (error) {
-      console.error('Error starting recording:', error);
+      console.error('Unable to start recording');
       throw new Error('Failed to start recording');
     }
   }
@@ -71,7 +71,7 @@ class VoiceService {
 
       return response.data.data;
     } catch (error) {
-      console.error('Error uploading recording:', error);
+      console.error('Unable to upload recording');
       throw new Error('Failed to upload recording');
     }
   }
@@ -92,7 +92,7 @@ class VoiceService {
 
       return response.data.data;
     } catch (error) {
-      console.error('Error generating report:', error);
+      console.error('Unable to generate report');
       throw new Error('Failed to generate report');
     }
   }
@@ -104,7 +104,7 @@ class VoiceService {
       const response = await axios.get(`${this.baseURL}/voice/history`, { params });
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching recording history:', error);
+      console.error('Unable to fetch recording history');
       throw new Error('Failed to fetch recording history');
     }
   }
@@ -114,7 +114,7 @@ class VoiceService {
     try {
       await axios.delete(`${this.baseURL}/voice/${recordingId}`);
     } catch (error) {
-      console.error('Error deleting recording:', error);
+      console.error('Unable to delete recording');
       throw new Error('Failed to delete recording');
     }
   }
@@ -130,7 +130,7 @@ class VoiceService {
       const response = await axios.get(`${this.baseURL}/voice/analytics`);
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching analytics:', error);
+      console.error('Unable to fetch voice analytics');
       throw new Error('Failed to fetch analytics');
     }
   }

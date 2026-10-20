@@ -87,7 +87,6 @@ class AnalyticsService {
       const response = await axios.get(`${this.baseURL}/analytics/dashboard`);
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching dashboard analytics:', error);
       // Return empty data structure instead of mock data
       return {
         students: {
@@ -124,7 +123,6 @@ class AnalyticsService {
       });
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching chart data:', error);
       // Return empty chart data instead of mock data
       return {
         labels: [],
@@ -145,7 +143,6 @@ class AnalyticsService {
       const response = await axios.get(`${this.baseURL}/analytics/performance`);
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching performance metrics:', error);
       // Return empty performance data instead of mock data
       return {
         academicProgress: [],
@@ -161,7 +158,6 @@ class AnalyticsService {
       const response = await axios.get(`${this.baseURL}/analytics/predictive`);
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching predictive insights:', error);
       // Return empty predictive data instead of mock data
       return {
         atRiskStudents: [],
@@ -188,7 +184,6 @@ class AnalyticsService {
       });
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching comparative analytics:', error);
       throw new Error('Failed to fetch comparative analytics');
     }
   }
@@ -202,7 +197,6 @@ class AnalyticsService {
       });
       return response.data;
     } catch (error) {
-      console.error('Error exporting report:', error);
       throw new Error('Failed to export report');
     }
   }
@@ -218,7 +212,6 @@ class AnalyticsService {
       const response = await axios.get(`${this.baseURL}/analytics/realtime`);
       return response.data.data;
     } catch (error) {
-      console.error('Error fetching real-time analytics:', error);
       // Return empty real-time data instead of mock data
       return {
         activeUsers: 0,

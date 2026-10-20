@@ -90,10 +90,6 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
   useEffect(() => {
     if (schoolSettings && Object.keys(schoolSettings).length > 0) {
       // Always reinitialize when schoolSettings changes (on page load or refresh)
-      console.log('✅ Initializing/Reinitializing local settings');
-      console.log('   Timezone:', schoolSettings.timezone);
-      console.log('   Daily workingDays:', schoolSettings.reportFrequencies?.Daily?.workingDays);
-      console.log('   Daily dueTime:', schoolSettings.reportFrequencies?.Daily?.dueTime);
       setLocalSettings(initializeSettings(schoolSettings));
       setHasUnsavedChanges(false); // Reset unsaved changes flag on initialization
     }
@@ -263,8 +259,6 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
   ];
 
   const handleFrequencyChange = (frequency: string, field: string, value: any) => {
-    console.log('🔄 Frequency change:', { frequency, field, value });
-    
     const updatedSettings = {
       ...settings,
       reportFrequencies: {
@@ -335,7 +329,7 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
       await onSettingsChange(settings);
       setHasUnsavedChanges(false);
     } catch (error) {
-      console.error('Error saving settings:', error);
+      console.error('Unable to save frequency settings');
     } finally {
       setIsSaving(false);
     }
@@ -745,20 +739,12 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
                     <Typography variant="body2" color="text.secondary">
                       {getFrequencyDescription(frequency)}
                     </Typography>
-                    {/* Debug info for each frequency */}
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      Debug: enabled={config.enabled}, dueTime={config.dueTime}, skipWeekends={config.skipWeekends}, skipHolidays={config.skipHolidays}
-                      {frequency === 'Daily' ? `, workingDays=${JSON.stringify((config as any).workingDays)}` : ''}
-                      {frequency === 'Weekly' || frequency === 'Bi-Weekly' ? `, dueDay=${(config as any).dueDay}` : ''}
-                      {frequency === 'Annually' ? `, dueDay=${(config as any).dueDay}` : ''}
-                    </Typography>
                   </Box>
                   <FormControlLabel
                     control={
                       <Switch
                         checked={config.enabled}
                         onChange={(e) => {
-                          console.log('🔄 Enabled change:', { frequency, value: e.target.checked });
                           handleFrequencyChange(frequency, 'enabled', e.target.checked);
                         }}
                       />
@@ -1143,7 +1129,6 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
                             multiple
                             value={(config as any).workingDays || [1, 2, 3, 4, 5]}
                             onChange={(e) => {
-                              console.log('🔄 Daily working days change:', { frequency, value: e.target.value });
                               handleFrequencyChange(frequency, 'workingDays', e.target.value);
                             }}
                             label="Working Days"
@@ -1170,7 +1155,6 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
                           <Select
                             value={(config as any).dueDay}
                             onChange={(e) => {
-                              console.log('🔄 Due Day change:', { frequency, value: e.target.value });
                               handleFrequencyChange(frequency, 'dueDay', e.target.value);
                             }}
                             label="Due Day"
@@ -1193,7 +1177,6 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
                         label="Due Time"
                         value={config.dueTime}
                         onChange={(e) => {
-                          console.log('🔄 Due Time change:', { frequency, value: e.target.value });
                           handleFrequencyChange(frequency, 'dueTime', e.target.value);
                         }}
                         InputLabelProps={{ shrink: true }}
@@ -1208,7 +1191,6 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
                               <Switch
                                 checked={config.skipWeekends}
                                 onChange={(e) => {
-                                  console.log('🔄 Skip Weekends change:', { frequency, value: e.target.checked });
                                   handleFrequencyChange(frequency, 'skipWeekends', e.target.checked);
                                 }}
                               />
@@ -1223,7 +1205,6 @@ const FrequencyConfiguration: React.FC<FrequencyConfigurationProps> = ({
                               <Switch
                                 checked={config.skipHolidays}
                                 onChange={(e) => {
-                                  console.log('🔄 Skip Holidays change:', { frequency, value: e.target.checked });
                                   handleFrequencyChange(frequency, 'skipHolidays', e.target.checked);
                                 }}
                               />

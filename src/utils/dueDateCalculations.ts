@@ -573,7 +573,7 @@ export const isReportDue = (
     
     return isDue;
   } catch (error) {
-    console.error('Error calculating due status:', error);
+    console.error('Unable to calculate due status');
     return false;
   }
 };

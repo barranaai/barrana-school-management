@@ -230,7 +230,6 @@ const SuperAdminDashboard: React.FC = () => {
       setSchools(schoolsData.data || []);
       setUsers(usersData.data || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
       setSnackbar({ open: true, message: 'Error fetching data', severity: 'error' });
     } finally {
       setLoading(false);
@@ -329,7 +328,6 @@ const SuperAdminDashboard: React.FC = () => {
         totalTeachers: schoolTeachers.length
       });
     } catch (error) {
-      console.error('Error fetching school data:', error);
       setSnackbar({ open: true, message: 'Error fetching school data', severity: 'error' });
     } finally {
       setLoadingSchoolData(false);
@@ -394,7 +392,6 @@ const SuperAdminDashboard: React.FC = () => {
       
       setSchoolStudentCounts(studentCounts);
     } catch (error) {
-      console.error('Error fetching student counts:', error);
       setSnackbar({ open: true, message: 'Error fetching student counts', severity: 'error' });
     } finally {
       setLoadingBillingData(false);
@@ -402,11 +399,6 @@ const SuperAdminDashboard: React.FC = () => {
   };
 
   const handleEditSchool = (school: any) => {
-    console.log('🔵 handleEditSchool - Loading school for edit:', school);
-    console.log('   school.address:', school.address);
-    console.log('   school.address.country:', school.address?.country);
-    console.log('   school.address.state:', school.address?.state);
-    console.log('   school.address.city:', school.address?.city);
     
     setSelectedSchool(school);
     
@@ -415,12 +407,10 @@ const SuperAdminDashboard: React.FC = () => {
     const stateName = school.address?.state || school.state || '';
     const cityName = school.address?.city || school.city || '';
     
-    console.log('   Extracted values:', { countryName, stateName, cityName });
     
     // Find country and populate states/cities
     const country = COUNTRIES.find(c => c.name === countryName);
     if (country) {
-      console.log('   Found country:', country.name, 'ISO:', country.isoCode);
       setSelectedCountryCode(country.isoCode);
       const statesForCountry = getStatesForCountry(country.isoCode);
       setStates(statesForCountry);
@@ -428,17 +418,13 @@ const SuperAdminDashboard: React.FC = () => {
       if (stateName) {
         const state = State.getStatesOfCountry(country.isoCode).find(s => s.name === stateName);
         if (state) {
-          console.log('   Found state:', state.name, 'ISO:', state.isoCode);
           setSelectedStateCode(state.isoCode);
           const citiesForState = getCitiesForCountry(country.isoCode, state.isoCode);
           setCities(citiesForState);
-          console.log('   Loaded cities for state:', citiesForState.length);
         } else {
-          console.log('   State not found:', stateName);
         }
       }
     } else {
-      console.log('   Country not found:', countryName);
     }
 
     setSchoolForm({
@@ -460,11 +446,6 @@ const SuperAdminDashboard: React.FC = () => {
       timezone: school.settings?.timezone || 'UTC'
     });
     
-    console.log('✅ School form populated:', {
-      country: countryName,
-      state: stateName,
-      city: cityName
-    });
     
     setOpenEditSchoolDialog(true);
   };
@@ -591,7 +572,6 @@ const SuperAdminDashboard: React.FC = () => {
         return;
       }
         } catch (error: any) {
-      console.error('Error adding school:', error);
 
  
       let errorMessage = 'Error adding school';
@@ -685,7 +665,6 @@ const SuperAdminDashboard: React.FC = () => {
         timezone: 'UTC'
       });
     } catch (error) {
-      console.error('Error updating school:', error);
       setSnackbar({ open: true, message: 'Error updating school', severity: 'error' });
     } finally {
       setIsSubmitting(false);

@@ -54,7 +54,6 @@ class NotificationService {
 
       return data;
     } catch (error) {
-      console.error('Error fetching notifications:', error);
       throw error;
     }
   }
@@ -74,7 +73,6 @@ class NotificationService {
 
       return data;
     } catch (error) {
-      console.error('Error marking notification as read:', error);
       throw error;
     }
   }
@@ -90,7 +88,6 @@ class NotificationService {
 
       return { success: true, message: 'All notifications marked as read' };
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
       throw error;
     }
   }
@@ -124,7 +121,6 @@ class NotificationService {
   async initializePushNotifications(onNewNotification?: (payload: any) => void): Promise<boolean> {
     try {
       if (!areNotificationsSupported()) {
-        console.warn('Push notifications not supported in this browser');
         return false;
       }
 
@@ -132,7 +128,6 @@ class NotificationService {
       const token = await requestFirebaseNotificationPermission();
       
       if (!token) {
-        console.warn('Failed to get FCM token');
         return false;
       }
 
@@ -144,15 +139,12 @@ class NotificationService {
       // Listen for foreground messages
       if (onNewNotification) {
         this.foregroundListenerUnsubscribe = onMessageListener((payload) => {
-          console.log('🔔 Foreground notification received:', payload);
           onNewNotification(payload);
         });
       }
 
-      console.log('✅ Push notifications initialized successfully');
       return true;
     } catch (error) {
-      console.error('Error initializing push notifications:', error);
       return false;
     }
   }
@@ -185,10 +177,8 @@ class NotificationService {
         throw new Error(data.message || `HTTP error! status: ${response.status}`);
       }
 
-      console.log('✅ FCM token registered with backend');
       return true;
     } catch (error) {
-      console.error('Error registering FCM token with backend:', error);
       return false;
     }
   }
@@ -216,10 +206,8 @@ class NotificationService {
       }
 
       this.fcmToken = null;
-      console.log('✅ FCM token unregistered');
       return true;
     } catch (error) {
-      console.error('Error unregistering FCM token:', error);
       return false;
     }
   }
@@ -243,7 +231,6 @@ class NotificationService {
 
       return true;
     } catch (error) {
-      console.error('Error sending test notification:', error);
       return false;
     }
   }

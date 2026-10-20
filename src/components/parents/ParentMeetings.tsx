@@ -107,7 +107,7 @@ const ParentMeetings: React.FC<Props> = ({ parentEmail }) => {
       if (slotsRes.success && Array.isArray(slotsRes.data)) setSlots(slotsRes.data);
       if (childrenRes?.success && Array.isArray(childrenRes.data)) setChildren(childrenRes.data);
     } catch (err) {
-      console.error('Parent: load meetings error', err);
+      console.error('Unable to load meetings');
     } finally {
       setLoading(false);
     }

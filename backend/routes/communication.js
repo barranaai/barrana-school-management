@@ -66,7 +66,7 @@ router.post('/report-approval-notification', protect, authorize('teacher', 'scho
     }).select('_id firstName lastName email');
 
     if (schoolAdmins.length === 0) {
-      logger.warn(`No school admins found for school ${schoolId}`);
+      logger.warn('No active school administrators found for notification');
       return res.json({
         success: true,
         data: {
@@ -131,10 +131,10 @@ router.post('/report-approval-notification', protect, authorize('teacher', 'scho
         }
         
         sentCount++;
-        logger.info(`Notification sent to school admin ${admin.email} for report ${reportData.reportId}`);
+        logger.info('Report approval notification accepted');
       } catch (error) {
         failedCount++;
-        logger.error(`Failed to send notification to school admin ${admin.email}:`, error);
+        logger.error('Report approval notification failed', error);
       }
     }
 
@@ -287,7 +287,7 @@ router.post('/fcm/register', protect, async (req, res) => {
       }
     });
 
-    logger.info(`FCM token registered for user ${req.user._id}`, {
+    logger.info('Push token registered', {
       device,
       platform: deviceInfo.platform
     });
@@ -324,7 +324,7 @@ router.delete('/fcm/unregister', protect, async (req, res) => {
       $pull: { fcmTokens: { token } }
     });
 
-    logger.info(`FCM token unregistered for user ${req.user._id}`);
+    logger.info('Push token unregistered');
 
     res.json({
       success: true,

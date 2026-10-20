@@ -118,7 +118,7 @@ class ReportTemplateService {
       
       return data;
     } catch (error) {
-      console.error('Error fetching report templates:', error);
+      console.error('Unable to fetch report templates');
       throw error;
     }
   }
@@ -133,7 +133,7 @@ class ReportTemplateService {
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('Error fetching report template:', error);
+      console.error('Unable to fetch report template');
       throw error;
     }
   }
@@ -151,7 +151,7 @@ class ReportTemplateService {
       
       return responseData;
     } catch (error) {
-      console.error('Error creating report template:', error);
+      console.error('Unable to create report template');
       throw error;
     }
   }
@@ -168,7 +168,7 @@ class ReportTemplateService {
       const responseData = await response.json();
       return responseData;
     } catch (error) {
-      console.error('Error updating report template:', error);
+      console.error('Unable to update report template');
       throw error;
     }
   }
@@ -183,7 +183,7 @@ class ReportTemplateService {
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('Error deleting report template:', error);
+      console.error('Unable to delete report template');
       throw error;
     }
   }
@@ -198,7 +198,7 @@ class ReportTemplateService {
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('Error fetching templates by grade:', error);
+      console.error('Unable to fetch templates by grade');
       throw error;
     }
   }
@@ -213,7 +213,7 @@ class ReportTemplateService {
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('Error fetching templates by frequency:', error);
+      console.error('Unable to fetch templates by frequency');
       throw error;
     }
   }
@@ -228,7 +228,7 @@ class ReportTemplateService {
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('Error toggling template status:', error);
+      console.error('Unable to update template status');
       throw error;
     }
   }

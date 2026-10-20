@@ -71,7 +71,7 @@ class SchoolService {
         };
       }
     } catch (error: any) {
-      console.error('Error updating school settings:', error);
+      console.error('Unable to update school settings');
       return {
         success: false,
         error: error.response?.data?.message || error.message || 'Failed to update school settings'
@@ -104,7 +104,7 @@ class SchoolService {
         };
       }
     } catch (error: any) {
-      console.error('Error fetching school settings:', error);
+      console.error('Unable to fetch school settings');
       return {
         success: false,
         error: error.response?.data?.message || error.message || 'Failed to fetch school settings'

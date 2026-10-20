@@ -2,6 +2,75 @@ const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
 
+const REDACTED = '[REDACTED]';
+const sensitiveKey = /(?:password|passphrase|secret|token|authorization|cookie|credential|api.?key|account.?sid|phone|email|transcript|recording|report.?content|prompt|response.?body|device.?token|fcm|student.?id|child.?id|guardian.?id|parent.?id|user.?id|teacher.?id|report.?id|class.?id|conversation.?id|event.?id|school.?id|media.?id|(?:student|child|guardian|parent|teacher|participant|recipient).?name|file.?name|(?:^|_)path$|absPath|inputPath|outputPath|snippet|rawText|^user$)/i;
+const errorKey = /^(?:error|err)$/i;
+const safeErrorMetadata = value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const keys = Object.keys(value);
+  if (keys.some(key => !['name', 'code'].includes(key))) return null;
+  if (typeof value.name !== 'string' || typeof value.code !== 'string') return null;
+  return { name: value.name, code: value.code };
+};
+
+const sanitizeLogMessage = value => {
+  if (typeof value !== 'string') return value;
+  return value
+    .replace(/\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis):\/\/\S+/gi, REDACTED)
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, REDACTED)
+    .replace(/\b(?:Bearer\s+)?eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, REDACTED)
+    .replace(/\b(?:password|passphrase|secret|token|auth.?token|authorization|cookie|credential|api.?key|account.?sid|student.?name|child.?name|guardian.?name|parent.?name|teacher.?name|recipient.?name|participant.?name)\s*[:=]\s*[^,;|\r\n]+/gi, match => `${match.split(/[:=]/, 1)[0]}=${REDACTED}`)
+    .replace(/[A-Za-z]:\\(?:[^\s<>:"|?*]+\\)*[^\s<>:"|?*]*/g, REDACTED)
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, REDACTED);
+};
+
+const sanitizeLogData = (value, seen = new WeakSet()) => {
+  if (value === null || value === undefined) return value;
+  if (value instanceof Error) {
+    return { name: value.name || 'Error', code: value.code || 'OPERATION_FAILED' };
+  }
+  if (Array.isArray(value)) return value.map(item => sanitizeLogData(item, seen));
+  if (typeof value !== 'object') return value;
+  if (seen.has(value)) return '[Circular]';
+  seen.add(value);
+  const clean = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (errorKey.test(key)) {
+      clean[key] = item instanceof Error
+        ? { name: item.name || 'Error', code: item.code || 'OPERATION_FAILED' }
+        : (safeErrorMetadata(item) || REDACTED);
+    } else {
+      clean[key] = sensitiveKey.test(key) ? REDACTED : sanitizeLogData(item, seen);
+    }
+  }
+  return clean;
+};
+
+const sanitizeFormat = winston.format(info => {
+  const splat = Symbol.for('splat');
+  if (info[splat]) info[splat] = sanitizeLogData(info[splat]);
+  const clean = sanitizeLogData(info);
+  Object.keys(info).forEach(key => delete info[key]);
+  Object.assign(info, clean);
+  return info;
+});
+
+const safeError = (error, fallback = 'OPERATION_FAILED') => ({
+  name: error?.name || 'Error',
+  code: typeof error?.code === 'string' ? error.code : fallback
+});
+
+const protectLoggerArguments = instance => {
+  for (const level of ['error', 'warn', 'info', 'debug']) {
+    const write = instance[level].bind(instance);
+    instance[level] = (message, ...metadata) => write(
+      typeof message === 'string' ? sanitizeLogMessage(message) : sanitizeLogData(message),
+      ...metadata.map(value => sanitizeLogData(value))
+    );
+  }
+  return instance;
+};
+
 // Production deployment - use console logging
 // Create logs directory in development for file logging
 let fileTransports = [];
@@ -29,14 +98,15 @@ if (process.env.NODE_ENV === 'development') {
     
     fileTransports.push(rotatingFileTransport);
   } catch (error) {
-    console.warn('Could not create file logging, using console only:', error.message);
+    console.warn('Could not create file logging; using console only');
   }
 }
 
 // Create the main logger
-const logger = winston.createLogger({
+const logger = protectLoggerArguments(winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
+    sanitizeFormat(),
     winston.format.timestamp({
       format: 'YYYY-MM-DD HH:mm:ss.SSS'
     }),
@@ -54,12 +124,13 @@ const logger = winston.createLogger({
     }),
     ...fileTransports // Add file transports only if available
   ]
-});
+}));
 
 // Create specialized loggers for different concerns
-const dueDateLogger = winston.createLogger({
+const dueDateLogger = protectLoggerArguments(winston.createLogger({
   level: 'debug',
   format: winston.format.combine(
+    sanitizeFormat(),
     winston.format.timestamp({
       format: 'YYYY-MM-DD HH:mm:ss.SSS'
     }),
@@ -75,11 +146,12 @@ const dueDateLogger = winston.createLogger({
       )
     })
   ]
-});
+}));
 
-const reportCreationLogger = winston.createLogger({
+const reportCreationLogger = protectLoggerArguments(winston.createLogger({
   level: 'debug',
   format: winston.format.combine(
+    sanitizeFormat(),
     winston.format.timestamp({
       format: 'YYYY-MM-DD HH:mm:ss.SSS'
     }),
@@ -95,13 +167,13 @@ const reportCreationLogger = winston.createLogger({
       )
     })
   ]
-});
+}));
 
 // Helper functions for structured logging
 const logDueDateCalculation = (operation, data) => {
   const logEntry = {
     operation,
-    data,
+    data: sanitizeLogData(data),
     timestamp: new Date().toISOString(),
     calculationId: `calc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   };
@@ -113,7 +185,7 @@ const logDueDateCalculation = (operation, data) => {
     console.log(`🔍 [${operation}]`, {
       timestamp: logEntry.timestamp,
       calculationId: logEntry.calculationId,
-      ...data
+      ...sanitizeLogData(data)
     });
   }
 };
@@ -121,7 +193,7 @@ const logDueDateCalculation = (operation, data) => {
 const logReportCreation = (operation, data) => {
   reportCreationLogger.info('Report Creation', {
     operation,
-    data,
+    data: sanitizeLogData(data),
     timestamp: new Date().toISOString()
   });
 };
@@ -129,12 +201,8 @@ const logReportCreation = (operation, data) => {
 const logError = (operation, error, context = {}) => {
   logger.error('Error occurred', {
     operation,
-    error: {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    },
-    context,
+    error: safeError(error),
+    context: sanitizeLogData(context),
     timestamp: new Date().toISOString()
   });
   
@@ -142,12 +210,8 @@ const logError = (operation, error, context = {}) => {
   if (operation.includes('due') || operation.includes('date')) {
     dueDateLogger.error('Due Date Error', {
       operation,
-      error: {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      },
-      context,
+      error: safeError(error),
+      context: sanitizeLogData(context),
       timestamp: new Date().toISOString()
     });
   }
@@ -155,12 +219,8 @@ const logError = (operation, error, context = {}) => {
   if (operation.includes('report') || operation.includes('create')) {
     reportCreationLogger.error('Report Creation Error', {
       operation,
-      error: {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      },
-      context,
+      error: safeError(error),
+      context: sanitizeLogData(context),
       timestamp: new Date().toISOString()
     });
   }
@@ -249,5 +309,10 @@ module.exports = {
   logCalculationError,
   logFrequencyConfigValidation,
   logTimezoneConversion,
-  logPeriodCalculation
-}; 
+  logPeriodCalculation,
+  sanitizeLogData,
+  sanitizeLogMessage,
+  sanitizeFormat,
+  protectLoggerArguments,
+  safeError
+};

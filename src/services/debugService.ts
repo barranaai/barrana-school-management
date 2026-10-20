@@ -189,7 +189,6 @@ class DebugService {
       
       return response.data!;
     } catch (error) {
-      console.error('Error comparing due calculations:', error);
       throw error;
     }
   }
@@ -209,7 +208,6 @@ class DebugService {
       
       return response.data!;
     } catch (error) {
-      console.error('Error getting school settings debug:', error);
       throw error;
     }
   }
@@ -229,7 +227,6 @@ class DebugService {
       
       return response.data!;
     } catch (error) {
-      console.error('Error getting student assignment debug:', error);
       throw error;
     }
   }
@@ -250,7 +247,6 @@ class DebugService {
       
       return response.data!;
     } catch (error) {
-      console.error('Error testing all calculations:', error);
       throw error;
     }
   }
@@ -275,7 +271,6 @@ class DebugService {
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('Error generating debug report:', error);
       throw error;
     }
   }
@@ -308,14 +303,12 @@ class DebugService {
             templateId: template.id
           });
         } catch (error) {
-          console.error(`Error comparing calculations for template ${template.id}:`, error);
           // Continue with other templates
         }
       }
       
       return comparisons;
     } catch (error) {
-      console.error('Error validating student due reports:', error);
       throw error;
     }
   }
@@ -405,7 +398,6 @@ class DebugService {
       
       return { issues, summary };
     } catch (error) {
-      console.error('Error checking system consistency:', error);
       throw error;
     }
   }

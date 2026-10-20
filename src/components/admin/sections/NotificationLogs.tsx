@@ -137,7 +137,7 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
         throw new Error(response.error || 'Failed to fetch logs');
       }
     } catch (err: any) {
-      console.error('Error fetching logs:', err);
+      console.error('Unable to load notification logs');
       setError(err.response?.data?.message || 'Failed to fetch notification logs');
     } finally {
       setLoading(false);
@@ -158,7 +158,7 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
         setStatistics(response.data.overall);
       }
     } catch (err) {
-      console.error('Error fetching statistics:', err);
+      console.error('Unable to load notification statistics');
     }
   };
 
@@ -204,7 +204,7 @@ const NotificationLogs: React.FC<NotificationLogsProps> = ({ schoolBranding }) =
 
       window.open(`${process.env.REACT_APP_API_URL}/notification-logs/export/csv?${params.toString()}`, '_blank');
     } catch (err) {
-      console.error('Error exporting logs:', err);
+      console.error('Unable to export notification logs');
     }
   };
 

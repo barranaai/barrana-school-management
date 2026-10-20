@@ -105,18 +105,12 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   const [originalContent, setOriginalContent] = useState<string>('');
 
   // Debug: Log context reports
-  console.log('🔍 Context reports:', contextReports);
-  console.log('🔍 User ID:', user?.id);
-  console.log('🔍 Students data:', students);
-  console.log('🔍 Students count:', students.length);
-  console.log('🔍 Sample student data:', students[0]);
 
   // Load reports for the teacher
   useEffect(() => {
     const loadReports = async () => {
       try {
         setLoading(true);
-        console.log('🔍 Loading reports for teacher:', user?.id);
         
         // Always try to get complete data from API first
         const response = await reportService.getReports({
@@ -125,12 +119,8 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
           page: 1
         });
 
-        console.log('📊 API response:', response);
 
         if (response.success && response.data) {
-          console.log('✅ Reports loaded from API:', response.data.length);
-          console.log('🔍 First report studentId:', response.data[0]?.studentId);
-          console.log('🔍 First report full data:', response.data[0]);
           // Convert API response to match our DataContext Report interface
           const convertedReports = response.data.map((report: any) => ({
             ...report,
@@ -149,7 +139,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                   attachments: media // Map media to attachments for compatibility
                 };
               } catch (error) {
-                console.error(`Error fetching media for report ${report._id}:`, error);
                 return {
                   ...report,
                   attachments: []
@@ -160,14 +149,12 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
 
           setReports(reportsWithMedia);
         } else {
-          console.log('❌ No reports found from API, using context reports as fallback...');
           
           // Fallback to context reports if API fails
           const teacherReports = contextReports.filter(report => 
             report.teacherId === user?.id || report.teacherId === user?.id?.toString()
           );
           
-          console.log('📊 Fallback context reports:', teacherReports.length);
           
           // Fetch media attachments for context reports too
           const reportsWithMedia = await Promise.all(
@@ -179,7 +166,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                   attachments: media // Map media to attachments for compatibility
                 };
               } catch (error) {
-                console.error(`Error fetching media for report ${report._id}:`, error);
                 return {
                   ...report,
                   attachments: []
@@ -191,14 +177,12 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
           setReports(reportsWithMedia as any);
         }
       } catch (error) {
-        console.error('❌ Error loading reports from API, using context reports as fallback:', error);
         
         // Fallback to context reports if API fails
         const teacherReports = contextReports.filter(report => 
           report.teacherId === user?.id || report.teacherId === user?.id?.toString()
         );
         
-        console.log('📊 Error fallback context reports:', teacherReports.length);
         
         // Fetch media attachments for error fallback reports too
         const reportsWithMedia = await Promise.all(
@@ -210,7 +194,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                 attachments: media // Map media to attachments for compatibility
               };
             } catch (error) {
-              console.error(`Error fetching media for report ${report._id}:`, error);
               return {
                 ...report,
                 attachments: []
@@ -235,15 +218,7 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
 
   // Debug: Log when students data changes
   useEffect(() => {
-    console.log('🔍 Students data updated:', students.length, 'students');
     if (students.length > 0) {
-      console.log('🔍 First student sample:', {
-        _id: students[0]._id,
-        name: students[0].name,
-        grade: students[0].grade,
-        studentClass: students[0].studentClass,
-        class: students[0].class
-      });
     }
   }, [students]);
 
@@ -260,7 +235,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
         const newReports = teacherReports.filter(r => !existingIds.has(r._id));
         
         if (newReports.length > 0) {
-          console.log('🔄 Adding new reports from context:', newReports.length);
           // Note: New reports from context won't have media loaded initially
           // They will get media loaded on the next full refresh
           return [...newReports, ...prevReports] as any;
@@ -410,13 +384,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   };
 
   const handleAudioClick = (report: Report) => {
-    console.log('🔍 Audio Click - Report:', report);
-    console.log('🔍 Voice Recording:', report.voiceRecording);
-    console.log('🔍 Has Recording:', report.voiceRecording?.hasRecording);
-    console.log('🔍 Recording URL:', report.voiceRecording?.recordingUrl);
-    console.log('🔍 Recordings Array:', report.voiceRecording?.recordings);
-    console.log('🔍 Recordings Array Length:', report.voiceRecording?.recordings?.length);
-    console.log('🔍 Transcription:', report.voiceRecording?.transcription);
     setSelectedAudioReport(report);
     setOpenAudioDialog(true);
   };
@@ -427,8 +394,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   };
 
   const handleTranscriptionClick = (report: Report) => {
-    console.log('🔍 Transcription Click - Report:', report);
-    console.log('🔍 Combined Transcription:', report.voiceRecording?.transcription);
     setSelectedTranscriptionReport(report);
     setOpenTranscriptionDialog(true);
   };
@@ -439,8 +404,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   };
 
   const handleAIGeneratedClick = (report: Report) => {
-    console.log('🔍 AI Generated Click - Report:', report);
-    console.log('🔍 AI Generated Content:', report.content);
     setSelectedAIReport(report);
     setEditedContent(report.content);
     setOriginalContent(report.content);
@@ -457,8 +420,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
   };
 
   const handleMediaClick = (report: Report) => {
-    console.log('🔍 Media Click - Report:', report);
-    console.log('🔍 Attachments:', report.attachments);
     setSelectedMediaReport(report);
     setOpenMediaDialog(true);
   };
@@ -509,11 +470,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
     
     setIsSaving(true);
     try {
-      console.log('💾 Saving edited report content:', {
-        reportId: selectedAIReport._id,
-        originalContent: selectedAIReport.content,
-        newContent: editedContent
-      });
 
       // Call the API to update the report content
       const response = await reportService.updateReport({
@@ -541,12 +497,10 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
           )
         );
         
-        console.log('✅ Report content saved successfully');
       } else {
         throw new Error(response.message || 'Failed to save report content');
       }
     } catch (error) {
-      console.error('❌ Error saving report content:', error);
       toast.error('Failed to save report content. Please try again.');
     } finally {
       setIsSaving(false);
@@ -1557,7 +1511,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                     
                     {/* Display all recordings from the recordings array */}
                     {selectedAudioReport.voiceRecording?.recordings?.map((recording, index) => {
-                      console.log(`🔍 Audio Recording #${index + 1} Original URL:`, recording.url);
                       const isBlob = recording.url.startsWith('blob:');
                       const audioSrc = isBlob 
                         ? '' // Empty src for blob URLs to show error state
@@ -1565,8 +1518,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                           ? recording.url 
                           : recording.url.startsWith('/') ? recording.url : '/' + recording.url;
                       
-                      console.log(`🔍 Audio Recording #${index + 1} Constructed audioSrc:`, audioSrc);
-                      console.log(`🔍 Audio Recording #${index + 1} isBlob:`, isBlob);
                       
                       return (
                         <Card key={index} sx={{ p: 3, mb: 2, bgcolor: isBlob ? 'error.50' : 'grey.50' }}>
@@ -1594,14 +1545,10 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                                 style={{ width: '100%', marginBottom: 2 }}
                                 preload="metadata"
                                 onError={(e) => {
-                                  console.error(`❌ Audio playback error for recording #${index + 1}:`, e);
-                                  console.error(`❌ Audio src:`, audioSrc);
                                 }}
                                 onCanPlay={() => {
-                                  console.log(`✅ Audio can play for recording #${index + 1}:`, audioSrc);
                                 }}
                                 onLoadedMetadata={() => {
-                                  console.log(`📊 Audio metadata loaded for recording #${index + 1}:`, audioSrc);
                                 }}
                               >
                                 <source src={audioSrc} type="audio/webm" />
@@ -1675,14 +1622,10 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                                   style={{ width: '100%', marginBottom: 2 }}
                                   preload="metadata"
                                   onError={(e) => {
-                                    console.error(`❌ Audio playback error for fallback recording:`, e);
-                                    console.error(`❌ Audio src:`, audioSrc);
                                   }}
                                   onCanPlay={() => {
-                                    console.log(`✅ Audio can play for fallback recording:`, audioSrc);
                                   }}
                                   onLoadedMetadata={() => {
-                                    console.log(`📊 Audio metadata loaded for fallback recording:`, audioSrc);
                                   }}
                                 >
                                   <source src={audioSrc} type="audio/webm" />
@@ -2208,7 +2151,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                                     borderRadius: 4
                                   }}
                                   onError={(e) => {
-                                    console.error('❌ Image load error:', fileUrl);
                                     (e.target as HTMLImageElement).style.display = 'none';
                                   }}
                                 />
@@ -2231,7 +2173,6 @@ const ReportsListing: React.FC<ReportsListingProps> = ({ schoolBranding }) => {
                                     borderRadius: 4
                                   }}
                                   onError={(e) => {
-                                    console.error('❌ Video load error:', fileUrl);
                                   }}
                                 >
                                   <source src={fileUrl} type={attachment.mimeType} />

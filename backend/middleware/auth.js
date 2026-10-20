@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
 
 // Protect routes - require authentication
 const authenticate = (trackActivity) => async (req, res, next) => {
@@ -40,7 +40,7 @@ const authenticate = (trackActivity) => async (req, res, next) => {
 
       next();
     } catch (error) {
-      logger.error('Token verification failed:', error);
+      logger.warn('Authentication token rejected', safeError(error, 'AUTH_TOKEN_REJECTED'));
       return res.status(401).json({
         success: false,
         message: 'Not authorized, token failed'
@@ -119,7 +119,7 @@ const optionalAuth = async (req, res, next) => {
       req.user = await User.findById(decoded.id).select('-password');
     } catch (error) {
       // Token is invalid, but we don't fail the request
-      logger.warn('Invalid token in optional auth:', error.message);
+      logger.warn('Optional authentication token rejected', safeError(error, 'AUTH_TOKEN_REJECTED'));
     }
   }
 
@@ -146,12 +146,10 @@ const auditLog = (action) => {
     res.send = function(data) {
       // Log the action after response is sent
       const logData = {
-        user: req.user ? req.user._id : null,
+        authenticated: Boolean(req.user),
         action: action,
         method: req.method,
         path: req.path,
-        ip: req.ip,
-        userAgent: req.get('User-Agent'),
         statusCode: res.statusCode,
         timestamp: new Date()
       };

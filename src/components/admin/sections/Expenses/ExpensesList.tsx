@@ -113,7 +113,7 @@ const ExpensesList: React.FC<Props> = ({ schoolBranding }) => {
         setEnums((enumsRes as any).data as ExpenseEnums);
       }
     } catch (err) {
-      console.error('Admin: load expenses error', err);
+      console.error('Unable to load expenses');
     } finally {
       setLoading(false);
     }

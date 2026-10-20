@@ -142,7 +142,7 @@ const AdminDashboard: React.FC = () => {
           }
         }
       } catch (error) {
-        console.error('Error fetching school info:', error);
+        console.error('Unable to load school information');
       } finally {
         setLoadingBranding(false);
       }
