@@ -13,16 +13,16 @@ const userDefaults = Object.freeze({
 });
 const verticalDemos = Object.freeze({
   swimming: {
-    school: { slug: 'barrana-swimming-demo', name: 'Barrana Swimming Demo', schoolType: 'public_private_school', gradeLevels: [] },
+    school: { slug: 'barrana-swimming-demo', name: 'Barrana Swimming Demo', schoolType: 'public_private_school', gradeLevels: [], estimatedStudents: 3, contactPerson: { name: 'Avery Swimming Demo', email: 'swimming-admin@kidsible.local', phone: '+1-416-555-0100' }, address: { street: '100 Demo Pool Lane', city: 'Toronto', state: 'ON', zipCode: 'M1M 1M1', country: 'Canada' } },
     users: [
       { key: 'admin', firstName: 'Avery', lastName: 'Swimming Demo', email: 'swimming-admin@kidsible.local', role: 'school_admin' },
-      { key: 'teacher', firstName: 'Morgan', lastName: 'Swimming Demo', email: 'swimming-coach@kidsible.local', role: 'teacher' },
+      { key: 'teacher', firstName: 'Morgan', lastName: 'Swimming Demo', email: 'swimming-coach@kidsible.local', role: 'teacher', grade: 'early-learning' },
       { key: 'parent', firstName: 'Taylor', lastName: 'Swimming Demo', email: 'swimming-parent@kidsible.local', role: 'parent' }
     ],
     children: [
-      { key: 'child-1', firstName: 'Maya', lastName: 'Swimming Demo', studentId: 'SWIM-DEMO-001' },
-      { key: 'child-2', firstName: 'Leo', lastName: 'Swimming Demo', studentId: 'SWIM-DEMO-002' },
-      { key: 'child-3', firstName: 'Nora', lastName: 'Swimming Demo', studentId: 'SWIM-DEMO-003' }
+      { key: 'child-1', firstName: 'Maya', lastName: 'Swimming Demo', studentId: 'SWIM-DEMO-001', studentGrade: 'early-learning' },
+      { key: 'child-2', firstName: 'Leo', lastName: 'Swimming Demo', studentId: 'SWIM-DEMO-002', studentGrade: 'early-learning' },
+      { key: 'child-3', firstName: 'Nora', lastName: 'Swimming Demo', studentId: 'SWIM-DEMO-003', studentGrade: 'early-learning' }
     ],
     programs: [{ key: 'learn-to-swim', name: 'Learn-to-Swim', description: 'Water safety and stroke development.' }],
     levels: [
@@ -40,14 +40,14 @@ const verticalDemos = Object.freeze({
       { key: 'freestyle-complete', programKey: 'learn-to-swim', levelKey: 'stroke-development', requirementKey: 'freestyle', name: 'Freestyle completed', type: 'checkbox' }, { key: 'instructor-note', programKey: 'learn-to-swim', levelKey: 'advanced', requirementKey: 'endurance', name: 'Instructor observation', type: 'text' }
     ],
     classes: [
-      { key: 'water-confidence-sat', name: 'Water Confidence - Saturday', grade: 'early-learning', academicYear: '2026-2027', semester: 'fall' },
-      { key: 'beginner-tue', name: 'Beginner - Tuesday', grade: 'early-learning', academicYear: '2026-2027', semester: 'fall' },
-      { key: 'stroke-dev-thu', name: 'Stroke Development - Thursday', grade: 'early-learning', academicYear: '2026-2027', semester: 'fall' }
+      { key: 'water-confidence-sat', name: 'Water Confidence - Saturday', grade: 'early-learning', academicYear: '2026-2027', semester: 'fall', createdByKey: 'admin', teacherKey: 'teacher', startDate: '2026-09-15T00:00:00Z' },
+      { key: 'beginner-tue', name: 'Beginner - Tuesday', grade: 'early-learning', academicYear: '2026-2027', semester: 'fall', createdByKey: 'admin', teacherKey: 'teacher', startDate: '2026-09-15T00:00:00Z' },
+      { key: 'stroke-dev-thu', name: 'Stroke Development - Thursday', grade: 'early-learning', academicYear: '2026-2027', semester: 'fall', createdByKey: 'admin', teacherKey: 'teacher', startDate: '2026-09-15T00:00:00Z' }
     ],
     enrollments: [
-      { key: 'child-1-beginner', childKey: 'child-1', programKey: 'learn-to-swim', levelKey: 'beginner', classKey: 'beginner-tue' }, { key: 'child-2-water-confidence', childKey: 'child-2', programKey: 'learn-to-swim', levelKey: 'water-confidence', classKey: 'water-confidence-sat' }, { key: 'child-3-stroke-development', childKey: 'child-3', programKey: 'learn-to-swim', levelKey: 'stroke-development', classKey: 'stroke-dev-thu' }
+      { key: 'child-1-water-confidence', childKey: 'child-1', programKey: 'learn-to-swim', levelKey: 'water-confidence', classKey: 'water-confidence-sat', assignedByKey: 'admin', startDate: '2026-09-15T00:00:00Z' }, { key: 'child-2-water-confidence', childKey: 'child-2', programKey: 'learn-to-swim', levelKey: 'water-confidence', classKey: 'water-confidence-sat', assignedByKey: 'admin', startDate: '2026-09-15T00:00:00Z' }, { key: 'child-3-stroke-development', childKey: 'child-3', programKey: 'learn-to-swim', levelKey: 'stroke-development', classKey: 'stroke-dev-thu', assignedByKey: 'admin', startDate: '2026-09-15T00:00:00Z' }
     ],
-    reportTemplates: [{ key: 'learn-to-swim-progress', name: 'Learn-to-Swim Progress Report' }]
+    reportTemplates: [{ key: 'learn-to-swim-progress', name: 'Learn-to-Swim Progress Report', grade: 'early-learning', createdByKey: 'admin' }]
   },
   montessori: {
     school: { slug: 'barrana-montessori-demo', name: 'Barrana Montessori Demo', schoolType: 'montessori_school', gradeLevels: ['early-learning'] },
