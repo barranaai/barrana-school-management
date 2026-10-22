@@ -47,6 +47,18 @@ function preflight(f, slug) {
     if (!['school_admin', 'teacher', 'parent'].includes(x.role)) fail('user', x.key, 'invalid approved user role');
   }
   if (maps.users.get('parent')?.role !== 'parent') fail('user', 'parent', 'missing parent dependency');
+  const userRef = (type, x, field, role) => {
+    if (x[field] !== undefined && maps.users.get(x[field])?.role !== role) fail(type, x.key, `invalid ${field} dependency`);
+  };
+  for (const x of maps.classes.values()) {
+    userRef('class', x, 'createdByKey', 'school_admin');
+    userRef('class', x, 'teacherKey', 'teacher');
+  }
+  for (const x of maps.reportTemplates.values()) userRef('reportTemplate', x, 'createdByKey', 'school_admin');
+  for (const x of maps.enrollments.values()) userRef('enrollment', x, 'assignedByKey', 'school_admin');
+  for (const group of ['classes', 'enrollments']) for (const x of maps[group].values()) {
+    if ((x.teacherKey || x.assignedByKey) && (!nonempty(x.startDate) || !Number.isFinite(Date.parse(x.startDate)))) fail(group, x.key, 'valid assignment startDate is required');
+  }
   for (const x of maps.children.values()) {
     if (typeof x.studentId !== 'string' || !x.studentId.trim() || x.studentId !== x.studentId.trim().toUpperCase()) fail('child', x.key, 'missing or invalid studentId');
     else unique('child', x, [x.studentId]);
@@ -109,8 +121,10 @@ function differences(existing, payload, prefix = '') {
   }
   return fields;
 }
-async function findMatch(entry, slug) {
-  const rows = await entry.Model.find(entry.query).limit(2).lean();
+async function findMatch(entry, slug, session) {
+  let query = entry.Model.find(entry.query).limit(2);
+  if (session) query = query.session(session);
+  const rows = await query.lean();
   if (rows.length > 1) throw Object.assign(new Error('multiple records match tenant identity'), { detail: conflict(slug, entry.type, entry.key, 'multiple records match tenant identity') });
   const old = rows[0];
   if (old && entry.type !== 'school' && !sameId(old.schoolId, entry.payload.schoolId)) throw Object.assign(new Error('school ownership mismatch'), { detail: conflict(slug, entry.type, entry.key, 'school ownership mismatch') });
@@ -121,9 +135,20 @@ async function findMatch(entry, slug) {
   return old;
 }
 const running = new Set();
-async function runVerticalDemo({ slug, dryRun = true } = {}) {
+async function runVerticalDemo({ slug, dryRun = true, session = null } = {}) {
   assertApprovedSlug(slug);
   if (typeof dryRun !== 'boolean') throw new Error('dryRun must be a boolean');
+  if (!dryRun && (!session || typeof session.inTransaction !== 'function' || !session.inTransaction())) {
+    return {
+      targetSchool: slug,
+      dryRun,
+      creationOrder,
+      preflightPassed: false,
+      conflicts: [conflict(slug, 'runner', slug, 'writes require an active transaction from the guarded bootstrap')],
+      validationFailures: [],
+      results: []
+    };
+  }
   if (running.has(slug)) return { targetSchool: slug, dryRun, conflicts: [conflict(slug, 'school', slug, 'fixture already running in this process')], results: [] };
   running.add(slug);
   const report = { targetSchool: slug, dryRun, creationOrder, preflightPassed: false, conflicts: [], validationFailures: [], results: [] };
@@ -138,7 +163,7 @@ async function runVerticalDemo({ slug, dryRun = true } = {}) {
       const identity = JSON.stringify([Model.modelName, comparable(query)]);
       if (identities.has(identity)) throw Object.assign(new Error('duplicate resolved identity'), { detail: conflict(slug, type, key, 'duplicate resolved fixture identity') });
       identities.add(identity);
-      entry.old = await findMatch(entry, slug);
+      entry.old = await findMatch(entry, slug, session);
       entry.id = entry.old?._id || new mongoose.Types.ObjectId();
       entry.result = { targetSchool: slug, entityType: type, fixtureKey: key, action: entry.old ? 'existing' : 'missing', reason: entry.old ? 'existing / preserved' : 'missing / would create', ...(entry.old ? { recordId: String(entry.id) } : {}) };
       if (entry.old) {
@@ -183,31 +208,53 @@ async function runVerticalDemo({ slug, dryRun = true } = {}) {
       const p = programs[x.programKey], l = levels[x.levelKey], r = requirements[x.requirementKey];
       await add(M.Parameter, 'parameter', x.key, { schoolId, requirementId: r.id, name: x.name.trim() }, { schoolId, programId: p.id, requirementId: r.id, name: x.name, type: x.type, options: x.options }, [school, p, l, r]);
     }
-    for (const x of f.classes) classes[x.key] = await add(M.Class, 'class', x.key, { schoolId, name: x.name.trim() }, { schoolId, name: x.name, grade: x.grade, schedule: { academicYear: x.academicYear, semester: x.semester } }, [school]);
+    for (const x of f.classes) {
+      const creator = users[x.createdByKey], teacher = users[x.teacherKey];
+      classes[x.key] = await add(M.Class, 'class', x.key, { schoolId, name: x.name.trim() }, {
+        schoolId, name: x.name, grade: x.grade,
+        schedule: { academicYear: x.academicYear, semester: x.semester, ...(x.startDate ? { startDate: x.startDate } : {}) },
+        ...(creator ? { createdBy: creator.id } : {}),
+        ...(teacher ? { assignedTeachers: [{ teacherId: teacher.id, role: 'primary', assignedDate: x.startDate }] } : {})
+      }, [school, ...[creator, teacher].filter(Boolean)]);
+    }
     for (const x of f.enrollments) {
       const child = children[x.childKey], p = programs[x.programKey], l = levels[x.levelKey], c = classes[x.classKey];
       // Status and placement are operational state, not replacement identities.
-      await add(M.Enrollment, 'enrollment', x.key, { schoolId, childId: child.id, programId: p.id }, { schoolId, childId: child.id, programId: p.id, currentLevelId: l.id, currentClassId: c.id, status: 'active' }, [school, child, p, l, c]);
+      const assigner = users[x.assignedByKey];
+      await add(M.Enrollment, 'enrollment', x.key, { schoolId, childId: child.id, programId: p.id }, {
+        schoolId, childId: child.id, programId: p.id, currentLevelId: l.id, currentClassId: c.id, status: 'active',
+        ...(assigner ? {
+          startDate: x.startDate,
+          classAssignments: [{ classId: c.id, effectiveFrom: x.startDate, status: 'active', assignedBy: assigner.id }],
+          levelHistory: [{ levelId: l.id, effectiveFrom: x.startDate, changedBy: assigner.id, reason: 'Initial level' }],
+          statusHistory: [{ status: 'active', changedAt: x.startDate, changedBy: assigner.id }]
+        } : {})
+      }, [school, child, p, l, c, ...[assigner].filter(Boolean)]);
     }
-    for (const x of f.reportTemplates) await add(M.ReportTemplate, 'reportTemplate', x.key, { schoolId, name: x.name.trim() }, { schoolId, name: x.name }, [school]);
+    for (const x of f.reportTemplates) {
+      const creator = users[x.createdByKey];
+      await add(M.ReportTemplate, 'reportTemplate', x.key, { schoolId, name: x.name.trim() }, {
+        schoolId, name: x.name, ...(x.grade ? { grade: x.grade } : {}), ...(creator ? { createdBy: creator.id } : {})
+      }, [school, ...[creator].filter(Boolean)]);
+    }
     if (report.validationFailures.length) return report;
     report.preflightPassed = true;
     if (dryRun) return report;
     // A second complete read pass detects changes since planning before the first insert.
     for (const entry of plan) {
-      const current = await findMatch(entry, slug);
+      const current = await findMatch(entry, slug, session);
       if (Boolean(current) !== Boolean(entry.old) || (current && !sameId(current._id, entry.id))) throw Object.assign(new Error('identity changed after preflight'), { detail: conflict(slug, entry.type, entry.key, 'identity changed after preflight; rerun required') });
     }
     for (const entry of plan) {
       if (entry.old) continue; // Never save or update an existing document.
       for (const dependency of entry.dependencies) {
-        const current = await findMatch(dependency, slug);
+        const current = await findMatch(dependency, slug, session);
         if (!current || !sameId(current._id, dependency.id)) throw Object.assign(new Error('dependency changed'), { detail: conflict(slug, entry.type, entry.key, 'dependency changed before insert; stopped') });
       }
-      if (await findMatch(entry, slug)) throw Object.assign(new Error('identity appeared before insert'), { detail: conflict(slug, entry.type, entry.key, 'identity appeared before insert; preserved, rerun required') });
+      if (await findMatch(entry, slug, session)) throw Object.assign(new Error('identity appeared before insert'), { detail: conflict(slug, entry.type, entry.key, 'identity appeared before insert; preserved, rerun required') });
       try {
         // Only new, already validated payloads reach create. User's model hashes once.
-        const created = await entry.Model.create(entry.document.toObject());
+        const [created] = await entry.Model.create([entry.document.toObject()], { session });
         Object.assign(entry.result, { action: 'created', reason: 'missing / created', recordId: String(created._id) });
       } catch (error) {
         const action = error.name === 'ValidationError' ? 'validation_failure' : 'conflict';
