@@ -40,7 +40,7 @@ test('scheduled guardian messages are authorized and processed independently', a
       return false;
     },
     findRecipient: async () => recipient,
-    sendPush: async () => { pushes += 1; },
+    sendPush: async () => { pushes += 1; return { success: true }; },
     socketService: { getIO: () => null }
   });
 

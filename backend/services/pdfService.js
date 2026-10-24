@@ -1,7 +1,11 @@
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
-const { logger } = require('../utils/logger');
+const { logger, safeError } = require('../utils/logger');
+
+const logPdfLogoFailure = (error, operationLogger = logger) => {
+  operationLogger.error('Report PDF logo loading failed', safeError(error, 'PDF_LOGO_LOAD_FAILED'));
+};
 
 /**
  * Generate PDF from HTML content
@@ -11,7 +15,10 @@ const { logger } = require('../utils/logger');
  * @param {string} options.outputDir - Output directory (default: uploads/pdfs)
  * @returns {Promise<Object>} - PDF file information
  */
-const generatePDF = async (options) => {
+const generatePDF = async (options, dependencies = {}) => {
+  const operationLogger = dependencies.logger || logger;
+  const fileSystem = dependencies.fs || fs;
+  const browserAutomation = dependencies.puppeteer || puppeteer;
   const {
     html,
     filename,
@@ -31,22 +38,22 @@ const generatePDF = async (options) => {
   try {
     // Ensure output directory exists
     const fullOutputDir = path.join(__dirname, '..', outputDir);
-    if (!fs.existsSync(fullOutputDir)) {
-      fs.mkdirSync(fullOutputDir, { recursive: true });
-      logger.info(`Created PDF output directory: ${fullOutputDir}`);
+    if (!fileSystem.existsSync(fullOutputDir)) {
+      fileSystem.mkdirSync(fullOutputDir, { recursive: true });
+      operationLogger.info('PDF output directory created');
     }
 
     // Generate unique filename if not provided
     const pdfFilename = filename || `report-${Date.now()}.pdf`;
     const pdfPath = path.join(fullOutputDir, pdfFilename);
 
-    logger.info(`Starting PDF generation: ${pdfFilename}`);
+    operationLogger.info('PDF generation started');
 
     // Resolve Chrome executable path
     // On macOS use system Chrome as the reliable fallback when Puppeteer's cache is missing
     const getChromePath = () => {
       const macChromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-      if (process.platform === 'darwin' && require('fs').existsSync(macChromePath)) {
+      if (process.platform === 'darwin' && fileSystem.existsSync(macChromePath)) {
         return macChromePath;
       }
       return null; // let Puppeteer find its own downloaded browser
@@ -66,10 +73,10 @@ const generatePDF = async (options) => {
     };
 
     if (chromePath) {
-      logger.info(`Using system Chrome for PDF generation: ${chromePath}`);
+      operationLogger.info('PDF browser executable selected');
     }
 
-    browser = await puppeteer.launch(puppeteerLaunchArgs);
+    browser = await browserAutomation.launch(puppeteerLaunchArgs);
 
     const page = await browser.newPage();
 
@@ -91,10 +98,10 @@ const generatePDF = async (options) => {
     await browser.close();
     browser = null;
 
-    const stats = fs.statSync(pdfPath);
+    const stats = fileSystem.statSync(pdfPath);
     const relativePath = `/${outputDir}/${pdfFilename}`;
 
-    logger.info(`PDF generated successfully: ${pdfFilename} (${stats.size} bytes)`);
+    operationLogger.info('PDF generated successfully', { sizeBytes: stats.size });
 
     return {
       success: true,
@@ -106,14 +113,14 @@ const generatePDF = async (options) => {
     };
 
   } catch (error) {
-    logger.error('Error generating PDF:', error);
+    operationLogger.error('PDF generation failed', safeError(error, 'PDF_GENERATION_FAILED'));
     
     // Clean up browser if still open
     if (browser) {
       try {
         await browser.close();
       } catch (closeError) {
-        logger.error('Error closing browser:', closeError);
+        operationLogger.error('PDF browser cleanup failed', safeError(closeError, 'PDF_BROWSER_CLEANUP_FAILED'));
       }
     }
 
@@ -126,7 +133,9 @@ const generatePDF = async (options) => {
  * @param {Object} reportData - Report data
  * @returns {Promise<Object>} - PDF file information
  */
-const generateReportPDF = async (reportData) => {
+const generateReportPDF = async (reportData, dependencies = {}) => {
+  const operationLogger = dependencies.logger || logger;
+  const fileSystem = dependencies.fs || fs;
   const {
     studentName,
     teacherName,
@@ -167,23 +176,19 @@ const generateReportPDF = async (reportData) => {
       logoPath = logoPath.startsWith('/') ? logoPath.slice(1) : logoPath;
       const fullLogoPath = path.join(__dirname, '..', logoPath);
       
-      logger.info(`Attempting to load logo from: ${fullLogoPath}`);
-      logger.info(`Logo path exists: ${fs.existsSync(fullLogoPath)}`);
+      operationLogger.info('Report PDF logo lookup started');
       
-      if (fs.existsSync(fullLogoPath)) {
-        const logoData = fs.readFileSync(fullLogoPath);
+      if (fileSystem.existsSync(fullLogoPath)) {
+        const logoData = fileSystem.readFileSync(fullLogoPath);
         const logoExt = path.extname(fullLogoPath).toLowerCase();
         const mimeType = logoExt === '.png' ? 'image/png' : logoExt === '.jpg' || logoExt === '.jpeg' ? 'image/jpeg' : 'image/png';
         logoBase64 = `data:${mimeType};base64,${logoData.toString('base64')}`;
-        logger.info(`✓ Logo loaded successfully for PDF: ${fullLogoPath} (${logoData.length} bytes)`);
+        operationLogger.info('Report PDF logo loaded', { sizeBytes: logoData.length });
       } else {
-        logger.warn(`✗ Logo file not found at: ${fullLogoPath}`);
-        logger.warn(`  Current directory: ${__dirname}`);
-        logger.warn(`  Original logo path: ${schoolLogo}`);
+        operationLogger.warn('Report PDF logo unavailable', { code: 'PDF_LOGO_NOT_FOUND' });
       }
     } catch (error) {
-      logger.error(`✗ Error loading logo for PDF: ${error.message}`);
-      logger.error(`  Stack trace: ${error.stack}`);
+      logPdfLogoFailure(error, operationLogger);
     }
   } else {
     logger.warn('No school logo provided for PDF generation');
@@ -540,7 +545,7 @@ const generateReportPDF = async (reportData) => {
       bottom: '10px',
       left: '10px'
     }
-  });
+  }, dependencies);
 };
 
 /**
@@ -615,16 +620,18 @@ function formatReportContentForPDF(content) {
  * Delete PDF file
  * @param {string} pdfPath - Path to PDF file
  */
-const deletePDF = async (pdfPath) => {
+const deletePDF = async (pdfPath, dependencies = {}) => {
+  const operationLogger = dependencies.logger || logger;
+  const fileSystem = dependencies.fs || fs;
   try {
-    if (fs.existsSync(pdfPath)) {
-      fs.unlinkSync(pdfPath);
-      logger.info(`Deleted PDF: ${pdfPath}`);
+    if (fileSystem.existsSync(pdfPath)) {
+      fileSystem.unlinkSync(pdfPath);
+      operationLogger.info('PDF deleted');
       return true;
     }
     return false;
   } catch (error) {
-    logger.error('Error deleting PDF:', error);
+    operationLogger.error('PDF deletion failed', safeError(error, 'PDF_DELETION_FAILED'));
     return false;
   }
 };
@@ -633,43 +640,46 @@ const deletePDF = async (pdfPath) => {
  * Clean up old PDF files (older than specified days)
  * @param {number} days - Delete PDFs older than this many days
  */
-const cleanupOldPDFs = async (days = 30, retainedFilenames = []) => {
+const cleanupOldPDFs = async (days = 30, retainedFilenames = [], dependencies = {}) => {
+  const operationLogger = dependencies.logger || logger;
+  const fileSystem = dependencies.fs || fs;
   try {
     const pdfDir = path.join(__dirname, '..', 'uploads/pdfs');
     
-    if (!fs.existsSync(pdfDir)) {
+    if (!fileSystem.existsSync(pdfDir)) {
       return { deleted: 0, message: 'PDF directory does not exist' };
     }
 
-    const files = fs.readdirSync(pdfDir);
+    const files = fileSystem.readdirSync(pdfDir);
     const now = Date.now();
     const maxAge = days * 24 * 60 * 60 * 1000; // days to milliseconds
     let deletedCount = 0;
 
     for (const file of files) {
       const filePath = path.join(pdfDir, file);
-      const stats = fs.statSync(filePath);
+      const stats = fileSystem.statSync(filePath);
       // Retained report artifacts live in a subdirectory; cleanup is temporary-only.
       if (!stats.isFile() || retainedFilenames.includes(file)) continue;
       const age = now - stats.mtimeMs;
 
       if (age > maxAge) {
-        fs.unlinkSync(filePath);
+        fileSystem.unlinkSync(filePath);
         deletedCount++;
       }
     }
 
-    logger.info(`Cleaned up ${deletedCount} old PDF files`);
+    operationLogger.info('PDF cleanup completed', { deletedCount });
     return { deleted: deletedCount, message: `Deleted ${deletedCount} old PDFs` };
 
   } catch (error) {
-    logger.error('Error cleaning up PDFs:', error);
+    operationLogger.error('PDF cleanup failed', safeError(error, 'PDF_CLEANUP_FAILED'));
     throw error;
   }
 };
 
 module.exports = {
   generatePDF,
+  logPdfLogoFailure,
   generateReportPDF,
   deletePDF,
   cleanupOldPDFs

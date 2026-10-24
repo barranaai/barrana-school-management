@@ -48,10 +48,13 @@ firebaseApp = initializeFirebase();
  * @param {Object} data - Data payload
  * @returns {Promise<Object>} Result with success status
  */
-const sendNotification = async (token, notification, data = {}) => {
+const sendNotification = async (token, notification, data = {}, dependencies = {}) => {
+  const operationLogger = dependencies.logger || logger;
+  const activeApp = Object.hasOwn(dependencies, 'firebaseApp') ? dependencies.firebaseApp : firebaseApp;
+  const messaging = dependencies.messaging;
   try {
-    if (!firebaseApp) {
-      logger.warn('Firebase not initialized. Skipping push notification.');
+    if (!activeApp) {
+      operationLogger.warn('Firebase not initialized. Skipping push notification.');
       return { success: false, reason: 'firebase_not_initialized' };
     }
 
@@ -94,20 +97,13 @@ const sendNotification = async (token, notification, data = {}) => {
       }
     };
 
-    const response = await admin.messaging().send(message);
+    const response = await (messaging || admin.messaging()).send(message);
     
-    logger.info('Push notification sent successfully', {
-      messageId: response,
-      title: notification.title
-    });
+    operationLogger.info('Push notification accepted', { channel: 'push', status: 'accepted' });
 
     return { success: true, messageId: response };
   } catch (error) {
-    logger.error('Error sending push notification:', {
-      error: error.message,
-      code: error.code,
-      token: token ? `${token.substring(0, 20)}...` : 'none'
-    });
+    operationLogger.warn('Push notification failed', { channel: 'push', status: 'failed', ...safeError(error, 'PUSH_DELIVERY_FAILED') });
 
     // Handle specific error codes
     if (error.code === 'messaging/invalid-registration-token' ||
@@ -126,10 +122,13 @@ const sendNotification = async (token, notification, data = {}) => {
  * @param {Object} data - Data payload
  * @returns {Promise<Object>} Results with success/failure counts
  */
-const sendMultipleNotifications = async (tokens, notification, data = {}) => {
+const sendMultipleNotifications = async (tokens, notification, data = {}, dependencies = {}) => {
+  const operationLogger = dependencies.logger || logger;
+  const activeApp = Object.hasOwn(dependencies, 'firebaseApp') ? dependencies.firebaseApp : firebaseApp;
+  const messaging = dependencies.messaging;
   try {
-    if (!firebaseApp) {
-      logger.warn('Firebase not initialized. Skipping push notifications.');
+    if (!activeApp) {
+      operationLogger.warn('Firebase not initialized. Skipping push notifications.');
       return { success: false, reason: 'firebase_not_initialized' };
     }
 
@@ -165,36 +164,54 @@ const sendMultipleNotifications = async (tokens, notification, data = {}) => {
       }
     };
 
-    const response = await admin.messaging().sendEachForMulticast({
+    const response = await (messaging || admin.messaging()).sendEachForMulticast({
       tokens,
       ...message
     });
 
-    logger.info('Batch push notifications sent', {
-      successCount: response.successCount,
-      failureCount: response.failureCount,
+    const successCount = response?.successCount;
+    const failureCount = response?.failureCount;
+    const validCounts = Number.isInteger(successCount) && successCount >= 0 &&
+      Number.isInteger(failureCount) && failureCount >= 0;
+    const validResponses = Array.isArray(response?.responses) &&
+      response.responses.length === tokens.length &&
+      successCount + failureCount === tokens.length;
+    if (!validCounts || !validResponses) {
+      operationLogger.warn('Batch push delivery failed', { channel: 'push', status: 'failed', code: 'PUSH_PROVIDER_RESULT_INVALID' });
+      return { success: false, reason: 'invalid_provider_result' };
+    }
+
+    const status = successCount > 0
+      ? (failureCount > 0 ? 'partial' : 'accepted')
+      : 'failed';
+    const metadata = {
+      successCount,
+      failureCount,
       totalTokens: tokens.length
-    });
+    };
+    if (status === 'accepted') operationLogger.info('Batch push delivery accepted', { ...metadata, channel: 'push', status });
+    else if (status === 'partial') operationLogger.warn('Batch push delivery partially accepted', { ...metadata, channel: 'push', status, code: 'PUSH_DELIVERY_PARTIAL' });
+    else operationLogger.warn('Batch push delivery failed', { ...metadata, channel: 'push', status, code: 'PUSH_DELIVERY_FAILED' });
 
     // Collect invalid tokens for cleanup
     const invalidTokens = [];
     response.responses.forEach((resp, idx) => {
       if (!resp.success && 
-          (resp.error.code === 'messaging/invalid-registration-token' ||
-           resp.error.code === 'messaging/registration-token-not-registered')) {
+          (resp.error?.code === 'messaging/invalid-registration-token' ||
+           resp.error?.code === 'messaging/registration-token-not-registered')) {
         invalidTokens.push(tokens[idx]);
       }
     });
 
     return {
-      success: true,
-      successCount: response.successCount,
-      failureCount: response.failureCount,
+      success: successCount > 0,
+      successCount,
+      failureCount,
       invalidTokens
     };
   } catch (error) {
-    logger.error('Batch push delivery failed', safeError(error, 'BATCH_PUSH_FAILED'));
-    return { success: false, error: error.message };
+    operationLogger.error('Batch push delivery failed', safeError(error, 'BATCH_PUSH_FAILED'));
+    return { success: false, reason: 'provider_error' };
   }
 };
 

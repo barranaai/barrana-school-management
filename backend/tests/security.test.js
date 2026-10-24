@@ -10,6 +10,14 @@ test('CORS rejects an unconfigured origin', async () => {
   const options = createCorsOptions({ NODE_ENV: 'production', CORS_ALLOWED_ORIGINS: 'https://kidsible.com' });
   await new Promise(done => options.origin('https://evil.example', error => { assert.equal(error.statusCode, 403); done(); }));
 });
+test('CORS accepts the canonical production frontend origin', async () => {
+  const options = createCorsOptions({ NODE_ENV: 'production', CORS_ALLOWED_ORIGINS: 'https://app.kidsible.example' });
+  await new Promise(done => options.origin('https://app.kidsible.example', error => { assert.equal(error, null); done(); }));
+});
+test('CORS supports the legacy Render variable during deployment migration', async () => {
+  const options = createCorsOptions({ NODE_ENV: 'production', CORS_ORIGIN: 'https://legacy.kidsible.example' });
+  await new Promise(done => options.origin('https://legacy.kidsible.example', error => { assert.equal(error, null); done(); }));
+});
 test('ordinary user cannot override tenant scope', () => assert.equal(scopeSchoolId({ role: 'school_admin', schoolId: id('a') }, 'b'), 'a'));
 test('report access enforces tenant and teacher ownership', () => {
   const user = { _id: id('teacher'), role: 'teacher', schoolId: id('a') };

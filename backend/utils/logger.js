@@ -3,14 +3,25 @@ const path = require('path');
 const fs = require('fs');
 
 const REDACTED = '[REDACTED]';
+const TRUSTED_ERROR_METADATA = Symbol('trustedErrorMetadata');
 const sensitiveKey = /(?:password|passphrase|secret|token|authorization|cookie|credential|api.?key|account.?sid|phone|email|transcript|recording|report.?content|prompt|response.?body|device.?token|fcm|student.?id|child.?id|guardian.?id|parent.?id|user.?id|teacher.?id|report.?id|class.?id|conversation.?id|event.?id|school.?id|media.?id|(?:student|child|guardian|parent|teacher|participant|recipient).?name|file.?name|(?:^|_)path$|absPath|inputPath|outputPath|snippet|rawText|^user$)/i;
 const errorKey = /^(?:error|err)$/i;
 const safeErrorMetadata = value => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value[TRUSTED_ERROR_METADATA] !== true) return null;
   const keys = Object.keys(value);
   if (keys.some(key => !['name', 'code'].includes(key))) return null;
   if (typeof value.name !== 'string' || typeof value.code !== 'string') return null;
-  return { name: value.name, code: value.code };
+  return trustedErrorMetadata(value.code, value.name);
+};
+
+const trustedErrorMetadata = (code, name = 'Error') => {
+  const metadata = {
+    name: typeof name === 'string' ? name : 'Error',
+    code: typeof code === 'string' ? code : 'OPERATION_FAILED'
+  };
+  Object.defineProperty(metadata, TRUSTED_ERROR_METADATA, { value: true });
+  return metadata;
 };
 
 const sanitizeLogMessage = value => {
@@ -27,7 +38,7 @@ const sanitizeLogMessage = value => {
 const sanitizeLogData = (value, seen = new WeakSet()) => {
   if (value === null || value === undefined) return value;
   if (value instanceof Error) {
-    return { name: value.name || 'Error', code: value.code || 'OPERATION_FAILED' };
+    return trustedErrorMetadata('OPERATION_FAILED');
   }
   if (Array.isArray(value)) return value.map(item => sanitizeLogData(item, seen));
   if (typeof value !== 'object') return value;
@@ -37,7 +48,7 @@ const sanitizeLogData = (value, seen = new WeakSet()) => {
   for (const [key, item] of Object.entries(value)) {
     if (errorKey.test(key)) {
       clean[key] = item instanceof Error
-        ? { name: item.name || 'Error', code: item.code || 'OPERATION_FAILED' }
+        ? trustedErrorMetadata('OPERATION_FAILED')
         : (safeErrorMetadata(item) || REDACTED);
     } else {
       clean[key] = sensitiveKey.test(key) ? REDACTED : sanitizeLogData(item, seen);
@@ -55,10 +66,9 @@ const sanitizeFormat = winston.format(info => {
   return info;
 });
 
-const safeError = (error, fallback = 'OPERATION_FAILED') => ({
-  name: error?.name || 'Error',
-  code: typeof error?.code === 'string' ? error.code : fallback
-});
+// Raw Error fields can be provider-controlled. Callers supply the fixed,
+// application-owned category; no field is copied from the Error itself.
+const safeError = (_error, fallback = 'OPERATION_FAILED') => trustedErrorMetadata(fallback);
 
 const protectLoggerArguments = instance => {
   for (const level of ['error', 'warn', 'info', 'debug']) {
@@ -314,5 +324,6 @@ module.exports = {
   sanitizeLogMessage,
   sanitizeFormat,
   protectLoggerArguments,
-  safeError
+  safeError,
+  trustedErrorMetadata
 };
