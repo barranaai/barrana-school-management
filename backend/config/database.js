@@ -35,12 +35,18 @@ const connectDB = async () => {
       process.exit(0);
     });
 
+    return conn;
   } catch (error) {
     logger.error('Database connection failed', safeError(error, 'DATABASE_CONNECTION_FAILED'));
-    // Don't exit the process, let the server continue without database
-    // The app can still serve static files and basic functionality
-    logger.warn('Server will continue without database connection. Please configure MONGODB_URI environment variable.');
+    // A runtime without its tenant database cannot serve authenticated product
+    // traffic safely. Let the entry point fail before binding an HTTP port.
+    throw Object.assign(new Error('Database connection failed'), {
+      code: 'DATABASE_CONNECTION_FAILED',
+      cause: error
+    });
   }
 };
+
+connectDB.isReady = () => mongoose.connection.readyState === 1;
 
 module.exports = connectDB;

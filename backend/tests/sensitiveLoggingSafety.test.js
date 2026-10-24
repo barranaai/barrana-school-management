@@ -5,7 +5,7 @@ const path = require('node:path');
 const { Writable } = require('node:stream');
 
 const winston = require('winston');
-const { sanitizeLogData, sanitizeLogMessage, safeError, sanitizeFormat, protectLoggerArguments } = require('../utils/logger');
+const { sanitizeLogData, sanitizeLogMessage, safeError, sanitizeFormat, protectLoggerArguments, trustedErrorMetadata } = require('../utils/logger');
 
 test('shared log sanitizer removes credentials and child or guardian identity fields', () => {
   const input = {
@@ -31,13 +31,15 @@ test('shared log sanitizer removes credentials and child or guardian identity fi
   assert.equal(serialized.includes('2'), true);
 });
 
-test('safe errors preserve a diagnostic category without raw provider text', () => {
+test('safe errors use only the application-owned fallback category', () => {
   const result = safeError(
-    Object.assign(new Error('provider response contained private material'), { code: 'PROVIDER_REJECTED' }),
+    Object.assign(new Error('provider response contained private material'), {
+      name: 'PRIVATE_PROVIDER_NAME', code: 'PRIVATE_PROVIDER_CODE', stack: 'PRIVATE_PROVIDER_STACK'
+    }),
     'DELIVERY_FAILED'
   );
-  assert.deepEqual(result, { name: 'Error', code: 'PROVIDER_REJECTED' });
-  assert.equal(JSON.stringify(result).includes('private material'), false);
+  assert.deepEqual(result, { name: 'Error', code: 'DELIVERY_FAILED' });
+  assert.doesNotMatch(JSON.stringify(result), /private material|PRIVATE_PROVIDER/);
 });
 
 test('interpolated log messages remove credentials, contacts, paths and connection strings', () => {
@@ -71,7 +73,9 @@ test('Winston positional errors and structured private fields are sanitized befo
     transports: [transport]
   }));
 
-  logger.error('Provider operation failed', new Error('private provider response'));
+  logger.error('Provider operation failed', Object.assign(new Error('private provider response'), {
+    name: 'PRIVATE_ERROR_NAME', code: 'PRIVATE_ERROR_CODE', stack: 'PRIVATE_ERROR_STACK'
+  }));
   logger.error('Upload failed', {
     error: 'private database detail',
     inputPath: 'private upload path',
@@ -86,7 +90,7 @@ test('Winston positional errors and structured private fields are sanitized befo
     count: 3
   });
   logger.error('Categorized failure', {
-    error: { name: 'ProviderError', code: 'SAFE_PROVIDER_CODE' },
+    error: trustedErrorMetadata('SAFE_PROVIDER_CODE', 'ProviderError'),
     status: 'failed'
   });
   logger.error('Unsafe structured failure', {
@@ -97,6 +101,9 @@ test('Winston positional errors and structured private fields are sanitized befo
 
   const output = captured.join('');
   assert.equal(output.includes('private provider response'), false);
+  assert.equal(output.includes('PRIVATE_ERROR_NAME'), false);
+  assert.equal(output.includes('PRIVATE_ERROR_CODE'), false);
+  assert.equal(output.includes('PRIVATE_ERROR_STACK'), false);
   assert.equal(output.includes('private database detail'), false);
   assert.equal(output.includes('private upload path'), false);
   assert.equal(output.includes('private report id'), false);
@@ -116,8 +123,15 @@ test('Winston positional errors and structured private fields are sanitized befo
 });
 
 test('safe error metadata remains useful while raw errors remain private', () => {
-  const safe = sanitizeLogData({ error: { name: 'ProviderError', code: 'DELIVERY_REJECTED' } });
+  const safe = sanitizeLogData({ error: trustedErrorMetadata('DELIVERY_REJECTED', 'ProviderError') });
   assert.deepEqual(safe.error, { name: 'ProviderError', code: 'DELIVERY_REJECTED' });
+
+  const raw = Object.assign(new Error('PRIVATE_MESSAGE'), {
+    name: 'PRIVATE_NAME', code: 'PRIVATE_CODE', stack: 'PRIVATE_STACK'
+  });
+  const sanitizedRaw = sanitizeLogData({ error: raw });
+  assert.deepEqual(sanitizedRaw.error, { name: 'Error', code: 'OPERATION_FAILED' });
+  assert.doesNotMatch(JSON.stringify(sanitizedRaw), /PRIVATE_(?:MESSAGE|NAME|CODE|STACK)/);
 
   const unsafe = sanitizeLogData({
     error: { name: 'ProviderError', code: 'PRIVATE_CODE', message: 'private response', token: 'private token' }

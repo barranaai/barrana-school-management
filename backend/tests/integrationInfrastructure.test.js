@@ -35,16 +35,50 @@ test('app and server imports/construction do not connect, load routes or registe
     assert.equal(require.cache[require.resolve('../config/database')], undefined);
   } finally { mongoose.connect = original; }
 });
-test('runtime entry preserves environment, route, socket, connection, listener and scheduler startup', () => {
+test('runtime waits for the database and only the scheduler owner starts jobs', async () => {
   const calls = []; const app = { initializeRoutes() { calls.push('routes'); } };
-  const server = { listen(port, host, callback) { calls.push(['listen', port, host]); callback(); } };
+  const server = { once() {}, listen(port, host, callback) { calls.push(['listen', port, host]); callback(); } };
   const jobs = Object.fromEntries(['initializeReminderScheduler','initializePDFCleanup','initializeScheduledMessageProcessor','initializeDueReportChecker'].map(name => [name, () => calls.push(name)]));
-  const deps = { dotenv: { config() { calls.push('env'); } }, './utils/logger': { logger: { info() {} } }, './app': { createApp() { calls.push('app'); return app; } }, http: { createServer(a) { assert.equal(a, app); return server; } }, './services/socketService': { initialize(s) { assert.equal(s, server); calls.push('socket'); } }, './config/database': () => calls.push('database'), './services/reminderScheduler': jobs, './services/meetingReminderScheduler': { initializeMeetingReminderScheduler() { calls.push('meetings'); } } };
-  const box = { module: { exports: {} }, process: { env: { PORT: '5050', ENABLE_SCHEDULERS: 'true' }, on(signal) { calls.push(signal); } }, require(name) { assert.ok(Object.hasOwn(deps, name), name); return deps[name]; } };
+  const deps = { dotenv: { config() { calls.push('env'); } }, './utils/logger': { logger: { info() {}, warn() {} } }, './app': { createApp() { calls.push('app'); return app; } }, http: { createServer(a) { assert.equal(a, app); return server; } }, './services/socketService': { initialize(s) { assert.equal(s, server); calls.push('socket'); } }, './config/database': async () => calls.push('database'), './services/reminderScheduler': jobs, './services/meetingReminderScheduler': { initializeMeetingReminderScheduler() { calls.push('meetings'); } } };
+  const box = { module: { exports: {} }, process: { env: { PORT: '5050', ENABLE_SCHEDULERS: 'false', RUNTIME_ROLE: 'web' }, on(signal) { calls.push(signal); } }, require(name) { assert.ok(Object.hasOwn(deps, name), name); return deps[name]; } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8'), box);
-  assert.deepEqual(calls, []); box.module.exports.startServer();
-  assert.deepEqual(calls.slice(0, 6), ['env','app','routes','socket','database',['listen','5050','0.0.0.0']]);
+  assert.deepEqual(calls, []); await box.module.exports.startServer();
+  assert.deepEqual(calls.slice(0, 6), ['env','database','app','routes','socket',['listen','5050','0.0.0.0']]);
+  assert.equal(calls.includes('initializePDFCleanup'), false);
+  assert.equal(box.module.exports.startSchedulers({ ENABLE_SCHEDULERS: 'true', RUNTIME_ROLE: 'web' }), false);
+  assert.equal(box.module.exports.startSchedulers({ ENABLE_SCHEDULERS: 'true', RUNTIME_ROLE: 'scheduler' }), true);
   assert.ok(calls.includes('initializePDFCleanup')); assert.ok(calls.includes('meetings')); assert.ok(calls.includes('SIGTERM'));
+});
+
+test('runtime never opens the HTTP listener when database startup fails', async () => {
+  const calls = []; const failure = Object.assign(new Error('Database connection failed'), { code: 'DATABASE_CONNECTION_FAILED' });
+  const deps = { dotenv: { config() { calls.push('env'); } }, './utils/logger': { logger: { info() {}, warn() {}, error() {} } }, './config/database': async () => { calls.push('database'); throw failure; } };
+  const box = { module: { exports: {} }, process: { env: {}, on() {} }, require(name) { assert.ok(Object.hasOwn(deps, name), 'Unexpected dependency after database failure: ' + name); return deps[name]; } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8'), box);
+  await assert.rejects(box.module.exports.startServer(), error => error === failure);
+  assert.deepEqual(calls, ['env', 'database']);
+});
+
+test('scheduler worker validates ownership and connects before registering jobs', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../scheduler.js'), 'utf8');
+  const run = role => {
+    const calls = [];
+    const deps = {
+      dotenv: { config() { calls.push('env'); } },
+      './utils/logger': { logger: { info() {}, error() {} } },
+      './config/database': async () => calls.push('database'),
+      './server': { startSchedulers() { calls.push('schedulers'); return true; } }
+    };
+    const box = { module: { exports: {} }, process: { env: { RUNTIME_ROLE: role, ENABLE_SCHEDULERS: 'true' }, exitCode: 0 }, require(name) { assert.ok(Object.hasOwn(deps, name), name); return deps[name]; } };
+    vm.runInNewContext(source, box);
+    return { calls, start: box.module.exports.startSchedulerWorker };
+  };
+  const invalid = run('web');
+  await assert.rejects(invalid.start(), error => error.code === 'INVALID_RUNTIME_ROLE');
+  assert.deepEqual(invalid.calls, ['env']);
+  const owner = run('scheduler');
+  await owner.start();
+  assert.deepEqual(owner.calls, ['env', 'database', 'schedulers']);
 });
 test('test harness refuses missing configuration before creating any connection', async () => {
   const saved = { ...process.env }; const mongoose = require('mongoose'); const original = mongoose.createConnection;

@@ -141,7 +141,38 @@ const routeDefinitions = [
     "messages"
   ]
 ];
-function createApp({ routes = routeDefinitions } = {}) {
+function createGlobalErrorHandler({
+  logger = require('./utils/logger').logger,
+  safeError = require('./utils/logger').safeError,
+  nodeEnv = process.env.NODE_ENV
+} = {}) {
+  return (err, _req, res, _next) => {
+    const requestedStatus = Number(err?.statusCode);
+    const statusCode = Number.isInteger(requestedStatus) && requestedStatus >= 400 && requestedStatus <= 599
+      ? requestedStatus
+      : 500;
+
+    // Categorize an empty error. Never pass the raw error because provider-controlled
+    // name and code fields are not safe operational metadata.
+    const metadata = safeError(undefined, 'UNHANDLED_REQUEST_ERROR');
+    if (nodeEnv === 'development') {
+      logger.error('Unhandled request error', { ...metadata, stack: err?.stack });
+    } else {
+      logger.error('Unhandled request error', metadata);
+    }
+
+    const clientSafe = statusCode < 500 && err?.expose === true && typeof err.message === 'string';
+    const message = clientSafe
+      ? err.message
+      : (statusCode >= 500 ? 'Internal Server Error' : 'Request failed');
+    res.status(statusCode).json({ success: false, message });
+  };
+}
+
+function createApp({
+  routes = routeDefinitions,
+  isDatabaseReady = () => require('./config/database').isReady()
+} = {}) {
   const express = require('express');
   const cors = require('cors');
   const helmet = require('helmet');
@@ -207,15 +238,23 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV,
-  });
+// Liveness only confirms that the Node process can answer HTTP requests.
+app.get('/api/health/live', (_req, res) => {
+  res.status(200).json({ status: 'live', timestamp: new Date().toISOString(), uptime: process.uptime() });
 });
+
+// Readiness confirms that the service can handle database-backed product traffic.
+const readiness = (_req, res) => {
+  const databaseReady = Boolean(isDatabaseReady());
+  return res.status(databaseReady ? 200 : 503).json({
+    status: databaseReady ? 'ready' : 'not_ready',
+    checks: { database: databaseReady ? 'ready' : 'unavailable' },
+    timestamp: new Date().toISOString()
+  });
+};
+app.get('/api/health/ready', readiness);
+// Preserve the existing path for deployment platforms, but give it readiness semantics.
+app.get('/api/health', readiness);
 
 // Route modules are lazy: importing/constructing the app performs no service startup.
   const loaders = [];
@@ -237,20 +276,9 @@ app.use('*', (req, res) => {
 });
 
 // Global error handler
-app.use((err, req, res, next) => {
-  require('./utils/logger').logger.error(err.stack);
-  
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
-  
-  res.status(statusCode).json({
-    success: false,
-    message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
-});
+app.use(createGlobalErrorHandler());
 
 
   return app;
 }
-module.exports = { createApp };
+module.exports = { createApp, createGlobalErrorHandler };

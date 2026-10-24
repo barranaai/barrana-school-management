@@ -6,7 +6,12 @@ const parseAllowedOrigins = (value, env = process.env.NODE_ENV) => {
 };
 
 const createCorsOptions = (env = process.env) => {
-  const allowed = parseAllowedOrigins(env.CORS_ALLOWED_ORIGINS, env.NODE_ENV);
+  // CORS_ALLOWED_ORIGINS is canonical. CORS_ORIGIN remains a compatibility
+  // alias for deployments created from the earlier Render blueprint.
+  const allowed = parseAllowedOrigins(
+    env.CORS_ALLOWED_ORIGINS || env.CORS_ORIGIN,
+    env.NODE_ENV
+  );
   return {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],

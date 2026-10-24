@@ -17,9 +17,15 @@ const User = require('../models/User');
 const firebaseService = require('../services/firebaseService');
 const loggerUtils = require('../utils/logger');
 const logger = loggerUtils.logger;
+const { safeError } = loggerUtils;
+const { scheduleNonOverlapping } = require('../utils/schedulerExecutionGuard');
 
 const REMINDER_WINDOW_24H_MS = { startsBefore: 25 * 60 * 60 * 1000, endsBefore: 23 * 60 * 60 * 1000 };
 const REMINDER_WINDOW_1H_MS = { startsBefore: 75 * 60 * 1000, endsBefore: 45 * 60 * 1000 };
+
+const logMeetingReminderFailure = (message, error, code, operationLogger = logger) => {
+  operationLogger.warn(message, safeError(error, code));
+};
 
 async function dispatchInApp(user, payload) {
   try {
@@ -35,7 +41,7 @@ async function dispatchInApp(user, payload) {
     });
     await user.save();
   } catch (err) {
-    logger.warn('Meeting reminder in-app save failed:', err.message);
+    logMeetingReminderFailure('Meeting reminder in-app save failed', err, 'MEETING_REMINDER_SAVE_FAILED');
   }
 
   if (firebaseService.isFirebaseInitialized?.() && user.fcmTokens?.length) {
@@ -48,7 +54,7 @@ async function dispatchInApp(user, payload) {
         )
       );
     } catch (err) {
-      logger.warn('Meeting reminder FCM failed:', err.message);
+      logMeetingReminderFailure('Meeting reminder push failed', err, 'MEETING_REMINDER_PUSH_FAILED');
     }
   }
 }
@@ -114,7 +120,7 @@ async function processReminderKind(kind) {
       await meeting.save();
       processed += 1;
     } catch (err) {
-      logger.warn(`Meeting reminder (${kind}) failed for ${meeting._id}:`, err.message);
+      logMeetingReminderFailure('Meeting reminder processing failed', err, 'MEETING_REMINDER_PROCESSING_FAILED');
     }
   }
   return processed;
@@ -122,9 +128,9 @@ async function processReminderKind(kind) {
 
 function initializeMeetingReminderScheduler() {
   // Run every 5 minutes — reminder windows are wider than 5 minutes,
-  // so this guarantees each meeting picks up exactly one reminder of
-  // each kind without race conditions.
-  cron.schedule('*/5 * * * *', async () => {
+  // The process-local scheduler guard prevents overlapping runs in this
+  // worker. Database-level idempotency remains responsible for restart safety.
+  scheduleNonOverlapping(cron, '*/5 * * * *', 'meeting-reminders', async () => {
     try {
       const t1 = await processReminderKind('24h');
       const t2 = await processReminderKind('1h');
@@ -132,7 +138,7 @@ function initializeMeetingReminderScheduler() {
         logger.info(`Meeting reminders: 24h=${t1}, 1h=${t2}`);
       }
     } catch (err) {
-      logger.error('Meeting reminder cron error:', err);
+      logger.error('Meeting reminder cron failed', safeError(err, 'MEETING_REMINDER_SCHEDULE_FAILED'));
     }
   });
   logger.info('Meeting reminder scheduler initialized (every 5 minutes)');
@@ -141,4 +147,5 @@ function initializeMeetingReminderScheduler() {
 module.exports = {
   initializeMeetingReminderScheduler,
   processReminderKind,
+  logMeetingReminderFailure,
 };

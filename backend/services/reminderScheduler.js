@@ -15,11 +15,68 @@ const Report = require('../models/Report');
 const ReportTemplate = require('../models/ReportTemplate');
 const School = require('../models/School');
 const { logger, safeError } = require('../utils/logger');
+const { scheduleNonOverlapping } = require('../utils/schedulerExecutionGuard');
 const { sendEventReminder } = require('./notificationService');
 const { cleanupOldPDFs } = require('./pdfService');
 const { getCurrentDateInTimezone, isReportDue, calculateDueDate, getStartOfFrequencyPeriod } = require('../utils/dateUtils');
 const firebaseService = require('./firebaseService');
 const { getIO } = require('./socketService');
+
+function pushOutcome(result) {
+  if (result?.skipped === true || ['firebase_not_initialized', 'no_tokens'].includes(result?.reason)) return 'skipped';
+  const hasBatchCounts = Number.isFinite(result?.successCount) && Number.isFinite(result?.failureCount);
+  if (hasBatchCounts) {
+    if (result.successCount > 0 && result.failureCount > 0) return 'partial';
+    if (result.successCount > 0 && result.failureCount === 0) return 'accepted';
+    return 'failed';
+  }
+  if (result?.success === true) return 'accepted';
+  return 'failed';
+}
+
+function logPushOutcome(eventName, result, operationLogger = logger) {
+  const status = pushOutcome(result);
+  const metadata = { channel: 'push', status };
+  if (status === 'accepted') operationLogger.info(`${eventName} push notification accepted`, metadata);
+  else if (status === 'partial') operationLogger.warn(`${eventName} push notification partially accepted`, { ...metadata, code: 'PUSH_DELIVERY_PARTIAL' });
+  else if (status === 'skipped') operationLogger.warn(`${eventName} push notification skipped`, metadata);
+  else operationLogger.warn(`${eventName} push notification failed`, { ...metadata, code: 'PUSH_DELIVERY_FAILED' });
+  return status;
+}
+
+function logEventReminderStart(reminderType, operationLogger = logger) {
+  operationLogger.info('Event reminder delivery started', { reminderType });
+}
+
+function logDueReportTeacherFailure(error, operationLogger = logger) {
+  operationLogger.error('Due-report teacher processing failed', safeError(error, 'DUE_REPORT_TEACHER_PROCESSING_FAILED'));
+}
+
+async function sendDueReportPush(teacher, notification, data, dependencies = {}) {
+  const firebase = dependencies.firebase || firebaseService;
+  const operationLogger = dependencies.logger || logger;
+  if (!teacher?.fcmTokens?.length) {
+    const result = { success: true, skipped: true, reason: 'no_tokens' };
+    return { ...result, status: logPushOutcome('Due-report', result, operationLogger) };
+  }
+  if (typeof firebase.isFirebaseInitialized !== 'function' || !firebase.isFirebaseInitialized()) {
+    const result = { success: false, skipped: true, reason: 'firebase_not_initialized' };
+    return { ...result, status: logPushOutcome('Due-report', result, operationLogger) };
+  }
+  try {
+    const result = await firebase.sendNotificationToUser(teacher, notification, data);
+    return {
+      success: result?.success === true,
+      skipped: result?.skipped === true,
+      ...(Number.isFinite(result?.successCount) && { successCount: result.successCount }),
+      ...(Number.isFinite(result?.failureCount) && { failureCount: result.failureCount }),
+      status: logPushOutcome('Due-report', result, operationLogger)
+    };
+  } catch (_error) {
+    const result = { success: false };
+    return { ...result, status: logPushOutcome('Due-report', result, operationLogger) };
+  }
+}
 
 /**
  * Get recipients for an event based on target type
@@ -130,7 +187,7 @@ async function sendReminders(reminderType) {
     for (const event of events) {
       // Check if this reminder should be sent
       if (event.shouldSendReminder(reminderType)) {
-        logger.info(`Sending ${reminderType} reminders for event: ${event.title}`);
+        logEventReminderStart(reminderType);
 
         // Get recipients
         const recipients = await getEventRecipients(event);
@@ -170,7 +227,7 @@ async function sendReminders(reminderType) {
 function initializeReminderScheduler() {
   // Run every hour to check for pending reminders
   // Format: "minute hour day month dayOfWeek"
-  cron.schedule('0 * * * *', async () => {
+  scheduleNonOverlapping(cron, '0 * * * *', 'event-reminders', async () => {
     logger.info('Running scheduled reminder check...');
     
     try {
@@ -203,7 +260,7 @@ async function triggerReminderCheck(reminderType = 'all') {
  */
 function initializePDFCleanup() {
   // Run daily at 3 AM
-  cron.schedule('0 3 * * *', async () => {
+  scheduleNonOverlapping(cron, '0 3 * * *', 'pdf-cleanup', async () => {
     try {
       logger.info('Starting scheduled PDF cleanup');
       // Fail closed if retained references cannot be read. Protect historical PDFs too.
@@ -223,6 +280,7 @@ function initializePDFCleanup() {
  * Process scheduled messages that are due to be sent
  */
 async function processScheduledMessages(dependencies = {}) {
+  const operationLogger = dependencies.logger || logger;
   try {
     const now = new Date();
     
@@ -302,10 +360,10 @@ async function processScheduledMessages(dependencies = {}) {
             };
             
             const sendPush = dependencies.sendPush || firebaseService.sendNotificationToUser.bind(firebaseService);
-            await sendPush(recipientUser, pushNotification, pushData);
-            logger.info('Scheduled message push notification accepted', { channel: 'push' });
-          } catch (pushError) {
-            logger.error('Error sending push notification for scheduled message:', pushError);
+            const pushResult = await sendPush(recipientUser, pushNotification, pushData);
+            logPushOutcome('Scheduled message', pushResult, operationLogger);
+          } catch (_pushError) {
+            logPushOutcome('Scheduled message', { success: false }, operationLogger);
           }
         }
         
@@ -343,7 +401,7 @@ async function checkDueReports() {
     const teachers = await User.find({ 
       role: 'teacher', 
       isActive: true 
-    }).select('_id schoolId firstName lastName fcmToken notifications');
+    }).select('_id schoolId firstName lastName fcmTokens notifications');
 
     if (teachers.length === 0) {
       logger.info('No active teachers found');
@@ -479,25 +537,18 @@ async function checkDueReports() {
                   logger.error('Error emitting Socket.io notification:', socketError);
                 }
 
-                // Send FCM push notification if available
-                if (teacher.fcmToken && firebaseService.isInitialized()) {
-                  try {
-                    await firebaseService.sendNotificationToUser(teacher, {
-                      title: `Report due: ${template.name}`,
-                      body: `A ${frequency} report for ${studentName} is due now.`,
-                      icon: 'ic_notification',
-                      sound: 'default'
-                    }, {
-                      type: 'report',
-                      studentId: String(student._id),
-                      templateId: String(template._id),
-                      frequency
-                    });
-                    logger.info('Due-report push notification accepted', { channel: 'push' });
-                  } catch (pushError) {
-                    logger.error('Error sending push notification:', pushError);
-                  }
-                }
+                // Send FCM push notification when the worker has credentials and a device token.
+                await sendDueReportPush(teacher, {
+                  title: `Report due: ${template.name}`,
+                  body: `A ${frequency} report for ${studentName} is due now.`,
+                  icon: 'ic_notification',
+                  sound: 'default'
+                }, {
+                  type: 'report',
+                  studentId: String(student._id),
+                  templateId: String(template._id),
+                  frequency
+                });
 
                 logger.info('Due-report notification created');
               }
@@ -508,7 +559,7 @@ async function checkDueReports() {
           }
         }
       } catch (teacherError) {
-        logger.error(`Error processing teacher ${teacher._id}:`, teacherError);
+        logDueReportTeacherFailure(teacherError);
         continue;
       }
     }
@@ -525,7 +576,7 @@ async function checkDueReports() {
  */
 function initializeDueReportChecker() {
   // Run every hour at the top of the hour
-  cron.schedule('0 * * * *', async () => {
+  scheduleNonOverlapping(cron, '0 * * * *', 'due-report-check', async () => {
     logger.info('Running scheduled due report check...');
     try {
       await checkDueReports();
@@ -543,7 +594,7 @@ function initializeDueReportChecker() {
  */
 function initializeScheduledMessageProcessor() {
   // Run every minute to check for scheduled messages
-  cron.schedule('* * * * *', async () => {
+  scheduleNonOverlapping(cron, '* * * * *', 'scheduled-message-processor', async () => {
     try {
       await processScheduledMessages();
     } catch (error) {
@@ -562,6 +613,10 @@ module.exports = {
   initializeScheduledMessageProcessor,
   processScheduledMessages,
   initializeDueReportChecker,
-  checkDueReports
+  checkDueReports,
+  logPushOutcome,
+  sendDueReportPush,
+  logEventReminderStart,
+  logDueReportTeacherFailure
 };
 
